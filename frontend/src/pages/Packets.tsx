@@ -551,7 +551,7 @@ function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onCl
               )
             ))}
           </Box>
-          <Box sx={{ fontFamily: 'monospace', background: md3.surfaceContainerHighest, p: 1.25, borderRadius: 2, lineHeight: 2 }}>
+          <Box sx={{ fontFamily: 'monospace', background: md3.surfaceContainerHighest, p: 1.25, borderRadius: 2, lineHeight: 2, wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
             {hexSections.map((b, i) => (
               <Box key={i} component="span"
                 sx={{ fontSize: 11, color: sectionColor[b.section], mr: 0.4 }}>

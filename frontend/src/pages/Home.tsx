@@ -295,15 +295,15 @@ export default function Home() {
 
           {/* Recent packets */}
           <Card>
-            <CardActionArea onClick={() => navigate('/packets')} sx={{ px: 2, pt: 2, pb: 0.5 }}>
+            <Box onClick={() => navigate('/packets')} sx={{ px: 2, pt: 2, pb: 0.5, cursor: 'pointer', '&:hover .viewAll': { opacity: 1 } }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <SectionIcon Icon={HistoryIcon} color={md3.tertiary} />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{t('home.recentPackets')}</Typography>
                 </Box>
-                <Typography variant="caption" sx={{ color: md3.primary }}>{t('common.viewAll')} →</Typography>
+                <Typography className="viewAll" variant="caption" sx={{ color: md3.primary }}>{t('common.viewAll')} →</Typography>
               </Box>
-            </CardActionArea>
+            </Box>
             <Box sx={{ px: 2, pb: 1.5 }}>
               {recent.length === 0 && (
                 <Typography variant="body2" sx={{ color: md3.outline, py: 2, textAlign: 'center' }}>
@@ -353,7 +353,7 @@ export default function Home() {
 
           {/* Top nodes */}
           <Card>
-            <CardActionArea onClick={() => navigate('/nodes')} sx={{ px: 2, pt: 2, pb: 0.5 }}>
+            <Box onClick={() => navigate('/nodes')} sx={{ px: 2, pt: 2, pb: 0.5, cursor: 'pointer' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <SectionIcon Icon={EmojiEventsIcon} color="#f59e0b" />
@@ -361,7 +361,7 @@ export default function Home() {
                 </Box>
                 <Typography variant="caption" sx={{ color: md3.primary }}>{t('common.viewAll')} →</Typography>
               </Box>
-            </CardActionArea>
+            </Box>
             <Box sx={{ px: 2, pb: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
               {topNodes.length === 0 && (
                 <Typography variant="body2" sx={{ color: md3.outline, py: 2, textAlign: 'center' }}>{t('home.noNodes')}</Typography>
