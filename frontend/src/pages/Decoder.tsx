@@ -31,7 +31,13 @@ export default function Decoder() {
     const h = hex.replace(/\s/g, '')
     if (!h) return
     setLoading(true); setResult(null)
-    try { setResult(await api.decodePacket(h)) }
+    try {
+      // Read channel keys from localStorage (set in Channels page)
+      const stored: { name: string; key: string }[] = JSON.parse(localStorage.getItem('litescope-channel-keys') ?? '[]')
+      const channelKeys: Record<string, string> = {}
+      for (const { name, key } of stored) if (name && key) channelKeys[name] = key
+      setResult(await api.decodePacket(h, Object.keys(channelKeys).length ? channelKeys : undefined))
+    }
     catch (e) { setResult({ ok: false, error: String(e) }) }
     finally { setLoading(false) }
   }
@@ -117,6 +123,8 @@ function DecodedChips({ decoded: d }: { decoded: Record<string, unknown> }) {
   if (pl?.name)    chips.push({ color: '#f59e0b', label: 'Name',    value: String(pl.name) })
   if (pl?.lat != null && pl?.lon != null) chips.push({ color: '#22c55e', label: 'GPS', value: `${(pl.lat as number).toFixed(4)}, ${(pl.lon as number).toFixed(4)}` })
   if (pl?.channel) chips.push({ color: md3.tertiary, label: 'Channel', value: String(pl.channel) })
+  else if (pl?.channelHashHex) chips.push({ color: md3.outline, label: 'Chan hash', value: String(pl.channelHashHex) })
+  if (pl?.decryptionStatus) chips.push({ color: pl.decryptionStatus === 'decrypted' ? '#22c55e' : md3.error, label: 'Decrypt', value: String(pl.decryptionStatus) })
   if (pl?.sender)  chips.push({ color: md3.tertiary, label: 'Sender',  value: String(pl.sender) })
   if (!chips.length) return null
   return (

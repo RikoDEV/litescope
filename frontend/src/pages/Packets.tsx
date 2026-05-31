@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -46,6 +47,7 @@ export default function Packets() {
   const theme = useTheme()
   const md3   = theme.palette.md3
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [packets, setPackets]   = useState<Packet[]>([])
   const [total, setTotal]       = useState(0)
@@ -117,6 +119,16 @@ export default function Packets() {
   }, [])
 
   useEffect(() => { load(0) }, [load])
+
+  // Auto-select packet when ?hash= is present in URL
+  useEffect(() => {
+    const hash = searchParams.get('hash')
+    if (!hash) return
+    api.packet(hash).then(detail => {
+      setSelected(detail)
+      setSearchParams({}, { replace: true })
+    }).catch(() => setSearchParams({}, { replace: true }))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return stream.subscribe(msg => {
@@ -327,50 +339,7 @@ export default function Packets() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <Paper elevation={2} sx={{ width: 380, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', p: 2, flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ color: md3.primary, fontWeight: 700 }}>{t('packets.packetDetail')}</Typography>
-            <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: md3.onSurfaceVariant }}><CloseIcon fontSize="small" /></IconButton>
-          </Box>
-
-          <DetailRow label={t('packets.hash')}      value={selected.hash} mono />
-          <DetailRow label={t('common.type')}       value={`${PAYLOAD_NAMES[selected.payloadType] ?? selected.payloadType} (${selected.payloadType})`} />
-          <DetailRow label={t('common.route')}      value={ROUTE_NAMES[selected.routeType] ?? selected.routeType} />
-          <DetailRow label={t('common.firstSeen')}  value={new Date(selected.firstSeen).toLocaleString()} />
-          <DetailRow label={t('packets.obsCount')}  value={selected.obsCount} />
-
-          {selected.decoded && (
-            <>
-              <Typography variant="overline" sx={{ color: md3.outline, display: 'block', mt: 2, mb: 0.5 }}>{t('packets.decoded')}</Typography>
-              <Box component="pre" sx={{ background: md3.surfaceContainerHighest, p: 1.5, borderRadius: 2, overflow: 'auto', fontSize: 11, color: md3.primary, lineHeight: 1.6, fontFamily: 'monospace', m: 0 }}>
-                {JSON.stringify(selected.decoded, null, 2)}
-              </Box>
-            </>
-          )}
-
-          {selected.observations?.length > 0 && (
-            <>
-              <Typography variant="overline" sx={{ color: md3.outline, display: 'block', mt: 2, mb: 0.5 }}>
-                {t('packets.observations')} ({selected.observations.length})
-              </Typography>
-              {selected.observations.map(o => (
-                <Paper key={o.id} elevation={1} sx={{ p: 1.5, mb: 1, borderRadius: 2 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>{o.observerName || o.observerId.slice(0, 16)}</Typography>
-                  <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Typography variant="caption" sx={{ color: rssiColor(o.rssi, md3.error, md3.outline) }}>RSSI: {o.rssi ?? '—'} dBm</Typography>
-                    <Typography variant="caption" sx={{ color: snrColor(o.snr, md3.error, md3.outline) }}>SNR: {o.snr ?? '—'} dB</Typography>
-                  </Box>
-                  <Typography variant="caption" sx={{ color: md3.outline, display: 'block', mt: 0.5 }}>{new Date(o.timestamp).toLocaleString()}</Typography>
-                </Paper>
-              ))}
-            </>
-          )}
-
-          <Typography variant="overline" sx={{ color: md3.outline, display: 'block', mt: 2, mb: 0.5 }}>{t('packets.rawHex')}</Typography>
-          <Box sx={{ fontFamily: 'monospace', background: md3.surfaceContainerHighest, p: 1.5, borderRadius: 2, wordBreak: 'break-all', fontSize: 11, color: md3.outline, lineHeight: 1.8 }}>
-            {selected.rawHex.match(/.{1,2}/g)?.join(' ')}
-          </Box>
-        </Paper>
+        <PacketDetailPanel selected={selected} onClose={() => setSelected(null)} />
       )}
     </Box>
   )
@@ -395,4 +364,203 @@ function rssiColor(v: number | null, errColor: string, outline: string) {
 function snrColor(v: number | null, errColor: string, outline: string) {
   if (v == null) return outline
   return v >= 5 ? '#22c55e' : v >= 0 ? '#f59e0b' : errColor
+}
+
+function parseHops(pathJson: string): string[] {
+  try { return JSON.parse(pathJson) ?? [] } catch { return [] }
+}
+
+function relativeTime(ts: string): string {
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000
+  if (diff < 60) return `${Math.round(diff)}s ago`
+  if (diff < 3600) return `${Math.round(diff / 60)}m ago`
+  return `${Math.round(diff / 3600)}h ago`
+}
+
+// Parse rawHex into color-coded sections: header / path / payload
+function parseHexSections(rawHex: string, routeType: number): { section: 'header' | 'transport' | 'path' | 'payload'; byte: string }[] {
+  const bytes = (rawHex.match(/.{1,2}/g) ?? [])
+  if (bytes.length === 0) return []
+  const result: { section: 'header' | 'transport' | 'path' | 'payload'; byte: string }[] = []
+  let i = 0
+  result.push({ section: 'header', byte: bytes[i++] })
+  const isTransport = routeType === 0 || routeType === 3
+  if (isTransport) {
+    for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'transport', byte: bytes[i++] })
+  }
+  if (i < bytes.length) {
+    const pathByte = parseInt(bytes[i], 16)
+    const hashSize = ((pathByte >> 6) & 3) + 1
+    const hopCount = pathByte & 0x3F
+    result.push({ section: 'path', byte: bytes[i++] })
+    const pathEnd = i + hopCount * hashSize
+    while (i < pathEnd && i < bytes.length) result.push({ section: 'path', byte: bytes[i++] })
+  }
+  while (i < bytes.length) result.push({ section: 'payload', byte: bytes[i++] })
+  return result
+}
+
+function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onClose: () => void }) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+
+  const obs = selected.observations ?? []
+  const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))
+  const longestObs  = obsWithHops.reduce((best, o) => o.hops.length > best.hops.length ? o : best, obsWithHops[0] ?? { hops: [] })
+  const uniqueObservers = new Set(obs.map(o => o.observerId)).size
+  const times = obs.map(o => new Date(o.timestamp).getTime()).filter(Boolean)
+  const propagationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
+  const hexSections = parseHexSections(selected.rawHex ?? '', selected.routeType)
+
+  const sectionColor: Record<string, string> = {
+    header:    md3.primary,
+    transport: md3.tertiary,
+    path:      '#22c55e',
+    payload:   md3.onSurfaceVariant,
+  }
+
+  const dec = selected.decoded as Record<string, unknown> | null | undefined
+
+  return (
+    <Paper elevation={2} sx={{ width: 460, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }}>
+      {/* Header */}
+      <Box sx={{ px: 2, py: 1.5, borderBottom: `1px solid ${md3.outlineVariant}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box>
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 0.75 }}>
+            <Chip label={PAYLOAD_NAMES[selected.payloadType] ?? selected.payloadType} size="small"
+              sx={{ background: alpha(md3.primary, 0.15), color: md3.primary, fontWeight: 700, fontSize: 11 }} />
+            <Chip label={ROUTE_NAMES[selected.routeType] ?? selected.routeType} size="small"
+              sx={{ background: alpha(md3.secondary, 0.15), color: md3.secondary, fontSize: 11 }} />
+            <Chip label={`${obs.length} obs`} size="small"
+              sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, fontSize: 11 }} />
+            {uniqueObservers > 1 && (
+              <Chip label={`${uniqueObservers} observers`} size="small"
+                sx={{ background: alpha('#22c55e', 0.15), color: '#22c55e', fontSize: 11 }} />
+            )}
+          </Box>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: md3.outline, fontSize: 11 }}>
+            {selected.hash}
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={onClose} sx={{ color: md3.onSurfaceVariant, ml: 1, flexShrink: 0 }}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Box>
+
+      <Box sx={{ p: 2 }}>
+        {/* Stats row */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 2 }}>
+          {[
+            { l: t('common.firstSeen'), v: relativeTime(selected.firstSeen) },
+            { l: 'Propagation', v: propagationMs > 0 ? `${(propagationMs / 1000).toFixed(1)}s` : '—' },
+            { l: 'Max hops', v: longestObs.hops.length > 0 ? `${longestObs.hops.length}` : '—' },
+          ].map(({ l, v }) => (
+            <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75, textAlign: 'center' }}>
+              <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12 }}>{v}</Typography>
+            </Box>
+          ))}
+        </Box>
+
+        {/* Longest path */}
+        {longestObs.hops.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>Longest path — {longestObs.hops.length} hops</Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
+              {longestObs.hops.map((hop, i) => (
+                <Chip key={i} label={hop.toUpperCase()} size="small"
+                  sx={{ fontFamily: 'monospace', fontSize: 10, height: 20, background: alpha('#22c55e', 0.1), color: '#22c55e', border: `1px solid ${alpha('#22c55e', 0.3)}` }} />
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Decoded payload */}
+        {dec && Object.keys(dec).length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>{t('packets.decoded')}</Typography>
+            <Box sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, p: 1.25 }}>
+              {Object.entries(dec).filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => (
+                <Box key={k} sx={{ display: 'flex', gap: 1, mb: 0.4 }}>
+                  <Typography variant="caption" sx={{ color: md3.outline, width: 110, flexShrink: 0, fontSize: 11 }}>{k}</Typography>
+                  <Typography variant="caption" sx={{ color: md3.onSurface, fontFamily: typeof v === 'string' && v.length > 20 ? 'monospace' : undefined, wordBreak: 'break-all', fontSize: 11 }}>
+                    {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Observations table */}
+        {obs.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
+              {t('packets.observations')} ({obs.length})
+            </Typography>
+            <Box sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, overflow: 'hidden' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {['Observer', 'Hops', 'SNR', 'RSSI', 'Time'].map(h => (
+                      <TableCell key={h} sx={{ fontSize: 10, py: 0.5, color: md3.outline, background: md3.surfaceContainerHighest }}>{h}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {obsWithHops.map(o => (
+                    <TableRow key={o.id}>
+                      <TableCell sx={{ fontSize: 11, maxWidth: 130 }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130 }}>
+                          {o.observerName || o.observerId.slice(0, 12)}
+                        </Typography>
+                        {o.observerIata && <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>{o.observerIata}</Typography>}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 11, color: o.hops.length > 0 ? md3.primary : md3.outline }}>
+                        {o.hops.length > 0 ? o.hops.length : '—'}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 11, color: snrColor(o.snr, md3.error, md3.outline) }}>
+                        {o.snr != null ? `${o.snr} dB` : '—'}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 11, color: rssiColor(o.rssi, md3.error, md3.outline) }}>
+                        {o.rssi != null ? `${o.rssi}` : '—'}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: 10, color: md3.outline, whiteSpace: 'nowrap' }}>
+                        {relativeTime(o.timestamp)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          </Box>
+        )}
+
+        {/* Colored hex */}
+        <Box>
+          <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
+            {t('packets.rawHex')} ({(selected.rawHex?.length ?? 0) / 2} bytes)
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.75 }}>
+            {(['header', 'transport', 'path', 'payload'] as const).map(s => (
+              hexSections.some(b => b.section === s) && (
+                <Box key={s} sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: sectionColor[s] }} />
+                  <Typography variant="caption" sx={{ fontSize: 10, color: md3.outline, textTransform: 'capitalize' }}>{s}</Typography>
+                </Box>
+              )
+            ))}
+          </Box>
+          <Box sx={{ fontFamily: 'monospace', background: md3.surfaceContainerHighest, p: 1.25, borderRadius: 2, lineHeight: 2 }}>
+            {hexSections.map((b, i) => (
+              <Box key={i} component="span"
+                sx={{ fontSize: 11, color: sectionColor[b.section], mr: 0.4 }}>
+                {b.byte.toUpperCase()}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Box>
+    </Paper>
+  )
 }

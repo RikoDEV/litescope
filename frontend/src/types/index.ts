@@ -21,6 +21,7 @@ export interface Packet {
   routeType: number
   payloadType: number
   obsCount: number
+  maxHops: number
   channelHash?: string
   decoded?: DecodedPayload
 }

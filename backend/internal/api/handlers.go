@@ -11,8 +11,8 @@ import (
 )
 
 // decodeHexPacket wraps the decoder package so handlers.go stays thin.
-func decodeHexPacket(hex string) (interface{}, error) {
-	pkt, err := decoder.DecodePacket(hex, nil)
+func decodeHexPacket(hex string, channelKeys map[string]string) (interface{}, error) {
+	pkt, err := decoder.DecodePacket(hex, channelKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -21,12 +21,13 @@ func decodeHexPacket(hex string) (interface{}, error) {
 
 // Server holds all dependencies for the HTTP handlers.
 type Server struct {
-	Store *store.Store
-	Hub   *Hub
+	Store       *store.Store
+	Hub         *Hub
+	ChannelKeys map[string]string
 }
 
-func NewServer(st *store.Store, hub *Hub) *Server {
-	return &Server{Store: st, Hub: hub}
+func NewServer(st *store.Store, hub *Hub, channelKeys map[string]string) *Server {
+	return &Server{Store: st, Hub: hub, ChannelKeys: channelKeys}
 }
 
 // Router returns a configured mux.Router.
@@ -258,14 +259,13 @@ func (s *Server) getObserverAnalytics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Hex string `json:"hex"`
+		Hex         string            `json:"hex"`
+		ChannelKeys map[string]string `json:"channelKeys,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
-	// Delegate to the decoder package via a thin import
-	// We return a structured error so the frontend can display it cleanly
 	type decodeResp struct {
 		OK      bool        `json:"ok"`
 		Error   string      `json:"error,omitempty"`
@@ -275,8 +275,15 @@ func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, decodeResp{OK: false, Error: "hex is empty"})
 		return
 	}
-	// Import decoder inline — call our existing decoder package
-	result, err := decodeHexPacket(body.Hex)
+	// Merge server-configured keys with keys supplied by the client
+	keys := make(map[string]string)
+	for k, v := range s.ChannelKeys {
+		keys[k] = v
+	}
+	for k, v := range body.ChannelKeys {
+		keys[k] = v
+	}
+	result, err := decodeHexPacket(body.Hex, keys)
 	if err != nil {
 		writeJSON(w, decodeResp{OK: false, Error: err.Error()})
 		return
@@ -293,6 +300,7 @@ type packetSummary struct {
 	RouteType   int                    `json:"routeType"`
 	PayloadType int                    `json:"payloadType"`
 	ObsCount    int                    `json:"obsCount"`
+	MaxHops     int                    `json:"maxHops"`
 	ChannelHash string                 `json:"channelHash,omitempty"`
 	Decoded     map[string]interface{} `json:"decoded,omitempty"`
 }
@@ -343,11 +351,18 @@ type observerSummary struct {
 }
 
 func summarizeTx(tx *store.Tx) packetSummary {
+	maxHops := 0
+	for _, o := range tx.Observations {
+		var hops []string
+		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
+			maxHops = len(hops)
+		}
+	}
 	return packetSummary{
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
-		ObsCount: tx.ObsCount, ChannelHash: tx.ChannelHash,
-		Decoded: tx.Decoded(),
+		ObsCount: tx.ObsCount, MaxHops: maxHops,
+		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}
 }
 

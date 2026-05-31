@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -21,6 +22,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import TagIcon from '@mui/icons-material/Tag'
 import CloseIcon from '@mui/icons-material/Close'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet } from '../types'
@@ -81,6 +83,7 @@ function hashColor(s: string) {
 export default function Channels() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [channels, setChannels]     = useState<Channel[]>([])
   const [selected, setSelected]     = useState<Channel | null>(null)
   const [messages, setMessages]     = useState<Packet[]>([])
@@ -189,13 +192,31 @@ export default function Channels() {
                       {sender[0]?.toUpperCase() ?? '?'}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', mb: 0.25 }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.25, flexWrap: 'wrap' }}>
                         <Typography variant="body2" sx={{ fontWeight: 700, color: hashColor(sender) }}>{sender}</Typography>
                         <Typography variant="caption" sx={{ color: md3.outline }}>
                           {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true })}
                         </Typography>
                         {noKey && <Chip label={`🔒 ${t('channels.encrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
                         {cdec && <Chip label={`🔓 ${t('channels.decrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#22c55e', 0.15), color: '#22c55e' }} />}
+                        <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', alignItems: 'center' }}>
+                          {msg.obsCount > 0 && (
+                            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
+                              {msg.obsCount} obs
+                            </Typography>
+                          )}
+                          {msg.maxHops > 0 && (
+                            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
+                              · {msg.maxHops} hops
+                            </Typography>
+                          )}
+                          <Tooltip title="View packet">
+                            <IconButton size="small" onClick={() => navigate(`/packets?hash=${msg.hash}`)}
+                              sx={{ color: md3.outline, p: 0.25, '&:hover': { color: md3.primary } }}>
+                              <OpenInNewIcon sx={{ fontSize: 13 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </Box>
                       {noKey
                         ? <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace' }}>{(dec?.encryptedData as string | undefined)?.slice(0, 40) ?? ''}…</Typography>

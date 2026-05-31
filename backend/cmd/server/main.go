@@ -48,7 +48,7 @@ func main() {
 		len(txs), len(obss), len(nodes), len(observers))
 
 	hub := api.NewHub()
-	srv := api.NewServer(st, hub)
+	srv := api.NewServer(st, hub, cfg.ChannelKeys)
 
 	// Poll SQLite for new packets every second
 	go func() {

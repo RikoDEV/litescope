@@ -68,6 +68,6 @@ export const api = {
   observerAnalytics: (id: string, days = 7) =>
     get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),
 
-  decodePacket: (hex: string) =>
-    fetch(`${BASE}/api/decode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hex }) }).then(r => r.json()),
+  decodePacket: (hex: string, channelKeys?: Record<string, string>) =>
+    fetch(`${BASE}/api/decode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hex, channelKeys }) }).then(r => r.json()),
 }
