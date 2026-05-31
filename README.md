@@ -1,8 +1,6 @@
 # liteScope
 
-A lightweight, self-hosted dashboard for monitoring [MeshCore](https://meshcore.co.uk/) networks. liteScope ingests MQTT telemetry from one or more MeshCore brokers, stores it in SQLite, and serves a real-time React UI with live packet feeds, node analytics, channel decryption, and observer stats.
-
-**by [riko.dev](https://riko.dev)**
+A lightweight, self-hosted dashboard for monitoring [MeshCore](https://meshcore.io/) networks. liteScope ingests MQTT telemetry from one or more MeshCore brokers, stores it in SQLite, and serves a real-time React UI with live packet feeds, node analytics, channel decryption, and observer stats.
 
 ---
 
@@ -211,6 +209,32 @@ When empty the frontend uses relative URLs, which works with the Vite proxy in d
 ---
 
 ## Deployment
+
+### Production (pre-built images)
+
+Use `docker-compose.full.yml` to run the stack entirely from pre-built images — no local build toolchain needed:
+
+```bash
+cp .env.example .env
+cp config.example.json config.json
+# edit both files with your credentials
+
+docker compose -f docker-compose.full.yml up -d
+```
+
+To upgrade to the latest images:
+
+```bash
+docker compose -f docker-compose.full.yml pull
+docker compose -f docker-compose.full.yml up -d
+```
+
+To pin to a specific release instead of `latest`, change the image tags in `docker-compose.full.yml`:
+
+```yaml
+image: ghcr.io/rikodev/litescope-backend:1.2.0
+image: ghcr.io/rikodev/litescope-frontend:1.2.0
+```
 
 ### Self-hosted (Docker Compose + domain)
 

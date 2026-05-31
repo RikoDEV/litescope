@@ -1,0 +1,18 @@
+{
+    admin off
+}
+
+# Replace `:80` with your domain (e.g. `litescope.example.com`) for automatic
+# HTTPS. Caddy will obtain and renew a Let's Encrypt certificate automatically.
+
+:80 {
+    # Health check endpoint
+    respond /health 200
+
+    # API and WebSocket → backend
+    @api path /api/* /ws
+    reverse_proxy @api backend:3000
+
+    # Everything else → frontend nginx
+    reverse_proxy frontend:80
+}

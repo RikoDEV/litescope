@@ -1,5 +1,14 @@
 version: "3.9"
 
+# Production compose using pre-built images from ghcr.io.
+# Prerequisites:
+#   cp .env.example .env          # set MQTT_USERNAME / MQTT_PASSWORD
+#   cp config.example.json config.json   # set broker credentials + channel keys
+#
+# Start:   docker compose -f docker-compose.full.yml up -d
+# Upgrade: docker compose -f docker-compose.full.yml pull && \
+#          docker compose -f docker-compose.full.yml up -d
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -15,21 +24,25 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ghcr.io/rikodev/litescope-backend:latest
     container_name: litescope-backend
     depends_on:
       - mosquitto
     volumes:
       - ./config.json:/app/config.json:ro
-      - ./backend/supervisord.conf:/etc/supervisord.conf:ro
       - db-data:/app/data
     environment:
       - TZ=UTC
     restart: unless-stopped
     expose:
       - "3000"
+
+  frontend:
+    image: ghcr.io/rikodev/litescope-frontend:latest
+    container_name: litescope-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
 
   caddy:
     image: caddy:2-alpine
@@ -38,10 +51,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.full:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
     depends_on:
       - backend
+      - frontend
     restart: unless-stopped
 
 volumes:

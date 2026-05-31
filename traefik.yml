@@ -1,0 +1,35 @@
+# Traefik v3 static configuration for liteScope.
+# Mount this file read-only into the Traefik container:
+#   - ./traefik.yml:/etc/traefik/traefik.yml:ro
+#
+# Before starting, set DOMAIN and ACME_EMAIL in your .env file.
+
+api:
+  dashboard: false          # set to true + add auth middleware to expose the UI
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      # Replace with your real e-mail — Let's Encrypt sends expiry notices here
+      email: admin@example.com
+      storage: /letsencrypt/acme.json
+      tlsChallenge: {}
+
+providers:
+  docker:
+    exposedByDefault: false   # only containers with traefik.enable=true are routed
+
+log:
+  level: INFO

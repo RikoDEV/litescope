@@ -1,0 +1,43 @@
+name: Backend
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+
+jobs:
+  build:
+    name: Vet & build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Download modules
+        working-directory: backend
+        run: go mod download
+
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
+
+      - name: Build ingestor
+        working-directory: backend
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o /tmp/ingestor ./cmd/ingestor
+
+      - name: Build server
+        working-directory: backend
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o /tmp/server ./cmd/server
