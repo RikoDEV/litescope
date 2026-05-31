@@ -289,7 +289,7 @@ function RFTab() {
               <ReferenceLine x={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
               <Tooltip
                 contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
-                formatter={(v: number, _: string, entry: { payload?: { count: number } }) => [`${v.toFixed(2)} dB (${entry.payload?.count ?? 0} obs)`, 'Avg SNR']}
+                formatter={(v: unknown, _: unknown, entry: { payload?: { count: number } }) => [`${(v as number).toFixed(2)} dB (${entry.payload?.count ?? 0} obs)`, 'Avg SNR']}
               />
               <Bar dataKey="avg" radius={[0, 4, 4, 0]}>
                 {snrTypeData.map((d, i) => <Cell key={i} fill={d.avg > 6 ? '#22c55e' : d.avg > 0 ? '#f59e0b' : md3.error} />)}
@@ -494,7 +494,7 @@ function ChannelsTab() {
               <Pie
                 data={channels.slice(0, 8).map(c => ({ name: c.name || c.hash.slice(0, 8), value: c.messageCount }))}
                 dataKey="value" cx="50%" cy="50%" outerRadius={85}
-                label={({ name, percent }) => percent > 0.04 ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
+                label={({ name, percent }: { name: string; percent?: number }) => (percent ?? 0) > 0.04 ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
                 labelLine={false}
               >
                 {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
