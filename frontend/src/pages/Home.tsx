@@ -187,7 +187,7 @@ export default function Home() {
       <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
         {/* Row 1: Activity chart + Network health */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 2.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 280px' }, gap: 2.5 }}>
 
           {/* 24h Activity */}
           <Card>
@@ -291,7 +291,7 @@ export default function Home() {
         </Box>
 
         {/* Row 2: Recent packets + Top nodes */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2.5 }}>
 
           {/* Recent packets */}
           <Card>

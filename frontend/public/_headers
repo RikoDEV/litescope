@@ -2,6 +2,18 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# Cache public static files (icons, manifest, OG image)
+/icon.svg
+  Cache-Control: public, max-age=86400
+/manifest.json
+  Cache-Control: public, max-age=86400
+/robots.txt
+  Cache-Control: public, max-age=86400
+/og-image.svg
+  Cache-Control: public, max-age=86400
+/og-image.png
+  Cache-Control: public, max-age=86400
+
 # No caching for the HTML shell (must revalidate so updates deploy instantly)
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
@@ -9,6 +21,6 @@
 # Security headers on all responses
 /*
   X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
+  X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), camera=(), microphone=()

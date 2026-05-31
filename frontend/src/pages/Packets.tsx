@@ -16,6 +16,7 @@ import Collapse from '@mui/material/Collapse'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { alpha, useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTranslation } from 'react-i18next'
 import PauseIcon from '@mui/icons-material/Pause'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -377,25 +378,65 @@ function relativeTime(ts: string): string {
   return `${Math.round(diff / 3600)}h ago`
 }
 
-// Parse rawHex into color-coded sections: header / path / payload
-function parseHexSections(rawHex: string, routeType: number): { section: 'header' | 'transport' | 'path' | 'payload'; byte: string }[] {
+type HexSection = 'header' | 'transport' | 'pathLen' | 'path' | 'pubKey' | 'timestamp' | 'signature' | 'flags' | 'latitude' | 'longitude' | 'name' | 'payload'
+
+const HEX_SECTION_LABELS: Record<HexSection, string> = {
+  header: 'Header', transport: 'Transport', pathLen: 'Path Length', path: 'Path',
+  pubKey: 'PubKey', timestamp: 'Timestamp', signature: 'Signature',
+  flags: 'Flags', latitude: 'Latitude', longitude: 'Longitude', name: 'Name', payload: 'Payload',
+}
+
+// Parse rawHex into color-coded sections
+function parseHexSections(rawHex: string, routeType: number, payloadType: number): { section: HexSection; byte: string }[] {
   const bytes = (rawHex.match(/.{1,2}/g) ?? [])
   if (bytes.length === 0) return []
-  const result: { section: 'header' | 'transport' | 'path' | 'payload'; byte: string }[] = []
+  const result: { section: HexSection; byte: string }[] = []
   let i = 0
+
   result.push({ section: 'header', byte: bytes[i++] })
+
   const isTransport = routeType === 0 || routeType === 3
   if (isTransport) {
     for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'transport', byte: bytes[i++] })
   }
+
   if (i < bytes.length) {
     const pathByte = parseInt(bytes[i], 16)
     const hashSize = ((pathByte >> 6) & 3) + 1
     const hopCount = pathByte & 0x3F
-    result.push({ section: 'path', byte: bytes[i++] })
+    result.push({ section: 'pathLen', byte: bytes[i++] })
     const pathEnd = i + hopCount * hashSize
     while (i < pathEnd && i < bytes.length) result.push({ section: 'path', byte: bytes[i++] })
   }
+
+  // ADVERT (payloadType 4): structured payload parsing
+  if (payloadType === 4) {
+    for (let j = 0; j < 32 && i < bytes.length; j++) result.push({ section: 'pubKey', byte: bytes[i++] })
+    for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'timestamp', byte: bytes[i++] })
+    for (let j = 0; j < 64 && i < bytes.length; j++) result.push({ section: 'signature', byte: bytes[i++] })
+    if (i < bytes.length) {
+      const flagsByte = parseInt(bytes[i], 16)
+      result.push({ section: 'flags', byte: bytes[i++] })
+      const hasLocation = (flagsByte & 0x10) !== 0
+      const hasFeat1    = (flagsByte & 0x20) !== 0
+      const hasFeat2    = (flagsByte & 0x40) !== 0
+      const hasName     = (flagsByte & 0x80) !== 0
+      if (hasLocation) {
+        for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'latitude',  byte: bytes[i++] })
+        for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'longitude', byte: bytes[i++] })
+      }
+      if (hasFeat1) { for (let j = 0; j < 2 && i < bytes.length; j++) result.push({ section: 'payload', byte: bytes[i++] }) }
+      if (hasFeat2) { for (let j = 0; j < 2 && i < bytes.length; j++) result.push({ section: 'payload', byte: bytes[i++] }) }
+      if (hasName) {
+        while (i < bytes.length) {
+          const b = bytes[i]
+          result.push({ section: 'name', byte: bytes[i++] })
+          if (parseInt(b, 16) === 0) break
+        }
+      }
+    }
+  }
+
   while (i < bytes.length) result.push({ section: 'payload', byte: bytes[i++] })
   return result
 }
@@ -403,6 +444,7 @@ function parseHexSections(rawHex: string, routeType: number): { section: 'header
 function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onClose: () => void }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   const obs = selected.observations ?? []
   const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))
@@ -410,19 +452,31 @@ function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onCl
   const uniqueObservers = new Set(obs.map(o => o.observerId)).size
   const times = obs.map(o => new Date(o.timestamp).getTime()).filter(Boolean)
   const propagationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
-  const hexSections = parseHexSections(selected.rawHex ?? '', selected.routeType)
+  const hexSections = parseHexSections(selected.rawHex ?? '', selected.routeType, selected.payloadType)
 
-  const sectionColor: Record<string, string> = {
+  const sectionColor: Record<HexSection, string> = {
     header:    md3.primary,
     transport: md3.tertiary,
+    pathLen:   '#a855f7',
     path:      '#22c55e',
+    pubKey:    '#f59e0b',
+    timestamp: '#06b6d4',
+    signature: '#ec4899',
+    flags:     '#f97316',
+    latitude:  '#84cc16',
+    longitude: '#10b981',
+    name:      '#e879f9',
     payload:   md3.onSurfaceVariant,
   }
 
   const dec = selected.decoded as Record<string, unknown> | null | undefined
 
+  const panelSx = isMobile
+    ? { position: 'fixed' as const, top: 52, left: 0, right: 0, bottom: 56, zIndex: 1200, width: '100%', borderRadius: 0, overflow: 'auto', background: md3.surfaceContainerLow }
+    : { width: 460, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }
+
   return (
-    <Paper elevation={2} sx={{ width: 460, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }}>
+    <Paper elevation={2} sx={panelSx}>
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, borderBottom: `1px solid ${md3.outlineVariant}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
@@ -542,11 +596,11 @@ function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onCl
             {t('packets.rawHex')} ({(selected.rawHex?.length ?? 0) / 2} bytes)
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.75 }}>
-            {(['header', 'transport', 'path', 'payload'] as const).map(s => (
+            {(Object.keys(HEX_SECTION_LABELS) as HexSection[]).map(s => (
               hexSections.some(b => b.section === s) && (
                 <Box key={s} sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
                   <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: sectionColor[s] }} />
-                  <Typography variant="caption" sx={{ fontSize: 10, color: md3.outline, textTransform: 'capitalize' }}>{s}</Typography>
+                  <Typography variant="caption" sx={{ fontSize: 10, color: md3.outline }}>{HEX_SECTION_LABELS[s]}</Typography>
                 </Box>
               )
             ))}

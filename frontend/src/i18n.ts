@@ -4,7 +4,7 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 
 const en = {
   nav: {
-    home: 'Home', packets: 'Packets', map: 'Map', nodes: 'Nodes',
+    home: 'Home', packets: 'Packets', map: 'Map', live: 'Live', nodes: 'Nodes',
     channels: 'Channels', observers: 'Observers', analytics: 'Analytics', decoder: 'Decoder',
   },
   common: {
@@ -126,7 +126,7 @@ const en = {
 
 const pl: typeof en = {
   nav: {
-    home: 'Start', packets: 'Pakiety', map: 'Mapa', nodes: 'Węzły',
+    home: 'Start', packets: 'Pakiety', map: 'Mapa', live: 'Live', nodes: 'Węzły',
     channels: 'Kanały', observers: 'Obserwatorzy', analytics: 'Analityka', decoder: 'Dekoder',
   },
   common: {
@@ -248,7 +248,7 @@ const pl: typeof en = {
 
 const de: typeof en = {
   nav: {
-    home: 'Start', packets: 'Pakete', map: 'Karte', nodes: 'Knoten',
+    home: 'Start', packets: 'Pakete', map: 'Karte', trace: 'Spur', nodes: 'Knoten',
     channels: 'Kanäle', observers: 'Beobachter', analytics: 'Analyse', decoder: 'Dekoder',
   },
   common: {

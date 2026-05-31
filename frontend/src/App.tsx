@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import Home from './pages/Home'
 import Packets from './pages/Packets'
 import MapView from './pages/MapView'
+import TraceMap from './pages/TraceMap'
 import Nodes from './pages/Nodes'
 import Channels from './pages/Channels'
 import Observers from './pages/Observers'
@@ -18,6 +19,7 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="packets" element={<Packets />} />
           <Route path="map" element={<MapView />} />
+          <Route path="live" element={<TraceMap />} />
           <Route path="nodes" element={<Nodes />} />
           <Route path="channels" element={<Channels />} />
           <Route path="observers" element={<Observers />} />

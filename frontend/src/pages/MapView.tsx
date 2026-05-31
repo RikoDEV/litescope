@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
@@ -23,8 +22,9 @@ import MapIcon from '@mui/icons-material/Map'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
-import type { Node, Packet } from '../types'
+import type { Node, NodeOverview, Packet, RFStats } from '../types'
 import { PAYLOAD_NAMES } from '../types'
+import NodeDetailPanel from '../components/NodeDetailPanel'
 import { formatDistanceToNow } from 'date-fns'
 
 // Fix leaflet icon
@@ -57,7 +57,6 @@ const TYPE_ICONS:  Record<number, string> = { 4: '📡', 5: '💬', 2: '✉️',
 
 export default function MapView() {
   const theme = useTheme(); const md3 = theme.palette.md3
-  const navigate = useNavigate()
   const { t } = useTranslation()
 
   const LH_OPTIONS = [
@@ -96,10 +95,22 @@ export default function MapView() {
   const [speed,     setSpeed]     = useState(1)
   const [nodes,     setNodes]     = useState<Node[]>([])
   const [selected,  setSelected]  = useState<Node | null>(null)
+  const [overview,  setOverview]  = useState<NodeOverview | null>(null)
+  const [rf,        setRF]        = useState<RFStats | null>(null)
   const [liveFeed,  setLiveFeed]  = useState<Packet[]>([])
   const [pktRate,   setPktRate]   = useState(0)
   const [showFeed,  setShowFeed]  = useState(true)
   const [ctrlOpen,  setCtrlOpen]  = useState(true)
+
+  const selectedRef = useRef<Node | null>(null)
+  selectedRef.current = selected
+
+  const selectNode = useCallback(async (n: Node) => {
+    if (selectedRef.current?.pubKey === n.pubKey) { setSelected(null); setOverview(null); setRF(null); return }
+    setSelected(n); setOverview(null); setRF(null)
+    const [ov, rfData] = await Promise.all([api.nodeOverview(n.pubKey), api.nodeRF(n.pubKey)])
+    setOverview(ov); setRF(rfData)
+  }, [])
 
   // Filters
   const [roleVis, setRoleVis] = useState({ repeater: true, companion: true, room: true, sensor: true })
@@ -208,7 +219,7 @@ export default function MapView() {
       const exist  = markersRef.current.get(n.pubKey)
       if (exist) { exist.setIcon(icon); return }
       const m = L.marker([n.lat!, n.lon!], { icon }).bindPopup(makePopup(n)).addTo(map)
-      m.on('click', () => setSelected(n))
+      m.on('click', () => selectNode(n))
       markersRef.current.set(n.pubKey, m)
     })
   }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -331,9 +342,9 @@ export default function MapView() {
     const n = nodes.find(nd => nd.lat != null && nd.lon != null && (nd.name.toLowerCase().includes(q) || nd.pubKey.toLowerCase().includes(q)))
     if (n && n.lat != null && n.lon != null) {
       mapInstance.current?.flyTo([n.lat, n.lon], 14, { duration: 1.2 })
-      setSelected(n)
+      selectNode(n)
     }
-  }, [quickJump, nodes])
+  }, [quickJump, nodes, selectNode])
 
   function makePopup(n: Node) {
     const color = roleColor(n.role)
@@ -382,7 +393,7 @@ export default function MapView() {
         </ToggleButtonGroup>
 
         <canvas ref={timelineCanvas} width={360} height={28} onClick={onTimelineClick}
-          style={{ cursor: 'crosshair', borderRadius: 8, border: `1px solid ${md3.outlineVariant}`, flexShrink: 0 }} />
+          style={{ cursor: 'crosshair', borderRadius: 8, border: `1px solid ${md3.outlineVariant}`, flexShrink: 1, minWidth: 60, maxWidth: 360 }} />
 
         <Typography variant="caption" sx={{ ml: 'auto', color: md3.onSurfaceVariant, whiteSpace: 'nowrap' }}>
           <Box component="span" sx={{ color: '#22c55e' }}>{nodes.filter(n => n.lat != null).length}</Box> nodes ·{' '}
@@ -393,7 +404,7 @@ export default function MapView() {
       {/* ── Map Controls panel (top-left) ── */}
       <Paper elevation={4} sx={{
         position: 'absolute', top: 8, left: 8, zIndex: 1000,
-        borderRadius: 3, minWidth: 210, maxWidth: 230,
+        borderRadius: 3, minWidth: 210, maxWidth: { xs: 'calc(100vw - 16px)', sm: 230 },
         maxHeight: 'calc(100% - 80px)', overflow: 'auto',
         background: panelBg, backdropFilter: 'blur(8px)',
       }}>
@@ -450,7 +461,7 @@ export default function MapView() {
                 {(['all', '1', '2', '3'] as const).map(v => (
                   <Chip
                     key={v}
-                    label={v === 'all' ? 'All' : `${v}-byte`}
+                    label={v === 'all' ? t('common.all') : `${v}-byte`}
                     size="small"
                     clickable
                     onClick={() => setByteSizeFilter(v)}
@@ -485,12 +496,12 @@ export default function MapView() {
 
             {/* Status */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Status</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('common.status')}</Typography>
               <Box sx={{ display: 'flex', gap: 0.5 }}>
                 {(['all', 'active', 'stale'] as const).map(s => (
                   <Chip
                     key={s}
-                    label={s === 'all' ? 'All' : s === 'active' ? '🟢 Active' : '⚪ Stale'}
+                    label={s === 'all' ? t('common.all') : s === 'active' ? `🟢 ${t('common.active')}` : `⚪ ${t('common.stale')}`}
                     size="small"
                     clickable
                     onClick={() => setStatusFilter(s)}
@@ -515,7 +526,7 @@ export default function MapView() {
 
             {/* Last Heard */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Last Heard</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('nodes.lastHeard')}</Typography>
               <Select
                 size="small"
                 value={lastHeardFilter}
@@ -575,7 +586,7 @@ export default function MapView() {
 
       {/* ── Live feed (bottom-left) ── */}
       {showFeed && (
-        <Paper elevation={4} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, p: 1.5, borderRadius: 3, minWidth: 260, maxHeight: 240, overflow: 'auto', background: panelBg }}>
+        <Paper elevation={4} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, p: 1.5, borderRadius: 3, minWidth: 260, maxWidth: 'calc(100vw - 16px)', maxHeight: 240, overflow: 'auto', background: panelBg }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
             <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>{t('map.liveFeed')}</Typography>
             <IconButton size="small" onClick={() => setShowFeed(false)} sx={{ color: md3.outline, p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
@@ -601,31 +612,18 @@ export default function MapView() {
 
       {/* ── Node detail sidebar ── */}
       {selected && (
-        <Paper elevation={4} sx={{ position: 'absolute', top: 0, right: 0, bottom: 52, zIndex: 999, width: 280, borderRadius: 0, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', background: panelBg, p: 2 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: roleColor(selected.role) }}>{selected.name || selected.pubKey.slice(0, 12)}</Typography>
-            <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: md3.onSurfaceVariant, p: 0.25 }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
-          </Box>
-          {[
-            ['Role', selected.role],
-            ['Adverts', selected.advertCount],
-            ...(selected.lat != null ? [['Lat', selected.lat.toFixed(5)], ['Lon', selected.lon?.toFixed(5)]] : []),
-            ['Last Seen', new Date(selected.lastSeen).toLocaleString()],
-            ...(selected.batteryMv ? [['Battery', `${selected.batteryMv} mV`]] : []),
-          ].map(([l, v]) => (
-            <Box key={String(l)} sx={{ display: 'flex', gap: 1, mb: 0.5 }}>
-              <Typography variant="caption" sx={{ color: md3.outline, width: 70, flexShrink: 0 }}>{l}</Typography>
-              <Typography variant="caption" sx={{ color: md3.onSurface }}>{v}</Typography>
-            </Box>
-          ))}
-          <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-            <Button size="small" variant="contained" onClick={() => {
-              const map = mapInstance.current
-              if (map && selected.lat && selected.lon) map.flyTo([selected.lat, selected.lon], 12, { duration: 1 })
-            }}>Center</Button>
-            <Button size="small" variant="outlined" onClick={() => navigate(`/nodes?pubkey=${selected.pubKey}`)}>Details →</Button>
-          </Box>
-        </Paper>
+        <NodeDetailPanel
+          selected={selected}
+          overview={overview}
+          rf={rf}
+          onClose={() => { setSelected(null); setOverview(null); setRF(null) }}
+          paperSx={{
+            position: 'absolute', top: 0, right: 0, bottom: 52,
+            zIndex: 999, width: 460, borderRadius: 0,
+            borderLeft: `1px solid ${md3.outlineVariant}`,
+            overflow: 'auto', background: panelBg,
+          }}
+        />
       )}
     </Box>
   )
