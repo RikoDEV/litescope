@@ -57,6 +57,8 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/analytics/activity", s.getAnalyticsActivity).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/nodes-top", s.getAnalyticsNodesTop).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/observers-top", s.getAnalyticsObserversTop).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/snr-by-type", s.getAnalyticsSNRByType).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/hashes", s.getAnalyticsHashes).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}/analytics", s.getObserverAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/decode", s.decodePacket).Methods("POST", "OPTIONS")
 
@@ -357,6 +359,14 @@ func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+func (s *Server) getAnalyticsSNRByType(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.Store.SNRByPayloadType())
+}
+
+func (s *Server) getAnalyticsHashes(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.Store.HashStats())
+}
+
 func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20)
 	obs := s.Store.TopObservers(limit)
@@ -420,6 +430,7 @@ type packetSummary struct {
 	PayloadType int                    `json:"payloadType"`
 	ObsCount    int                    `json:"obsCount"`
 	MaxHops     int                    `json:"maxHops"`
+	ByteSize    int                    `json:"byteSize"`
 	ChannelHash string                 `json:"channelHash,omitempty"`
 	Decoded     map[string]interface{} `json:"decoded,omitempty"`
 }
@@ -481,6 +492,7 @@ func summarizeTx(tx *store.Tx) packetSummary {
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
 		ObsCount: tx.ObsCount, MaxHops: maxHops,
+		ByteSize: len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}
 }

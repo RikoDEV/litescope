@@ -20,28 +20,34 @@ import type { Node, Observer, OverviewStats } from '../types'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, ScatterChart, Scatter, CartesianGrid,
-  AreaChart, Area, ReferenceLine,
+  AreaChart, Area, ReferenceLine, LineChart, Line,
 } from 'recharts'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
 import RouterIcon from '@mui/icons-material/Router'
 import WifiIcon from '@mui/icons-material/Wifi'
+import ForumIcon from '@mui/icons-material/Forum'
+import TagIcon from '@mui/icons-material/Tag'
 import PieChartIcon from '@mui/icons-material/PieChart'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import ScatterPlotIcon from '@mui/icons-material/ScatterPlot'
 import LeaderboardIcon from '@mui/icons-material/Leaderboard'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
+import TimelineIcon from '@mui/icons-material/Timeline'
+import GroupWorkIcon from '@mui/icons-material/GroupWork'
 import type { SvgIconComponent } from '@mui/icons-material'
 
-type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers'
+type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes'
 
-const TABS: { id: TabId; Icon: SvgIconComponent }[] = [
-  { id: 'overview',  Icon: AssessmentIcon },
-  { id: 'activity',  Icon: ShowChartIcon },
-  { id: 'rf',        Icon: SignalCellularAltIcon },
-  { id: 'nodes',     Icon: RouterIcon },
-  { id: 'observers', Icon: WifiIcon },
+const TABS: { id: TabId; Icon: SvgIconComponent; label: string }[] = [
+  { id: 'overview',  Icon: AssessmentIcon,      label: 'Overview' },
+  { id: 'activity',  Icon: ShowChartIcon,        label: 'Activity' },
+  { id: 'rf',        Icon: SignalCellularAltIcon, label: 'RF / Signal' },
+  { id: 'nodes',     Icon: RouterIcon,            label: 'Nodes' },
+  { id: 'observers', Icon: WifiIcon,              label: 'Observers' },
+  { id: 'channels',  Icon: ForumIcon,             label: 'Channels' },
+  { id: 'hashes',    Icon: TagIcon,               label: 'Hash Stats' },
 ]
 
 const PALETTE = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6','#a855f7']
@@ -56,8 +62,8 @@ export default function Analytics() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: md3.background }}>
       <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto"
         sx={{ px: 2, background: md3.surfaceContainerLow, flexShrink: 0 }}>
-        {TABS.map(({ id, Icon }) => (
-          <Tab key={id} value={id} iconPosition="start" icon={<Icon sx={{ fontSize: 18 }} />} label={t(`analytics.${id === 'rf' ? 'rfSignal' : id}`)} sx={{ minHeight: 48 }} />
+        {TABS.map(({ id, Icon, label }) => (
+          <Tab key={id} value={id} iconPosition="start" icon={<Icon sx={{ fontSize: 18 }} />} label={label} sx={{ minHeight: 48 }} />
         ))}
       </Tabs>
       <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
@@ -66,6 +72,8 @@ export default function Analytics() {
         {tab === 'rf'        && <RFTab />}
         {tab === 'nodes'     && <NodesTab />}
         {tab === 'observers' && <ObserversTab />}
+        {tab === 'channels'  && <ChannelsTab />}
+        {tab === 'hashes'    && <HashesTab />}
       </Box>
     </Box>
   )
@@ -203,7 +211,13 @@ function RFTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [rf, setRF] = useState<{ rssi: number[]; snr: number[]; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number }; totalObservations: number } | null>(null)
-  useEffect(() => { api.analyticsRF().then(setRF) }, [])
+  const [snrByType, setSnrByType] = useState<Record<string, { avg: number; count: number }>>({})
+
+  useEffect(() => {
+    api.analyticsRF().then(setRF)
+    api.analyticsSnrByType().then(d => setSnrByType(d ?? {}))
+  }, [])
+
   if (!rf) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
   const snr  = rf.snr  ?? []
   const rssi = rf.rssi ?? []
@@ -214,18 +228,22 @@ function RFTab() {
   const step  = Math.max(1, Math.floor(snr.length / 400))
   const scatter = snr.filter((_, i) => i % step === 0).map((s, i) => ({ snr: s, rssi: rssi[i * step] ?? 0 }))
 
+  const snrTypeData = Object.entries(snrByType)
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([name, v]) => ({ name, avg: +v.avg.toFixed(2), count: v.count }))
+
   return (
     <Box>
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
         {[
           { l: t('home.observations'), v: rf.totalObservations.toLocaleString(), c: md3.primary },
           { l: t('home.avgSnr'), v: `${rf.snrSummary.avg.toFixed(1)} dB`, c: '#22c55e' },
-          { l: `Min SNR`, v: `${rf.snrSummary.min.toFixed(1)} dB`, c: md3.error },
+          { l: 'Min SNR', v: `${rf.snrSummary.min.toFixed(1)} dB`, c: md3.error },
           { l: t('home.avgRssi'), v: `${rf.rssiSummary.avg.toFixed(0)} dBm`, c: md3.tertiary },
-          { l: `Min RSSI`, v: `${rf.rssiSummary.min.toFixed(0)} dBm`, c: md3.error },
+          { l: 'Min RSSI', v: `${rf.rssiSummary.min.toFixed(0)} dBm`, c: md3.error },
         ].map(p => (
           <Box key={p.l} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
-            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{p.l}  </Typography>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{p.l}{'  '}</Typography>
             <Typography variant="body2" sx={{ color: p.c, fontWeight: 700, display: 'inline' }}>{p.v}</Typography>
           </Box>
         ))}
@@ -259,6 +277,27 @@ function RFTab() {
           </ResponsiveContainer>
         </ChartCard>
       </Box>
+
+      {snrTypeData.length > 0 && (
+        <ChartCard title="SNR by Payload Type" Icon={SignalCellularAltIcon} sx={{ mb: 2 }}>
+          <ResponsiveContainer width="100%" height={Math.max(160, snrTypeData.length * 32)}>
+            <BarChart data={snrTypeData} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis type="number" unit=" dB" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} domain={['auto', 'auto']} />
+              <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11, fill: md3.onSurface }} />
+              <ReferenceLine x={0} stroke={alpha(md3.error, 0.5)} strokeDasharray="4 4" />
+              <ReferenceLine x={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
+              <Tooltip
+                contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                formatter={(v: number, _: string, entry: { payload?: { count: number } }) => [`${v.toFixed(2)} dB (${entry.payload?.count ?? 0} obs)`, 'Avg SNR']}
+              />
+              <Bar dataKey="avg" radius={[0, 4, 4, 0]}>
+                {snrTypeData.map((d, i) => <Cell key={i} fill={d.avg > 6 ? '#22c55e' : d.avg > 0 ? '#f59e0b' : md3.error} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
 
       {scatter.length > 0 && (
         <ChartCard title={t('analytics.snrVsRssi', { count: scatter.length })} Icon={ScatterPlotIcon}>
@@ -403,6 +442,229 @@ function ObserversTab() {
           </TableBody>
         </Table>
       </ChartCard>
+    </Box>
+  )
+}
+
+// ── Channels ──────────────────────────────────────────────────────────────────
+function ChannelsTab() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const [channels, setChannels] = useState<Array<{ hash: string; name: string; messageCount: number }>>([])
+  useEffect(() => { api.channels().then(d => setChannels([...(d ?? [])].sort((a, b) => b.messageCount - a.messageCount))) }, [])
+
+  const total = channels.reduce((s, c) => s + c.messageCount, 0)
+
+  if (channels.length === 0) return (
+    <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>No channel data available.</Typography>
+  )
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+        {[
+          { l: 'Total Channels', v: channels.length.toString(), c: md3.primary },
+          { l: 'Total Messages', v: total.toLocaleString(), c: '#ec4899' },
+          { l: 'Most Active', v: channels[0]?.name || channels[0]?.hash.slice(0, 8), c: md3.tertiary },
+        ].map(p => (
+          <Box key={p.l} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{p.l}{'  '}</Typography>
+            <Typography variant="body2" sx={{ color: p.c, fontWeight: 700, display: 'inline' }}>{p.v}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+        <ChartCard title="Channel Activity" Icon={ForumIcon}>
+          <ResponsiveContainer width="100%" height={Math.max(160, channels.length * 30)}>
+            <BarChart data={channels.map(c => ({ name: c.name || c.hash.slice(0, 10), count: c.messageCount }))} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
+              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                {channels.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Message Share" Icon={PieChartIcon}>
+          <ResponsiveContainer width="100%" height={240}>
+            <PieChart>
+              <Pie
+                data={channels.slice(0, 8).map(c => ({ name: c.name || c.hash.slice(0, 8), value: c.messageCount }))}
+                dataKey="value" cx="50%" cy="50%" outerRadius={85}
+                label={({ name, percent }) => percent > 0.04 ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
+                labelLine={false}
+              >
+                {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 11, color: md3.onSurfaceVariant }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </Box>
+
+      <ChartCard title="Channel Roster" Icon={LeaderboardIcon} sx={{ mt: 2 }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              {['#', 'Channel', 'Hash', 'Messages', 'Share'].map(h => <TableCell key={h}>{h}</TableCell>)}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {channels.map((c, i) => (
+              <TableRow key={c.hash}>
+                <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: PALETTE[i % PALETTE.length], display: 'inline-block', mr: 1 }} />
+                  {c.name || '—'}
+                </TableCell>
+                <TableCell sx={{ fontFamily: 'monospace', fontSize: 10, color: md3.outline }}>{c.hash.slice(0, 16)}…</TableCell>
+                <TableCell sx={{ color: '#ec4899', fontWeight: 700 }}>{c.messageCount.toLocaleString()}</TableCell>
+                <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
+                  {total > 0 ? `${((c.messageCount / total) * 100).toFixed(1)}%` : '—'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ChartCard>
+    </Box>
+  )
+}
+
+// ── Hash Stats ─────────────────────────────────────────────────────────────────
+function HashesTab() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+
+  type HashStats = {
+    sizeDistribution: Record<string, number>
+    byRole: Record<string, Record<string, number>>
+    overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
+    multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
+  }
+
+  const [data, setData] = useState<HashStats | null>(null)
+  useEffect(() => { api.analyticsHashes().then(setData) }, [])
+
+  if (!data) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>Loading…</Typography>
+
+  const HASH_COLORS: Record<string, string> = { '1': '#22c55e', '2': '#f59e0b', '3': '#ec4899', '4+': md3.primary }
+
+  // Merge 4+ bytes into one bucket
+  const sizeDistMerged = [
+    { label: '1 B',  count: data.sizeDistribution['1']  ?? 0 },
+    { label: '2 B',  count: data.sizeDistribution['2']  ?? 0 },
+    { label: '3 B',  count: data.sizeDistribution['3']  ?? 0 },
+    { label: '4+ B', count: Object.entries(data.sizeDistribution).filter(([k]) => parseInt(k) >= 4).reduce((s, [, v]) => s + v, 0) },
+  ].filter(d => d.count > 0)
+
+  const byRepeater = data.byRole['repeater'] ?? {}
+  const byRoleData = Object.entries(data.byRole).map(([role, sizes]) => ({
+    role,
+    '1 B':  sizes['1'] ?? 0,
+    '2 B':  sizes['2'] ?? 0,
+    '3 B':  sizes['3'] ?? 0,
+    '4+ B': Object.entries(sizes).filter(([k]) => parseInt(k) >= 4).reduce((s, [, v]) => s + v, 0),
+  }))
+
+  const totalPkts = sizeDistMerged.reduce((s, d) => s + d.count, 0)
+  const multiByteTotal = (data.sizeDistribution['2'] ?? 0) + Object.entries(data.sizeDistribution).filter(([k]) => parseInt(k) >= 3).reduce((s, [, v]) => s + v, 0)
+  const multiBytePct = totalPkts > 0 ? ((multiByteTotal / totalPkts) * 100).toFixed(1) : '0'
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+        {[
+          { l: 'Total Packets', v: totalPkts.toLocaleString(), c: md3.primary },
+          { l: '1-byte packets', v: (data.sizeDistribution['1'] ?? 0).toLocaleString(), c: '#22c55e' },
+          { l: 'Multi-byte',     v: `${multiByteTotal.toLocaleString()} (${multiBytePct}%)`, c: '#f59e0b' },
+          { l: 'Adopters',       v: data.multiByteAdopters.length.toString(), c: '#ec4899' },
+          { l: 'Repeater 1-byte', v: (byRepeater['1'] ?? 0).toLocaleString(), c: md3.tertiary },
+        ].map(p => (
+          <Box key={p.l} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{p.l}{'  '}</Typography>
+            <Typography variant="body2" sx={{ color: p.c, fontWeight: 700, display: 'inline' }}>{p.v}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
+        <ChartCard title="Hash Size Distribution" Icon={BarChartIcon}>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={sizeDistMerged}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
+              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {sizeDistMerged.map((d, i) => (
+                  <Cell key={i} fill={HASH_COLORS[d.label.replace(' ', '')] ?? md3.primary} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="By Role" Icon={GroupWorkIcon}>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={byRoleData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis dataKey="role" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
+              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="1 B"  stackId="a" fill="#22c55e" />
+              <Bar dataKey="2 B"  stackId="a" fill="#f59e0b" />
+              <Bar dataKey="3 B"  stackId="a" fill="#ec4899" />
+              <Bar dataKey="4+ B" stackId="a" fill={md3.primary} radius={[2, 2, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </Box>
+
+      <ChartCard title="Hash Size Over Time (14 days)" Icon={TimelineIcon} sx={{ mb: 2 }}>
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={data.overTime}>
+            <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={1} />
+            <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Line type="monotone" dataKey="size1" name="1 B"  stroke="#22c55e" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="size2" name="2 B"  stroke="#f59e0b" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="size3" name="3 B"  stroke="#ec4899" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="sizeN" name="4+ B" stroke={md3.primary} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {data.multiByteAdopters.length > 0 && (
+        <ChartCard title={`Multi-Byte Hash Adopters (${data.multiByteAdopters.length})`} Icon={LeaderboardIcon}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                {['#', 'Node', 'PubKey', 'Multi-byte Pkts', 'Max Size'].map(h => <TableCell key={h}>{h}</TableCell>)}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.multiByteAdopters.map((a, i) => (
+                <TableRow key={a.pubKey}>
+                  <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{a.name || '—'}</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace', fontSize: 10, color: md3.outline }}>{a.pubKey.slice(0, 20)}…</TableCell>
+                  <TableCell sx={{ color: '#f59e0b', fontWeight: 700 }}>{a.count.toLocaleString()}</TableCell>
+                  <TableCell>
+                    <Chip label={`${a.maxSize} B`} size="small" sx={{ fontSize: 10, height: 20, background: alpha('#ec4899', 0.15), color: '#ec4899' }} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ChartCard>
+      )}
     </Box>
   )
 }

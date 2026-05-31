@@ -101,8 +101,12 @@ export default function MapView() {
   const [roleVis, setRoleVis] = useState({ repeater: true, companion: true, room: true, sensor: true })
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'stale'>('all')
   const [lastHeardFilter, setLastHeardFilter] = useState('30d')
+  const [byteSizeFilter, setByteSizeFilter] = useState<'all' | '1' | '2' | '3'>('all')
   const [showLabels, setShowLabels] = useState(false)
   const [quickJump, setQuickJump] = useState('')
+
+  // pubKey → byte size of its most recent advert packet (built from VCR buffer)
+  const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
 
   const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
 
@@ -150,7 +154,15 @@ export default function MapView() {
   useEffect(() => {
     api.nodes().then(res => setNodes(res.nodes ?? []))
     api.packets(500, 0).then(res => {
-      vcrBuffer.current = [...(res.packets ?? [])].sort((a, b) => new Date(a.firstSeen).getTime() - new Date(b.firstSeen).getTime())
+      const sorted = [...(res.packets ?? [])].sort((a, b) => new Date(a.firstSeen).getTime() - new Date(b.firstSeen).getTime())
+      vcrBuffer.current = sorted
+      // Build per-node byte size index from advert packets
+      for (const p of sorted) {
+        if (p.payloadType === 4 && p.byteSize > 0) {
+          const pk = (p.decoded?.pubKey ?? '') as string
+          if (pk) nodeByteSizeRef.current.set(pk, p.byteSize)
+        }
+      }
       drawTimeline()
     })
   }, [])
@@ -170,6 +182,10 @@ export default function MapView() {
       if (statusFilter === 'active' && !active) return false
       if (statusFilter === 'stale'  && active)  return false
       if (lhCut && lastTs < lhCut) return false
+      if (byteSizeFilter !== 'all') {
+        const bs = nodeByteSizeRef.current.get(n.pubKey)
+        if (bs == null || bs !== parseInt(byteSizeFilter)) return false
+      }
       return true
     }
 
@@ -191,7 +207,7 @@ export default function MapView() {
       m.on('click', () => setSelected(n))
       markersRef.current.set(n.pubKey, m)
     })
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, showLabels]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
@@ -210,6 +226,11 @@ export default function MapView() {
 
   const processPacket = useCallback((pkt: Packet) => {
     const dec = pkt.decoded; if (!dec) return
+    // Keep byte-size index up to date from live stream
+    if (pkt.payloadType === 4 && pkt.byteSize > 0) {
+      const pk = (dec.pubKey ?? '') as string
+      if (pk) nodeByteSizeRef.current.set(pk, pkt.byteSize)
+    }
     const color = TYPE_COLORS[pkt.payloadType] ?? md3.outline
     setLiveFeed(prev => [pkt, ...prev.slice(0, 19)])
     if (pkt.payloadType === 4 && dec.pubKey) {
@@ -414,6 +435,30 @@ export default function MapView() {
                   </Box>
                 )
               })}
+            </Box>
+
+            <Divider sx={{ opacity: 0.4 }} />
+
+            {/* Byte Size */}
+            <Box>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Byte Size</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {(['all', '1', '2', '3'] as const).map(v => (
+                  <Chip
+                    key={v}
+                    label={v === 'all' ? 'All' : `${v}-byte`}
+                    size="small"
+                    clickable
+                    onClick={() => setByteSizeFilter(v)}
+                    sx={{
+                      fontSize: 10, height: 22,
+                      background: byteSizeFilter === v ? alpha(md3.primary, 0.2) : 'transparent',
+                      color: byteSizeFilter === v ? md3.primary : md3.outline,
+                      border: `1px solid ${byteSizeFilter === v ? md3.primary : alpha(md3.outlineVariant, 0.6)}`,
+                    }}
+                  />
+                ))}
+              </Box>
             </Box>
 
             <Divider sx={{ opacity: 0.4 }} />

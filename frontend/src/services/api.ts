@@ -68,6 +68,17 @@ export const api = {
   analyticsObserversTop: (limit = 20) =>
     get<import('../types').Observer[]>(`/api/analytics/observers-top?limit=${limit}`),
 
+  analyticsSnrByType: () =>
+    get<Record<string, { avg: number; count: number }>>('/api/analytics/snr-by-type'),
+
+  analyticsHashes: () =>
+    get<{
+      sizeDistribution: Record<string, number>
+      byRole: Record<string, Record<string, number>>
+      overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
+      multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
+    }>('/api/analytics/hashes'),
+
   observerAnalytics: (id: string, days = 7) =>
     get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),
 

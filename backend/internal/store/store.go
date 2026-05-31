@@ -3,6 +3,8 @@ package store
 
 import (
 	"encoding/json"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -806,4 +808,194 @@ func observerFromRow(r *db.ObserverRow) *Observer {
 		PktCount: r.PktCount, Model: r.Model, Firmware: r.Firmware,
 		BatteryMv: r.BatteryMv, UptimeSecs: r.UptimeSecs, NoiseFloor: r.NoiseFloor,
 	}
+}
+
+// SNRByPayloadType returns average SNR and observation count per payload type name.
+func (s *Store) SNRByPayloadType() map[string]SNRTypeStat {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	type acc struct{ sum float64; count int }
+	byType := make(map[string]*acc)
+	names := map[int]string{
+		0: "REQ", 1: "RESPONSE", 2: "TXT_MSG", 3: "ACK", 4: "ADVERT",
+		5: "GRP_TXT", 6: "GRP_DATA", 7: "ANON_REQ", 8: "PATH", 9: "TRACE",
+		10: "MULTIPART", 11: "CONTROL", 15: "RAW_CUSTOM",
+	}
+	for _, obsList := range s.byObserver {
+		for _, o := range obsList {
+			if o.SNR == nil {
+				continue
+			}
+			tx, ok := s.byTxID[o.TxID]
+			if !ok {
+				continue
+			}
+			name := names[tx.PayloadType]
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			a := byType[name]
+			if a == nil {
+				a = &acc{}
+				byType[name] = a
+			}
+			a.sum += *o.SNR
+			a.count++
+		}
+	}
+	out := make(map[string]SNRTypeStat, len(byType))
+	for k, a := range byType {
+		if a.count > 0 {
+			out[k] = SNRTypeStat{Avg: a.sum / float64(a.count), Count: a.count}
+		}
+	}
+	return out
+}
+
+type SNRTypeStat struct {
+	Avg   float64 `json:"avg"`
+	Count int     `json:"count"`
+}
+
+// HashStats computes byte-size distribution, role breakdown, time-series, and multi-byte adopter list.
+func (s *Store) HashStats() HashStatsData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sizeCount := make(map[int]int)
+	roleSize := make(map[string]map[int]int)
+
+	type adopterAcc struct {
+		name    string
+		count   int
+		maxSize int
+	}
+	adopters := make(map[string]*adopterAcc)
+
+	const days = 14
+	now := time.Now().UTC()
+	start := now.AddDate(0, 0, -days).Truncate(24 * time.Hour)
+	type timeBins [4]int // [1-byte, 2-byte, 3-byte, 4+-byte]
+	overTimeMap := make(map[int64]timeBins)
+
+	for _, tx := range s.packets {
+		bs := len(tx.RawHex) / 2
+		if bs == 0 {
+			continue
+		}
+		sizeCount[bs]++
+
+		t := parseTimeToTime(tx.FirstSeen)
+		if !t.IsZero() && !t.Before(start) {
+			day := t.Truncate(24 * time.Hour).Unix()
+			arr := overTimeMap[day]
+			switch {
+			case bs == 1:
+				arr[0]++
+			case bs == 2:
+				arr[1]++
+			case bs == 3:
+				arr[2]++
+			default:
+				arr[3]++
+			}
+			overTimeMap[day] = arr
+		}
+
+		if tx.PayloadType == 4 {
+			dec := tx.Decoded()
+			if dec == nil {
+				continue
+			}
+			pk, _ := dec["pubKey"].(string)
+			if pk == "" {
+				continue
+			}
+			if n := s.nodes[pk]; n != nil {
+				if roleSize[n.Role] == nil {
+					roleSize[n.Role] = make(map[int]int)
+				}
+				roleSize[n.Role][bs]++
+			}
+			if bs > 1 {
+				a := adopters[pk]
+				if a == nil {
+					a = &adopterAcc{}
+					adopters[pk] = a
+				}
+				a.count++
+				if bs > a.maxSize {
+					a.maxSize = bs
+				}
+				if n := s.nodes[pk]; n != nil && a.name == "" {
+					a.name = n.Name
+				}
+			}
+		}
+	}
+
+	// size distribution as string keys
+	sizeDist := make(map[string]int, len(sizeCount))
+	for k, v := range sizeCount {
+		sizeDist[strconv.Itoa(k)] = v
+	}
+
+	// role breakdown as string keys
+	byRole := make(map[string]map[string]int, len(roleSize))
+	for role, sizes := range roleSize {
+		byRole[role] = make(map[string]int, len(sizes))
+		for k, v := range sizes {
+			byRole[role][strconv.Itoa(k)] = v
+		}
+	}
+
+	// fill all days
+	overTime := make([]HashTimeBucket, 0, days)
+	for i := 0; i < days; i++ {
+		day := start.AddDate(0, 0, i)
+		arr := overTimeMap[day.Unix()]
+		overTime = append(overTime, HashTimeBucket{
+			Label: day.Format("01/02"),
+			Size1: arr[0], Size2: arr[1], Size3: arr[2], SizeN: arr[3],
+		})
+	}
+
+	// multi-byte adopters sorted by count
+	adopterList := make([]HashAdopter, 0, len(adopters))
+	for pk, a := range adopters {
+		adopterList = append(adopterList, HashAdopter{PubKey: pk, Name: a.name, Count: a.count, MaxSize: a.maxSize})
+	}
+	sort.Slice(adopterList, func(i, j int) bool { return adopterList[i].Count > adopterList[j].Count })
+	if len(adopterList) > 20 {
+		adopterList = adopterList[:20]
+	}
+
+	return HashStatsData{
+		SizeDistribution:  sizeDist,
+		ByRole:            byRole,
+		OverTime:          overTime,
+		MultiByteAdopters: adopterList,
+	}
+}
+
+type HashStatsData struct {
+	SizeDistribution  map[string]int            `json:"sizeDistribution"`
+	ByRole            map[string]map[string]int `json:"byRole"`
+	OverTime          []HashTimeBucket          `json:"overTime"`
+	MultiByteAdopters []HashAdopter             `json:"multiByteAdopters"`
+}
+
+type HashTimeBucket struct {
+	Label string `json:"label"`
+	Size1 int    `json:"size1"`
+	Size2 int    `json:"size2"`
+	Size3 int    `json:"size3"`
+	SizeN int    `json:"sizeN"`
+}
+
+type HashAdopter struct {
+	PubKey  string `json:"pubKey"`
+	Name    string `json:"name"`
+	Count   int    `json:"count"`
+	MaxSize int    `json:"maxSize"`
 }
