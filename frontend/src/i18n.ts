@@ -248,7 +248,7 @@ const pl: typeof en = {
 
 const de: typeof en = {
   nav: {
-    home: 'Start', packets: 'Pakete', map: 'Karte', trace: 'Spur', nodes: 'Knoten',
+    home: 'Start', packets: 'Pakete', map: 'Karte', live: 'Live', nodes: 'Knoten',
     channels: 'Kanäle', observers: 'Beobachter', analytics: 'Analyse', decoder: 'Dekoder',
   },
   common: {
