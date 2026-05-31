@@ -4,13 +4,18 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: litescope-mqtt
-    entrypoint: ["/mosquitto/config/entrypoint.sh"]
     env_file: .env
+    command: >
+      sh -c "mkdir -p /mosquitto/config &&
+      rm -f /mosquitto/config/passwd &&
+      mosquitto_passwd -c -b /mosquitto/config/passwd $$MQTT_USERNAME $$MQTT_PASSWORD &&
+      chmod 0640 /mosquitto/config/passwd &&
+      chown mosquitto:mosquitto /mosquitto/config/passwd &&
+      printf 'listener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwd\npersistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\n'
+      > /mosquitto/config/mosquitto.conf && mosquitto -c /mosquitto/config/mosquitto.conf"
     ports:
       - "1883:1883"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mqtt-entrypoint.sh:/mosquitto/config/entrypoint.sh:ro
       - mqtt-data:/mosquitto/data
     restart: unless-stopped
 
