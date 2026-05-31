@@ -295,18 +295,21 @@ function HopsPopover({ packet }: { packet: Packet }) {
         disableRestoreFocus
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        PaperProps={{
-          onMouseEnter: keepOpen,
-          onMouseLeave: handleLeave,
-          sx: {
-            mt: 0.5, p: 1.5, borderRadius: 2, minWidth: 180, maxWidth: 300,
-            background: md3.surfaceContainerHigh,
-            border: `1px solid ${md3.outlineVariant}`,
-            boxShadow: `0 4px 16px rgba(0,0,0,0.25)`,
+        sx={{ pointerEvents: 'none' }}
+        slotProps={{
+          root: { style: { pointerEvents: 'none' } },
+          paper: {
+            onMouseEnter: keepOpen,
+            onMouseLeave: handleLeave,
+            style: { pointerEvents: 'auto' },
+            sx: {
+              mt: 0.5, p: 1.5, borderRadius: 2, minWidth: 180, maxWidth: 300,
+              background: md3.surfaceContainerHigh,
+              border: `1px solid ${md3.outlineVariant}`,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            },
           },
         }}
-        sx={{ pointerEvents: 'none' }}
-        slotProps={{ root: { style: { pointerEvents: 'none' } }, paper: { style: { pointerEvents: 'auto' } } }}
       >
         {loading && (
           <Typography variant="caption" sx={{ color: md3.outline }}>Loading…</Typography>
