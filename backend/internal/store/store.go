@@ -449,19 +449,20 @@ func (s *Store) Channels() []ChannelSummary {
 		if tx.ChannelHash == "" {
 			continue
 		}
-		dec := tx.Decoded()
 		cs, ok := counts[tx.ChannelHash]
 		if !ok {
-			name := tx.ChannelHash
-			if dec != nil {
-				if ch, ok := dec["channel"].(string); ok && ch != "" {
-					name = ch
-				}
-			}
-			cs = &ChannelSummary{Hash: tx.ChannelHash, Name: name}
+			cs = &ChannelSummary{Hash: tx.ChannelHash, Name: tx.ChannelHash}
 			counts[tx.ChannelHash] = cs
 		}
 		cs.MessageCount++
+		// Upgrade name from hash to real name as soon as any packet carries it.
+		if cs.Name == cs.Hash {
+			if dec := tx.Decoded(); dec != nil {
+				if ch, ok2 := dec["channel"].(string); ok2 && ch != "" {
+					cs.Name = ch
+				}
+			}
+		}
 	}
 	out := make([]ChannelSummary, 0, len(counts))
 	for _, cs := range counts {
