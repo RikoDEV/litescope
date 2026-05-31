@@ -494,7 +494,7 @@ function ChannelsTab() {
               <Pie
                 data={channels.slice(0, 8).map(c => ({ name: c.name || c.hash.slice(0, 8), value: c.messageCount }))}
                 dataKey="value" cx="50%" cy="50%" outerRadius={85}
-                label={({ name, percent }: { name: string; percent?: number }) => (percent ?? 0) > 0.04 ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
+                label={({ name, percent }: { name?: string; percent?: number }) => (percent ?? 0) > 0.04 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
                 labelLine={false}
               >
                 {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
