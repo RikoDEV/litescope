@@ -2,6 +2,8 @@
 
 A lightweight, self-hosted dashboard for monitoring [MeshCore](https://meshcore.io/) networks. liteScope ingests MQTT telemetry from one or more MeshCore brokers, stores it in SQLite, and serves a real-time React UI with live packet feeds, node analytics, channel decryption, and observer stats.
 
+<img width="2560" height="1269" alt="image" src="https://github.com/user-attachments/assets/adf31807-c9e1-469c-9d9d-895ca143cb62" />
+
 ---
 
 ## Features
