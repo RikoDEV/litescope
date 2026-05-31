@@ -1,38 +1,42 @@
 version: "3.9"
 
-# Production compose using Traefik as the reverse proxy instead of Caddy.
+# Production compose for an existing Traefik setup (external traefik_gateway network).
 # Prerequisites:
-#   cp .env.example .env                 # set MQTT_USERNAME, MQTT_PASSWORD, DOMAIN, ACME_EMAIL
-#   cp config.example.json config.json  # set broker credentials + channel keys
-#   Edit traefik.yml and set your ACME email address.
+#   cp config.example.json config.json
+#   cp .env.example .env   # set MQTT_USERNAME, MQTT_PASSWORD, DOMAIN
 #
 # Start:   docker compose -f docker-compose.traefik.yml up -d
 # Upgrade: docker compose -f docker-compose.traefik.yml pull && \
 #          docker compose -f docker-compose.traefik.yml up -d
 
-services:
-  traefik:
-    image: traefik:v3
-    container_name: litescope-traefik
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - traefik-certs:/letsencrypt
-    restart: unless-stopped
+networks:
+  traefik-proxy:
+    name: traefik_gateway
+    external: true
+  internal:
+    internal: true
+  mqtt-external:
+    driver: bridge
 
+services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: litescope-mqtt
-    entrypoint: ["/mosquitto/config/entrypoint.sh"]
     env_file: .env
+    command: >
+      sh -c "mkdir -p /mosquitto/config &&
+      rm -f /mosquitto/config/passwd &&
+      mosquitto_passwd -c -b /mosquitto/config/passwd $$MQTT_USERNAME $$MQTT_PASSWORD &&
+      chmod 0640 /mosquitto/config/passwd &&
+      chown mosquitto:mosquitto /mosquitto/config/passwd &&
+      printf 'listener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwd\npersistence true\npersistence_location /mosquitto/data/\nlog_dest stdout\n'
+      > /mosquitto/config/mosquitto.conf && mosquitto -c /mosquitto/config/mosquitto.conf"
     ports:
       - "1883:1883"
+    networks:
+      - internal
+      - mqtt-external
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mqtt-entrypoint.sh:/mosquitto/config/entrypoint.sh:ro
       - mqtt-data:/mosquitto/data
     restart: unless-stopped
 
@@ -41,6 +45,9 @@ services:
     container_name: litescope-backend
     depends_on:
       - mosquitto
+    networks:
+      - internal
+      - traefik-proxy
     volumes:
       - ./config.json:/app/config.json:ro
       - db-data:/app/data
@@ -49,25 +56,29 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      # Route /api/* and /ws to the backend — longer rule = higher priority than the frontend catch-all
+      - "traefik.docker.network=traefik_gateway"
       - "traefik.http.routers.litescope-api.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/ws`))"
-      - "traefik.http.routers.litescope-api.entrypoints=websecure"
-      - "traefik.http.routers.litescope-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.litescope-api.loadbalancer.server.port=3000"
+      - "traefik.http.routers.litescope-api.service=litescope-api"
+      - "traefik.http.routers.litescope-api.tls=true"
+      - "traefik.http.services.litescope-api.loadBalancer.server.port=3000"
 
   frontend:
     image: ghcr.io/rikodev/litescope-frontend:latest
     container_name: litescope-frontend
+    networks:
+      - traefik-proxy
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      # Catch-all: every other request goes to the frontend nginx
+      - "traefik.docker.network=traefik_gateway"
       - "traefik.http.routers.litescope-ui.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.litescope-ui.entrypoints=websecure"
-      - "traefik.http.routers.litescope-ui.tls.certresolver=letsencrypt"
-      - "traefik.http.services.litescope-ui.loadbalancer.server.port=80"
+      - "traefik.http.routers.litescope-ui.service=litescope-ui"
+      - "traefik.http.routers.litescope-ui.tls=true"
+      - "traefik.http.services.litescope-ui.loadBalancer.server.port=80"
+      - "traefik.http.services.litescope-ui.loadBalancer.healthcheck.path=/"
+      - "traefik.http.services.litescope-ui.loadBalancer.healthcheck.interval=10s"
+      - "traefik.http.services.litescope-ui.loadBalancer.healthcheck.scheme=http"
 
 volumes:
   mqtt-data:
   db-data:
-  traefik-certs:
