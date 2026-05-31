@@ -1,9 +1,10 @@
 FROM golang:1.22-alpine AS builder
 WORKDIR /src
 COPY go.mod ./
-# go.sum may not exist yet in a fresh clone — tidy generates it
-RUN go mod tidy
+RUN go mod download -x
 COPY . .
+# tidy runs after source is present so it can resolve imports and write go.sum
+RUN go mod tidy
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/ingestor ./cmd/ingestor
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/server  ./cmd/server
 

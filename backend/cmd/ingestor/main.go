@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -279,27 +280,53 @@ func resolveRxTime(msg map[string]interface{}) string {
 func extractObsMeta(msg map[string]interface{}) *db.ObserverMeta {
 	meta := &db.ObserverMeta{}
 	found := false
+
+	// stats fields may live at the top level or nested inside "stats": {}
+	// (observer publishes them inside stats dict)
+	statsMap, _ := msg["stats"].(map[string]interface{})
+	lookup := func(key string) (interface{}, bool) {
+		if v, ok := msg[key]; ok {
+			return v, true
+		}
+		if statsMap != nil {
+			if v, ok := statsMap[key]; ok {
+				return v, true
+			}
+		}
+		return nil, false
+	}
+
 	if v, ok := msg["model"].(string); ok && v != "" {
 		meta.Model = &v
 		found = true
 	}
-	if v, ok := msg["firmware"].(string); ok && v != "" {
-		meta.Firmware = &v
-		found = true
+	// observer sends "firmware_version"; fall back to "firmware"
+	for _, key := range []string{"firmware_version", "firmware"} {
+		if v, ok := msg[key].(string); ok && v != "" {
+			meta.Firmware = &v
+			found = true
+			break
+		}
 	}
-	if v, ok := toFloat64(msg["battery_mv"]); ok {
-		iv := int(v)
-		meta.BatteryMv = &iv
-		found = true
+	if v, ok := lookup("battery_mv"); ok {
+		if f, ok2 := toFloat64(v); ok2 {
+			iv := int(f)
+			meta.BatteryMv = &iv
+			found = true
+		}
 	}
-	if v, ok := toFloat64(msg["uptime_secs"]); ok {
-		iv := int64(v)
-		meta.UptimeSecs = &iv
-		found = true
+	if v, ok := lookup("uptime_secs"); ok {
+		if f, ok2 := toFloat64(v); ok2 {
+			iv := int64(f)
+			meta.UptimeSecs = &iv
+			found = true
+		}
 	}
-	if v, ok := toFloat64(msg["noise_floor"]); ok {
-		meta.NoiseFloor = &v
-		found = true
+	if v, ok := lookup("noise_floor"); ok {
+		if f, ok2 := toFloat64(v); ok2 {
+			meta.NoiseFloor = &f
+			found = true
+		}
 	}
 	if !found {
 		return nil
@@ -328,6 +355,14 @@ func toFloat64(v interface{}) (float64, bool) {
 		return float64(n), true
 	case json.Number:
 		f, err := n.Float64()
+		return f, err == nil
+	case string:
+		// observer serialises SNR/RSSI/score as str()
+		s := strings.TrimSpace(n)
+		if s == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(s, 64)
 		return f, err == nil
 	default:
 		return 0, false
