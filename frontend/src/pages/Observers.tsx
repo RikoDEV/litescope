@@ -142,7 +142,7 @@ export default function Observers() {
                 { l: t('common.status'),   v: isActive(selected) ? `🟢 ${t('common.online')}` : `⚪ ${t('common.stale')}` },
                 { l: t('common.packets'),  v: selected.packetCount.toLocaleString() },
                 { l: t('common.model'),    v: selected.model || '—' },
-                { l: 'Firmware', v: selected.firmware || '—' },
+                { l: t('observers.firmware'), v: selected.firmware || '—' },
                 { l: t('common.battery'),  v: selected.batteryMv ? `${selected.batteryMv} mV` : '—' },
                 { l: t('common.uptime'),   v: selected.uptimeSecs ? fmtUptime(selected.uptimeSecs) : '—' },
                 { l: t('observers.noise'), v: selected.noiseFloor != null ? `${selected.noiseFloor.toFixed(1)} dBm` : '—' },
@@ -257,14 +257,10 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 function ObserverSetupCard() {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
-  const steps = [
-    'Connect your MeshCore device to a host machine via USB, BLE, or TCP.',
-    'Install the observer integration script on the host (meshcore-packet-capture or meshcore-ha).',
-    'Configure the script with the MQTT connection details shown on the right.',
-    'Run the script — it will read packets from the device and forward them to this liteScope instance.',
-  ]
+  const steps = [t('observers.step1'), t('observers.step2'), t('observers.step3'), t('observers.step4')]
 
   return (
     <Card sx={{ borderRadius: 0, borderBottom: `1px solid ${md3.outlineVariant}`, flexShrink: 0 }} elevation={0}>
@@ -279,9 +275,9 @@ function ObserverSetupCard() {
       >
         <WifiIcon sx={{ fontSize: 16, color: md3.primary, flexShrink: 0 }} />
         <Box sx={{ flex: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>Connect an Observer</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{t('observers.connectObserver')}</Typography>
           <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
-            How to forward MeshCore packets to this liteScope instance
+            {t('observers.connectObserverSub')}
           </Typography>
         </Box>
         <ExpandMoreIcon sx={{
@@ -295,7 +291,7 @@ function ObserverSetupCard() {
         <CardContent sx={{ background: md3.surfaceContainerLowest, pt: 2 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>Setup Steps</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>{t('observers.setupSteps')}</Typography>
               {steps.map((s, i) => (
                 <Box key={i} sx={{ display: 'flex', gap: 1.25, mb: 1.25 }}>
                   <Box sx={{
@@ -310,12 +306,12 @@ function ObserverSetupCard() {
               ))}
             </Box>
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>MQTT Connection Details</Typography>
-              <CopyField label="Server"   value={MQTT_HOST} />
-              <CopyField label="Port"     value="1883" />
-              <CopyField label="Username" value={MQTT_USERNAME || 'litescope'} />
-              <CopyField label="Password" value={MQTT_PASSWORD || '—'} />
-              <CopyField label="Topic"    value="meshcore/#" />
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>{t('observers.mqttDetails')}</Typography>
+              <CopyField label={t('observers.server')}   value={MQTT_HOST} />
+              <CopyField label={t('observers.port')}     value="1883" />
+              <CopyField label={t('observers.username')} value={MQTT_USERNAME || 'litescope'} />
+              <CopyField label={t('observers.password')} value={MQTT_PASSWORD || '—'} />
+              <CopyField label={t('observers.topic')}    value="meshcore/#" />
             </Box>
           </Box>
         </CardContent>
