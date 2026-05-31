@@ -18,6 +18,8 @@ import { alpha, useTheme } from '@mui/material/styles'
 import PauseIcon from '@mui/icons-material/Pause'
 import FastForwardIcon from '@mui/icons-material/FastForward'
 import CloseIcon from '@mui/icons-material/Close'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import MapIcon from '@mui/icons-material/Map'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
@@ -99,7 +101,7 @@ export default function MapView() {
   const [rf,        setRF]        = useState<RFStats | null>(null)
   const [liveFeed,  setLiveFeed]  = useState<Packet[]>([])
   const [pktRate,   setPktRate]   = useState(0)
-  const [showFeed,  setShowFeed]  = useState(true)
+  const [showFeed,  setShowFeed]  = useState(() => window.innerWidth >= 900)
   const [ctrlOpen,  setCtrlOpen]  = useState(true)
 
   const selectedRef = useRef<Node | null>(null)
@@ -155,15 +157,33 @@ export default function MapView() {
     return () => clearInterval(id)
   }, [])
 
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
+
   // Map init
   useEffect(() => {
     if (!mapDiv.current || mapInstance.current) return
-    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map)
+    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: false })
     animLayer.current = L.layerGroup().addTo(map)
     mapInstance.current = map
     return () => { animRAFs.current.forEach(cancelAnimationFrame); map.remove(); mapInstance.current = null }
   }, [])
+
+  // Swap tile layer when theme changes
+  useEffect(() => {
+    const map = mapInstance.current; if (!map) return
+    if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
+    const isDark = theme.palette.mode === 'dark'
+    tileLayerRef.current = L.tileLayer(
+      isDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: isDark ? '© OpenStreetMap © CARTO' : '© OpenStreetMap',
+        subdomains: isDark ? 'abcd' : 'abc',
+        maxZoom: 19,
+      }
+    ).addTo(map)
+  }, [theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load nodes + seed VCR buffer
   useEffect(() => {
@@ -404,8 +424,8 @@ export default function MapView() {
       {/* ── Map Controls panel (top-left) ── */}
       <Paper elevation={4} sx={{
         position: 'absolute', top: 8, left: 8, zIndex: 1000,
-        borderRadius: 3, minWidth: 210, maxWidth: { xs: 'calc(100vw - 16px)', sm: 230 },
-        maxHeight: 'calc(100% - 80px)', overflow: 'auto',
+        borderRadius: 2, minWidth: 210, maxWidth: { xs: 'calc(100vw - 16px)', sm: 230 },
+        maxHeight: { xs: 'calc(50% - 40px)', md: 'calc(100% - 80px)' }, overflow: 'auto',
         background: panelBg, backdropFilter: 'blur(8px)',
       }}>
         {/* Header */}
@@ -419,7 +439,7 @@ export default function MapView() {
             {t('map.controls')}
           </Typography>
           <IconButton size="small" onClick={() => setCtrlOpen(v => !v)} sx={{ color: md3.onSurfaceVariant, p: 0.25 }}>
-            <CloseIcon sx={{ fontSize: 13 }} />
+            {ctrlOpen ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
           </IconButton>
         </Box>
 
@@ -497,7 +517,7 @@ export default function MapView() {
             {/* Status */}
             <Box>
               <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('common.status')}</Typography>
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                 {(['all', 'active', 'stale'] as const).map(s => (
                   <Chip
                     key={s}
@@ -583,10 +603,9 @@ export default function MapView() {
           </IconButton>
         </Tooltip>
       )}
-
       {/* ── Live feed (bottom-left) ── */}
       {showFeed && (
-        <Paper elevation={4} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, p: 1.5, borderRadius: 3, minWidth: 260, maxWidth: 'calc(100vw - 16px)', maxHeight: 240, overflow: 'auto', background: panelBg }}>
+        <Paper elevation={4} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, p: 1.5, borderRadius: 2, minWidth: 260, maxWidth: 'calc(100vw - 16px)', maxHeight: 240, overflow: 'auto', background: panelBg }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
             <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>{t('map.liveFeed')}</Typography>
             <IconButton size="small" onClick={() => setShowFeed(false)} sx={{ color: md3.outline, p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
@@ -607,7 +626,20 @@ export default function MapView() {
         </Paper>
       )}
       {!showFeed && (
-        <Button size="small" variant="outlined" onClick={() => setShowFeed(true)} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, background: panelBg }}>Feed</Button>
+        <Box
+          onClick={() => setShowFeed(true)}
+          sx={{
+            position: 'absolute', bottom: 64, left: 8, zIndex: 1000,
+            px: 1.25, py: 0.5, borderRadius: 2, cursor: 'pointer',
+            background: panelBg, backdropFilter: 'blur(8px)',
+            border: `1px solid ${alpha(md3.outlineVariant, 0.6)}`,
+            '&:hover': { background: alpha(md3.surfaceContainerHigh, 0.96), borderColor: md3.outline },
+          }}
+        >
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontWeight: 600, fontSize: 11 }}>
+            {t('map.liveFeed')}
+          </Typography>
+        </Box>
       )}
 
       {/* ── Node detail sidebar ── */}

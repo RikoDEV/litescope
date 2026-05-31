@@ -52,28 +52,19 @@ export default function NodePage() {
   }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', background: md3.background }}>
-      {/* Back header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
-        <IconButton size="small" onClick={() => navigate(-1)} sx={{ color: md3.onSurfaceVariant }}>
-          <ArrowBackIcon fontSize="small" />
-        </IconButton>
-        <Typography variant="body2" sx={{ color: md3.onSurfaceVariant, fontWeight: 600 }}>{node.name || node.pubKey.slice(0, 16)}</Typography>
-      </Box>
-
-      {/* Panel — full width, centered */}
-      <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
-        <NodeDetailPanel
-          selected={node}
-          overview={overview}
-          rf={rf}
-          onClose={() => navigate(-1)}
-          paperSx={{
-            width: '100%', maxWidth: 640, borderLeft: 'none', borderRight: 'none',
-            borderRadius: 0, flexShrink: 0,
-          }}
-        />
-      </Box>
+    <Box sx={{ height: '100%', overflow: 'auto', background: md3.background, display: 'flex', justifyContent: 'center' }}>
+      {/* NodeDetailPanel without onClose renders as a proper page — no close button, no box borders */}
+      <NodeDetailPanel
+        selected={node}
+        overview={overview}
+        rf={rf}
+        paperSx={{
+          width: '100%', maxWidth: 700,
+          borderLeft: 'none', borderRight: 'none',
+          borderRadius: 0, flexShrink: 0,
+          boxShadow: 'none', elevation: 0,
+        }}
+      />
     </Box>
   )
 }

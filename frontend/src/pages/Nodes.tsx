@@ -59,7 +59,7 @@ export default function Nodes() {
   const [overview, setOverview]   = useState<NodeOverview | null>(null)
   const [rf, setRF]               = useState<RFStats | null>(null)
 
-  const [search, setSearch]     = useState('')
+  const [search, setSearch]     = useState(() => searchParams.get('search') ?? '')
   const [roleTab, setRoleTab]   = useState('all')
   const [status, setStatus]     = useState('all')
   const [lastHeard, setLastHeard] = useState('')
@@ -88,12 +88,16 @@ export default function Nodes() {
     })
   }, [allNodes, roleTab, search, sortCol, sortDir])
 
-  // Auto-select from URL param
+  // Consume URL params on first node load
   useEffect(() => {
-    const pk = searchParams.get('pubkey')
-    if (!pk || !allNodes.length) return
-    const n = allNodes.find(x => x.pubKey === pk)
-    if (n) { selectNode(n); setSearchParams({}, { replace: true }) }
+    if (!allNodes.length) return
+    const pk  = searchParams.get('pubkey')
+    const srch = searchParams.get('search')
+    if (pk) {
+      const n = allNodes.find(x => x.pubKey === pk)
+      if (n) selectNode(n)
+    }
+    if (pk || srch) setSearchParams({}, { replace: true })
   }, [allNodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectNode = async (n: Node) => {

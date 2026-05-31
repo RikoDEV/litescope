@@ -26,6 +26,8 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import TranslateIcon from '@mui/icons-material/Translate'
 import CheckIcon from '@mui/icons-material/Check'
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
+import ListItemIcon from '@mui/material/ListItemIcon'
 
 const NAV = [
   { to: '/',          key: 'home',      Icon: HomeIcon,      exact: true },
@@ -48,6 +50,10 @@ export default function Layout() {
 
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected')
   const [langAnchor, setLangAnchor] = useState<null | HTMLElement>(null)
+  const [moreAnchor, setMoreAnchor] = useState<null | HTMLElement>(null)
+
+  const PRIMARY_NAV = NAV.slice(0, 4)
+  const MORE_NAV    = NAV.slice(4)
 
   useEffect(() => {
     stream.connect()
@@ -248,15 +254,13 @@ export default function Layout() {
           flexShrink: 0,
           borderTop: `1px solid ${md3.outlineVariant}`,
           background: md3.surfaceContainerLow,
-          overflowX: 'auto',
-          '&::-webkit-scrollbar': { display: 'none' },
-          scrollbarWidth: 'none',
         }}>
-          {NAV.map(({ to, key, Icon, exact }) => {
+          {/* 4 primary items */}
+          {PRIMARY_NAV.map(({ to, key, Icon, exact }) => {
             const active = isActive(to, exact)
             return (
               <Box key={to} component={NavLink} to={to} sx={{
-                flex: 1, minWidth: 56,
+                flex: 1,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: '2px', py: 0.75, textDecoration: 'none',
                 color: active ? md3.primary : md3.onSurfaceVariant,
@@ -276,7 +280,70 @@ export default function Layout() {
               </Box>
             )
           })}
+
+          {/* More button */}
+          {(() => {
+            const moreActive = MORE_NAV.some(({ to, exact }) => isActive(to, exact))
+            return (
+              <Box
+                onClick={e => setMoreAnchor(e.currentTarget)}
+                sx={{
+                  flex: 1,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: '2px', py: 0.75, cursor: 'pointer',
+                  color: moreActive ? md3.primary : md3.onSurfaceVariant,
+                  transition: 'color 0.2s',
+                }}
+              >
+                <Box sx={{
+                  width: 48, height: 28, borderRadius: '14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: moreActive ? alpha(md3.primary, 0.15) : 'transparent',
+                  transition: 'background 0.2s',
+                }}>
+                  <MoreHorizIcon sx={{ fontSize: 20 }} />
+                </Box>
+                <Typography sx={{ fontSize: 10, fontWeight: moreActive ? 700 : 400, lineHeight: 1, letterSpacing: '0.2px' }}>
+                  More
+                </Typography>
+              </Box>
+            )
+          })()}
         </Box>
+
+        {/* More menu */}
+        <Menu
+          anchorEl={moreAnchor}
+          open={Boolean(moreAnchor)}
+          onClose={() => setMoreAnchor(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          slotProps={{ paper: { sx: { minWidth: 200, borderRadius: 3, background: md3.surfaceContainerHigh } } }}
+        >
+          {MORE_NAV.map(({ to, key, Icon, exact }) => {
+            const active = isActive(to, exact)
+            return (
+              <MenuItem
+                key={to}
+                component={NavLink}
+                to={to}
+                selected={active}
+                onClick={() => setMoreAnchor(null)}
+                sx={{
+                  gap: 1.5, borderRadius: 2, mx: 0.5, mb: 0.25,
+                  color: active ? md3.primary : md3.onSurface,
+                  '&.Mui-selected': { background: alpha(md3.primary, 0.12) },
+                  '&.Mui-selected:hover': { background: alpha(md3.primary, 0.18) },
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 0, color: 'inherit' }}>
+                  <Icon sx={{ fontSize: 20 }} />
+                </ListItemIcon>
+                <ListItemText primary={t(`nav.${key}`)} slotProps={{ primary: { sx: { fontSize: 14, fontWeight: active ? 700 : 400 } } }} />
+              </MenuItem>
+            )
+          })}
+        </Menu>
 
       </Box>
     </Box>

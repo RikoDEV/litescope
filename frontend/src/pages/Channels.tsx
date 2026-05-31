@@ -124,9 +124,14 @@ export default function Channels() {
 
   const clickSender = (senderName: string) => {
     if (!senderName || senderName === 'Unknown') return
-    const q = senderName.toLowerCase()
-    const match = nodes.find(n => n.name.toLowerCase() === q || n.name.toLowerCase().includes(q))
+    const q = senderName.toLowerCase().trim()
+    // 1. exact  2. node name contains sender  3. sender contains node name
+    const match =
+      nodes.find(n => n.name.toLowerCase() === q) ??
+      nodes.find(n => n.name.toLowerCase().includes(q)) ??
+      nodes.find(n => q.includes(n.name.toLowerCase()) && n.name.length > 2)
     if (match) navigate(`/nodes/${match.pubKey}`)
+    else navigate(`/nodes?search=${encodeURIComponent(senderName)}`)
   }
 
   const decryptBatch = async (msgs: Packet[], keys: StoredKey[]) => {
@@ -221,7 +226,7 @@ export default function Channels() {
                         <Typography
                           variant="body2"
                           onClick={() => clickSender(sender)}
-                          sx={{ fontWeight: 700, color: hashColor(sender), cursor: nodes.some(n => n.name.toLowerCase().includes(sender.toLowerCase())) ? 'pointer' : 'default', '&:hover': { textDecoration: 'underline' } }}
+                          sx={{ fontWeight: 700, color: hashColor(sender), cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                         >{sender}</Typography>
                         <Typography variant="caption" sx={{ color: md3.outline }}>
                           {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true })}

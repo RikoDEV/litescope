@@ -105,58 +105,52 @@ export default function Home() {
       {/* ── Hero ── */}
       <Box sx={{
         position: 'relative', overflow: 'hidden',
-        px: 4, pt: 4, pb: 3,
+        px: { xs: 2, sm: 3, md: 4 }, pt: { xs: 2.5, md: 3 }, pb: 2.5,
         background: `linear-gradient(135deg, ${alpha(md3.primaryContainer, 0.35)} 0%, ${alpha(md3.tertiaryContainer, 0.25)} 50%, ${md3.background} 100%)`,
         borderBottom: `1px solid ${md3.outlineVariant}`,
       }}>
         {/* Decorative blobs */}
-        <Box sx={{ position: 'absolute', top: -60, right: -60, width: 220, height: 220, borderRadius: '50%', background: alpha(md3.primary, 0.07), pointerEvents: 'none' }} />
-        <Box sx={{ position: 'absolute', bottom: -40, left: '30%', width: 160, height: 160, borderRadius: '50%', background: alpha(md3.tertiary, 0.06), pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', top: -50, right: -50, width: 180, height: 180, borderRadius: '50%', background: alpha(md3.primary, 0.07), pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', bottom: -30, left: '35%', width: 130, height: 130, borderRadius: '50%', background: alpha(md3.tertiary, 0.06), pointerEvents: 'none' }} />
 
-        {/* App title row */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-          <Box
-            component="img"
-            src="/icon.svg"
-            alt="liteScope"
-            sx={{
-              width: 48, height: 48, flexShrink: 0, borderRadius: '14px',
-              boxShadow: `0 4px 16px ${alpha(md3.primary, 0.45)}`,
-            }}
-          />
+        {/* Title row — icon + name only, always one line */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+          <Box component="img" src="/icon.svg" alt="liteScope" sx={{ width: 40, height: 40, flexShrink: 0, borderRadius: '12px', boxShadow: `0 3px 12px ${alpha(md3.primary, 0.4)}` }} />
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1, color: md3.onSurface }}>liteScope</Typography>
-            <Typography variant="body2" sx={{ color: md3.onSurfaceVariant }}>{t('home.subtitle')}</Typography>
-          </Box>
-
-          {/* Live badge */}
-          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box sx={{
-              display: 'flex', alignItems: 'center', gap: 0.75,
-              px: 1.5, py: 0.5, borderRadius: 50,
-              background: alpha('#22c55e', 0.12),
-              border: `1px solid ${alpha('#22c55e', 0.3)}`,
-            }}>
-              <Box sx={{
-                width: 8, height: 8, borderRadius: '50%', background: '#22c55e',
-                boxShadow: `0 0 0 0 ${alpha('#22c55e', 0.4)}`,
-                animation: 'pulse 2s infinite',
-                '@keyframes pulse': {
-                  '0%':   { boxShadow: `0 0 0 0 ${alpha('#22c55e', 0.5)}` },
-                  '70%':  { boxShadow: `0 0 0 8px ${alpha('#22c55e', 0)}` },
-                  '100%': { boxShadow: `0 0 0 0 ${alpha('#22c55e', 0)}` },
-                },
-              }} />
-              <Typography variant="caption" sx={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.5px' }}>{t('common.live').toUpperCase()}</Typography>
-            </Box>
-            <Typography variant="body2" sx={{ color: md3.onSurfaceVariant }}>
-              <Box component="span" sx={{ color: '#f59e0b', fontWeight: 700 }}>{pktRate}</Box> {t('home.pktMin')}
-            </Typography>
+            <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1, color: md3.onSurface }}>liteScope</Typography>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('home.subtitle')}</Typography>
           </Box>
         </Box>
 
-        {/* Big stat cards row */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 1.5 }}>
+        {/* Live status row — separate line so it never overflows on mobile */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 2, flexWrap: 'wrap' }}>
+          <Box sx={{
+            display: 'flex', alignItems: 'center', gap: 0.6,
+            px: 1.25, py: 0.35, borderRadius: 50,
+            background: alpha('#22c55e', 0.12),
+            border: `1px solid ${alpha('#22c55e', 0.3)}`,
+          }}>
+            <Box sx={{
+              width: 7, height: 7, borderRadius: '50%', background: '#22c55e',
+              animation: 'pulse 2s infinite',
+              '@keyframes pulse': {
+                '0%':   { boxShadow: `0 0 0 0 ${alpha('#22c55e', 0.5)}` },
+                '70%':  { boxShadow: `0 0 0 7px ${alpha('#22c55e', 0)}` },
+                '100%': { boxShadow: `0 0 0 0 ${alpha('#22c55e', 0)}` },
+              },
+            }} />
+            <Typography variant="caption" sx={{ color: '#22c55e', fontWeight: 700, fontSize: 11, letterSpacing: '0.4px' }}>
+              {t('common.live').toUpperCase()}
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ color: md3.onSurfaceVariant, fontSize: 13 }}>
+            <Box component="span" sx={{ color: '#f59e0b', fontWeight: 700 }}>{pktRate}</Box>
+            {' '}{t('home.pktMin')}
+          </Typography>
+        </Box>
+
+        {/* Stat cards — compact */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 1 }}>
           {[
             { label: t('home.totalPackets'), value: stats?.totalPackets ?? '—',    color: md3.primary,   suffix: '' },
             { label: t('home.nodes'),        value: stats?.totalNodes ?? '—',      color: md3.tertiary,  suffix: '' },
@@ -166,17 +160,17 @@ export default function Home() {
             { label: t('home.avgRssi'),      value: rf ? rf.rssiSummary.avg.toFixed(0) : '—', color: '#ec4899', suffix: ' dBm' },
           ].map(c => (
             <Box key={c.label} sx={{
-              px: 2, py: 1.5, borderRadius: 3,
+              px: 1.25, py: 0.875, borderRadius: 2,
               background: alpha(c.color, 0.08),
-              border: `1px solid ${alpha(c.color, 0.2)}`,
+              border: `1px solid ${alpha(c.color, 0.18)}`,
               backdropFilter: 'blur(8px)',
             }}>
-              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 0.25 }}>
+              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', fontSize: 10, mb: 0.15, lineHeight: 1.3 }}>
                 {c.label}
               </Typography>
-              <Typography sx={{ fontSize: 26, fontWeight: 800, color: c.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              <Typography sx={{ fontSize: 20, fontWeight: 800, color: c.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                 {typeof c.value === 'number' ? c.value.toLocaleString() : c.value}
-                <Box component="span" sx={{ fontSize: 13, fontWeight: 500, ml: 0.25 }}>{c.suffix}</Box>
+                <Box component="span" sx={{ fontSize: 11, fontWeight: 500, ml: 0.2 }}>{c.suffix}</Box>
               </Typography>
             </Box>
           ))}

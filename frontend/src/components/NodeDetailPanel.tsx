@@ -52,7 +52,8 @@ interface NodeDetailPanelProps {
   selected: Node
   overview: NodeOverview | null
   rf: RFStats | null
-  onClose: () => void
+  /** Omit to render as a full page (no close button shown). */
+  onClose?: () => void
   paperSx?: SxProps<Theme>
 }
 
@@ -112,9 +113,11 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
               {selected.pubKey}
             </Typography>
           </Box>
-          <IconButton size="small" onClick={onClose} sx={{ alignSelf: 'flex-start', color: md3.onSurfaceVariant, ml: 1 }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
+          {onClose && (
+            <IconButton size="small" onClick={onClose} sx={{ alignSelf: 'flex-start', color: md3.onSurfaceVariant, ml: 1 }}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          )}
         </Box>
         <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
           <Chip label={selected.role} size="small" sx={{ background: alpha(roleColor(selected.role), 0.2), color: roleColor(selected.role) }} />

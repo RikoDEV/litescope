@@ -14,6 +14,7 @@ import TableCell from '@mui/material/TableCell'
 import Collapse from '@mui/material/Collapse'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import Badge from '@mui/material/Badge'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import PauseIcon from '@mui/icons-material/Pause'
@@ -156,55 +157,103 @@ export default function Packets() {
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
         {/* ── Toolbar ── */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.25, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
-          <Typography variant="body2" sx={{ color: md3.onSurfaceVariant }}>
-            <Box component="span" sx={{ color: md3.onSurface, fontWeight: 700 }}>
-              {filtered.length !== packets.length ? filtered.length.toLocaleString() : total.toLocaleString()}
-            </Box>
-            {filtered.length !== packets.length && <Box component="span" sx={{ color: md3.outline }}> / {total.toLocaleString()}</Box>}
-            {' '}{t('common.packets').toLowerCase()}
-          </Typography>
+        <Box sx={{ background: md3.surfaceContainerLow, borderBottom: `1px solid ${md3.outlineVariant}`, flexShrink: 0 }}>
 
-          <ToggleButtonGroup exclusive size="small" value={windowMs} onChange={(_, v) => v !== null && setWindowMs(v)} sx={{ ml: 1 }}>
-            {TIME_WINDOWS.map(tw => (
-              <ToggleButton key={tw.ms} value={tw.ms} sx={{ fontSize: 11, px: 1.5, py: 0.5, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
-                {tw.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+          {/* Row 1 — count / time window (desktop) / icons */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: { xs: 0.75, md: 1.25 } }}>
+            <Typography variant="body2" sx={{ color: md3.onSurfaceVariant, whiteSpace: 'nowrap' }}>
+              <Box component="span" sx={{ color: md3.onSurface, fontWeight: 700 }}>
+                {filtered.length !== packets.length ? filtered.length.toLocaleString() : total.toLocaleString()}
+              </Box>
+              {filtered.length !== packets.length && <Box component="span" sx={{ color: md3.outline }}> / {total.toLocaleString()}</Box>}
+              {' '}{t('common.packets').toLowerCase()}
+            </Typography>
 
-          <Box sx={{ flex: 1 }} />
+            {/* Time window — desktop only; on mobile it lives in the filter panel */}
+            <ToggleButtonGroup exclusive size="small" value={windowMs} onChange={(_, v) => v !== null && setWindowMs(v)}
+              sx={{ display: { xs: 'none', md: 'flex' }, ml: 1 }}>
+              {TIME_WINDOWS.map(tw => (
+                <ToggleButton key={tw.ms} value={tw.ms} sx={{ fontSize: 11, px: 1.5, py: 0.5, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
+                  {tw.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
 
-          <TextField
-            size="small" placeholder={t('packets.searchPlaceholder')}
-            value={search} onChange={e => setSearch(e.target.value)}
-            sx={{ width: 240 }}
-            slotProps={{ input: { endAdornment: search ? <IconButton size="small" onClick={() => setSearch('')}><CloseIcon sx={{ fontSize: 14 }} /></IconButton> : null } }}
-          />
+            <Box sx={{ flex: 1 }} />
 
-          <Button
-            variant={showFilters || activeFilters > 0 ? 'contained' : 'outlined'}
-            size="small" startIcon={<TuneIcon />}
-            onClick={() => setShowFilters(v => !v)}
-            sx={{ minWidth: 0, px: 1.5 }}
-          >
-            {t('common.filters')} {activeFilters > 0 && `(${activeFilters})`}
-          </Button>
+            {/* Desktop: search + filters text button + pause text button */}
+            <TextField
+              size="small" placeholder={t('packets.searchPlaceholder')}
+              value={search} onChange={e => setSearch(e.target.value)}
+              sx={{ display: { xs: 'none', md: 'flex' }, width: 240 }}
+              slotProps={{ input: { endAdornment: search ? <IconButton size="small" onClick={() => setSearch('')}><CloseIcon sx={{ fontSize: 14 }} /></IconButton> : null } }}
+            />
+            <Button
+              variant={showFilters || activeFilters > 0 ? 'contained' : 'outlined'}
+              size="small" startIcon={<TuneIcon />}
+              onClick={() => setShowFilters(v => !v)}
+              sx={{ display: { xs: 'none', md: 'flex' }, minWidth: 0, px: 1.5 }}
+            >
+              {t('common.filters')} {activeFilters > 0 && `(${activeFilters})`}
+            </Button>
+            <Button variant={paused ? 'contained' : 'outlined'} size="small"
+              startIcon={paused ? <PlayArrowIcon /> : <PauseIcon />}
+              onClick={() => setPaused(p => !p)}
+              sx={{ display: { xs: 'none', md: 'flex' } }}>
+              {paused ? t('common.resume') : t('common.pause')}
+            </Button>
 
-          <Button variant={paused ? 'contained' : 'outlined'} size="small"
-            startIcon={paused ? <PlayArrowIcon /> : <PauseIcon />}
-            onClick={() => setPaused(p => !p)}>
-            {paused ? t('common.resume') : t('common.pause')}
-          </Button>
+            {/* Mobile: pause icon + refresh icon */}
+            <IconButton size="small" onClick={() => setPaused(p => !p)}
+              sx={{ display: { xs: 'flex', md: 'none' }, color: paused ? md3.primary : md3.onSurfaceVariant, background: paused ? alpha(md3.primary, 0.1) : 'transparent' }}>
+              {paused ? <PlayArrowIcon fontSize="small" /> : <PauseIcon fontSize="small" />}
+            </IconButton>
+            <IconButton size="small" onClick={() => load(0)} sx={{ color: md3.onSurfaceVariant }}>
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Box>
 
-          <IconButton size="small" onClick={() => load(0)} sx={{ color: md3.onSurfaceVariant }}>
-            <RefreshIcon fontSize="small" />
-          </IconButton>
+          {/* Row 2 — mobile only: search + filter icon with badge */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1, px: 2, pb: 0.875 }}>
+            <TextField
+              size="small" placeholder={t('packets.searchPlaceholder')}
+              value={search} onChange={e => setSearch(e.target.value)}
+              sx={{ flex: 1 }}
+              slotProps={{ input: { endAdornment: search ? <IconButton size="small" onClick={() => setSearch('')}><CloseIcon sx={{ fontSize: 14 }} /></IconButton> : null } }}
+            />
+            <Badge badgeContent={activeFilters || undefined} color="primary" overlap="circular">
+              <IconButton
+                size="small"
+                onClick={() => setShowFilters(v => !v)}
+                sx={{
+                  border: `1px solid ${showFilters || activeFilters > 0 ? md3.primary : md3.outlineVariant}`,
+                  borderRadius: 1.5,
+                  color: showFilters || activeFilters > 0 ? md3.primary : md3.onSurfaceVariant,
+                  background: showFilters || activeFilters > 0 ? alpha(md3.primary, 0.1) : 'transparent',
+                }}
+              >
+                <TuneIcon fontSize="small" />
+              </IconButton>
+            </Badge>
+          </Box>
         </Box>
 
         {/* ── Filter panel ── */}
         <Collapse in={showFilters}>
           <Box sx={{ px: 2, py: 1.5, background: md3.surfaceContainerHighest, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+
+            {/* Time window — mobile only (desktop shows it in the toolbar) */}
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
+              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, whiteSpace: 'nowrap', flexShrink: 0, mr: 0.5 }}>{t('analytics.timeWindow')}</Typography>
+              <ToggleButtonGroup exclusive size="small" value={windowMs} onChange={(_, v) => v !== null && setWindowMs(v)}>
+                {TIME_WINDOWS.map(tw => (
+                  <ToggleButton key={tw.ms} value={tw.ms} sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
+                    {tw.label}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Box>
+
             <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
               <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, width: 40, flexShrink: 0 }}>{t('common.type')}</Typography>
               {ALL_TYPES.map(pt => {
@@ -271,7 +320,7 @@ export default function Packets() {
                   { col: 'obsCount' as SortCol, label: t('packets.obs'), width: 60 },
                   { col: 'firstSeen' as SortCol, label: t('common.firstSeen'), width: 130 },
                 ] as { col: SortCol | null; label: string; width: string | number }[]).map(({ col, label, width }) => (
-                  <TableCell key={String(col ?? label)} sx={{ width, cursor: col ? 'pointer' : 'default', userSelect: 'none' }}
+                  <TableCell key={String(col ?? label)} sx={{ width, cursor: col ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}
                     onClick={() => col && toggleSort(col)}>
                     {label}{col ? sortArrow(col) : ''}
                   </TableCell>
