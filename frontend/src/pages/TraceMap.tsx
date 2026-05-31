@@ -191,10 +191,11 @@ export default function TraceMap() {
       const canvas = traceCanvas.current; if (!canvas || !mapDiv.current) return
       const dpr = window.devicePixelRatio || 1
       const w = mapDiv.current.clientWidth, h = mapDiv.current.clientHeight
+      if (w === 0 || h === 0) return
       canvas.width  = w * dpr; canvas.height = h * dpr
       canvas.style.width  = `${w}px`; canvas.style.height  = `${h}px`
-      const ctx = canvas.getContext('2d')
-      ctx?.scale(dpr, dpr)
+      // Do NOT scale the context here — it resets every time canvas.width changes.
+      // The animation loop applies setTransform each frame instead.
     }
     resizeCanvas()
     const ro = new ResizeObserver(resizeCanvas)
@@ -226,44 +227,48 @@ export default function TraceMap() {
 
   // ── Create trace from packet ─────────────────────────────────────────────
   const createTrace = useCallback((pkt: Packet) => {
-    const dec = pkt.decoded; if (!dec?.pubKey) return
-    const sender = nodesRef.current.find(n => n.pubKey === dec.pubKey && n.lat != null && n.lon != null)
-    if (!sender || sender.lat == null || sender.lon == null) return
+    const dec = pkt.decoded
 
-    const color = TYPE_COLORS[pkt.payloadType] ?? '#94a3b8'
+    // Resolve sender position: packet decoded payload is the primary source
+    // (state updates are async so nodesRef may not have the latest advert yet).
+    // Fall back to the stored node for non-ADVERT packets that carry a pubKey.
+    let lat: number | null = null
+    let lon: number | null = null
 
-    // Build path points: sender + matched intermediate nodes from any observation path
-    const points: TracePoint[] = [{ lat: sender.lat, lon: sender.lon }]
-
-    // Try to match hop hashes to nodes (heuristic: pubKey prefix)
-    const hopHashes: string[] = []
-    try {
-      // pkt.decoded may carry path info from first observation — use maxHops as fallback
-      const pathKey = (dec as Record<string, unknown>).path
-      if (Array.isArray(pathKey)) hopHashes.push(...(pathKey as string[]))
-    } catch { /* no path in decoded */ }
-
-    hopHashes.forEach(hop => {
-      const matched = matchHop(hop, nodesRef.current)
-      if (matched && matched.lat != null && matched.lon != null &&
-          matched.pubKey !== sender.pubKey &&
-          !points.find(p => p.lat === matched.lat && p.lon === matched.lon)) {
-        points.push({ lat: matched.lat, lon: matched.lon })
-      }
-    })
-
-    const hopCount = Math.max(pkt.maxHops ?? 0, 1)
-
-    const trace: ActiveTrace = {
-      id: `${pkt.id}-${Date.now()}`,
-      points,
-      hopCount,
-      color,
-      payloadType: pkt.payloadType,
-      birthTime: Date.now(),
+    if (dec?.lat != null && dec?.lon != null) {
+      lat = dec.lat as number
+      lon = dec.lon as number
+    } else if (dec?.pubKey) {
+      const stored = nodesRef.current.find(
+        n => n.pubKey === (dec.pubKey as string) && n.lat != null && n.lon != null,
+      )
+      if (stored) { lat = stored.lat; lon = stored.lon }
     }
 
-    traces.current = [trace, ...traces.current].slice(0, 80)
+    if (lat == null || lon == null) return
+
+    const hopCount = Math.max(pkt.maxHops ?? 0, 1)
+    const color    = TYPE_COLORS[pkt.payloadType] ?? '#94a3b8'
+
+    // Attempt to extend the path with matched intermediate hop nodes
+    const points: TracePoint[] = [{ lat, lon }]
+    const pathKey = (dec as Record<string, unknown> | undefined)?.path
+    if (Array.isArray(pathKey)) {
+      ;(pathKey as string[]).forEach(hop => {
+        const matched = matchHop(hop, nodesRef.current)
+        if (
+          matched && matched.lat != null && matched.lon != null &&
+          !points.find(p => p.lat === matched.lat && p.lon === matched.lon)
+        ) {
+          points.push({ lat: matched.lat, lon: matched.lon })
+        }
+      })
+    }
+
+    traces.current = [
+      { id: `${pkt.id}-${Date.now()}`, points, hopCount, color, payloadType: pkt.payloadType, birthTime: Date.now() },
+      ...traces.current,
+    ].slice(0, 80)
     setTotalTraces(c => c + 1)
   }, [])
 
@@ -403,11 +408,13 @@ export default function TraceMap() {
       if (!canvas || !map) return
 
       const dpr = window.devicePixelRatio || 1
-      const w   = canvas.width / dpr
-      const h   = canvas.height / dpr
+      const w   = canvas.clientWidth   // logical CSS pixels
+      const h   = canvas.clientHeight
       const ctx = canvas.getContext('2d')
-      if (!ctx) return
+      if (!ctx || w === 0 || h === 0) return
 
+      // Re-apply DPR scale every frame — canvas.width assignment resets the transform.
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
 
       const now   = Date.now()
