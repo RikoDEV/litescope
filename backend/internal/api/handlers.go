@@ -157,7 +157,7 @@ func (s *Server) getNodePackets(w http.ResponseWriter, r *http.Request) {
 	pk := mux.Vars(r)["pubkey"]
 	limit := queryInt(r, "limit", 50)
 	txs := s.Store.NodePackets(pk, limit)
-	var out []packetSummary
+	out := make([]packetSummary, 0, len(txs))
 	for _, tx := range txs {
 		out = append(out, summarizeTx(tx))
 	}
@@ -175,7 +175,7 @@ func (s *Server) listObservers(w http.ResponseWriter, r *http.Request) {
 		Total     int               `json:"total"`
 		Observers []observerSummary `json:"observers"`
 	}
-	out := response{Total: len(obs)}
+	out := response{Total: len(obs), Observers: make([]observerSummary, 0, len(obs))}
 	for _, o := range obs {
 		out.Observers = append(out.Observers, summarizeObserver(o))
 	}
@@ -200,7 +200,7 @@ func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	limit := queryInt(r, "limit", 100)
 	msgs := s.Store.ChannelMessages(hash, limit)
-	var out []packetSummary
+	out := make([]packetSummary, 0, len(msgs))
 	for _, tx := range msgs {
 		out = append(out, summarizeTx(tx))
 	}
@@ -230,7 +230,7 @@ func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20)
 	nodes := s.Store.TopNodes(limit)
-	var out []nodeSummary
+	out := make([]nodeSummary, 0, len(nodes))
 	for _, n := range nodes {
 		out = append(out, summarizeNode(n))
 	}
@@ -240,7 +240,7 @@ func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20)
 	obs := s.Store.TopObservers(limit)
-	var out []observerSummary
+	out := make([]observerSummary, 0, len(obs))
 	for _, o := range obs {
 		out = append(out, summarizeObserver(o))
 	}

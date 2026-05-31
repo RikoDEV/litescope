@@ -81,7 +81,7 @@ function OverviewTab() {
 
   useEffect(() => {
     api.overview().then(setStats)
-    api.packetsByType().then(setByType)
+    api.packetsByType().then(d => setByType(d ?? {}))
     api.analyticsRF().then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
 
@@ -148,7 +148,7 @@ function ActivityTab() {
   const [hours, setHours] = useState(24)
   const [data, setData]   = useState<Array<{ hour: string; label: string; count: number }>>([])
 
-  useEffect(() => { api.analyticsActivity(hours).then(setData) }, [hours])
+  useEffect(() => { api.analyticsActivity(hours).then(d => setData(d ?? [])) }, [hours])
 
   const peak  = data.reduce((m, b) => b.count > m ? b.count : m, 0)
   const total = data.reduce((s, b) => s + b.count, 0)
@@ -292,7 +292,7 @@ function NodesTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [nodes, setNodes] = useState<Node[]>([])
-  useEffect(() => { api.analyticsNodesTop(25).then(setNodes) }, [])
+  useEffect(() => { api.analyticsNodesTop(25).then(d => setNodes(d ?? [])) }, [])
 
   const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
   const roleCounts: Record<string, number> = {}
@@ -358,7 +358,7 @@ function ObserversTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [observers, setObservers] = useState<Observer[]>([])
-  useEffect(() => { api.analyticsObserversTop(20).then(setObservers) }, [])
+  useEffect(() => { api.analyticsObserversTop(20).then(d => setObservers(d ?? [])) }, [])
 
   return (
     <Box>

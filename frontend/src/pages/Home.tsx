@@ -75,11 +75,11 @@ export default function Home() {
   // initial data load — all in parallel
   useEffect(() => {
     api.overview().then(setStats)
-    api.analyticsActivity(24).then(setActivity)
-    api.analyticsNodesTop(6).then(setTopNodes)
+    api.analyticsActivity(24).then(d => setActivity(d ?? []))
+    api.analyticsNodesTop(6).then(d => setTopNodes(d ?? []))
     api.observers().then(r => setObservers(r.observers ?? []))
     api.packets(12, 0).then(r => setRecent(r.packets ?? []))
-    api.analyticsRF().then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
+    api.analyticsRF().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
 
   // live packet stream
