@@ -11,6 +11,7 @@ import Chip from '@mui/material/Chip'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
+import Collapse from '@mui/material/Collapse'
 import Divider from '@mui/material/Divider'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
@@ -23,6 +24,8 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import TagIcon from '@mui/icons-material/Tag'
 import CloseIcon from '@mui/icons-material/Close'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import LockIcon from '@mui/icons-material/Lock'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet } from '../types'
@@ -148,22 +151,7 @@ export default function Channels() {
             </IconButton>
           </Tooltip>
         </Box>
-        <List dense sx={{ flex: 1, overflow: 'auto', py: 0 }}>
-          {channels.map(ch => (
-            <ListItemButton key={ch.hash} selected={selected?.hash === ch.hash} onClick={() => selectChannel(ch)} sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, gap: 0.25 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: hashColor(ch.name), flexShrink: 0 }} />
-                <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{ch.name}</Typography>
-              </Box>
-              <Typography variant="caption" sx={{ color: md3.outline, pl: 2 }}>#{ch.hash} · {ch.messageCount}</Typography>
-            </ListItemButton>
-          ))}
-          {channels.length === 0 && (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="caption" sx={{ color: md3.outline }}>{t('channels.noChannels')}</Typography>
-            </Box>
-          )}
-        </List>
+        <ChannelList channels={channels} selected={selected} onSelect={selectChannel} />
       </Paper>
 
       {/* ── Main ── */}
@@ -238,6 +226,69 @@ export default function Channels() {
         )}
       </Box>
     </Box>
+  )
+}
+
+// ── Channel list with Known / Encrypted sections ─────────────────────────────
+function ChannelList({ channels, selected, onSelect }: {
+  channels: Channel[]
+  selected: Channel | null
+  onSelect: (ch: Channel) => void
+}) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+  const [encOpen, setEncOpen] = useState(false)
+
+  const isKnown = (ch: Channel) => !/^[0-9a-fA-F]+$/.test(ch.name)
+  const byCount = (a: Channel, b: Channel) => b.messageCount - a.messageCount
+
+  const known     = channels.filter(isKnown).sort(byCount)
+  const encrypted = channels.filter(c => !isKnown(c)).sort(byCount)
+
+  const renderItem = (ch: Channel) => (
+    <ListItemButton key={ch.hash} selected={selected?.hash === ch.hash} onClick={() => onSelect(ch)}
+      sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, gap: 0.25 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
+        <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: hashColor(ch.name), flexShrink: 0 }} />
+        <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+          {ch.name}
+        </Typography>
+      </Box>
+      <Typography variant="caption" sx={{ color: md3.outline, pl: 2 }}>#{ch.hash} · {ch.messageCount}</Typography>
+    </ListItemButton>
+  )
+
+  if (channels.length === 0) {
+    return (
+      <Box sx={{ p: 2 }}>
+        <Typography variant="caption" sx={{ color: md3.outline }}>{t('channels.noChannels')}</Typography>
+      </Box>
+    )
+  }
+
+  return (
+    <List dense sx={{ flex: 1, overflow: 'auto', py: 0 }}>
+      {/* ── Known (decrypted) ── */}
+      {known.length > 0 && known.map(renderItem)}
+
+      {/* ── Encrypted section header ── */}
+      {encrypted.length > 0 && (
+        <>
+          {known.length > 0 && <Divider />}
+          <ListItemButton onClick={() => setEncOpen(v => !v)}
+            sx={{ py: 0.75, gap: 0.75, color: md3.onSurfaceVariant }}>
+            <LockIcon sx={{ fontSize: 13, color: md3.outline }} />
+            <Typography variant="caption" sx={{ flex: 1, color: md3.outline, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px', fontSize: 10 }}>
+              {t('channels.encrypted')} ({encrypted.length})
+            </Typography>
+            <ExpandMoreIcon sx={{ fontSize: 16, color: md3.outline, transition: 'transform 0.2s', transform: encOpen ? 'rotate(180deg)' : 'none' }} />
+          </ListItemButton>
+          <Collapse in={encOpen}>
+            {encrypted.map(renderItem)}
+          </Collapse>
+        </>
+      )}
+    </List>
   )
 }
 
