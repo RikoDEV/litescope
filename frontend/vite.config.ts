@@ -12,14 +12,5 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor:  ['react', 'react-dom', 'react-router-dom', '@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
-          charts:  ['recharts'],
-          leaflet: ['leaflet'],
-        },
-      },
-    },
   },
 })
