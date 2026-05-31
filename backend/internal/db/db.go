@@ -385,6 +385,18 @@ func (d *DB) LoadObserverUpdates(since string) ([]*ObserverRow, error) {
 	return d.loadObservers()
 }
 
+// RedecodeChannelMessages returns all GRP_TXT rows that still have decryptionStatus=no_key
+// so the caller can re-decode them and call UpdateDecodedJSON to persist the result.
+func (d *DB) UndecryptedChannelMessages() ([]*TxRow, error) {
+	return d.loadTxs(`SELECT id, raw_hex, hash, first_seen, route_type, payload_type, decoded_json, observation_count, COALESCE(channel_hash,'') FROM transmissions WHERE payload_type = 5 AND decoded_json LIKE '%no_key%'`)
+}
+
+// UpdateDecodedJSON persists a new decoded_json value for a transmission row.
+func (d *DB) UpdateDecodedJSON(id int64, decodedJSON string) error {
+	_, err := d.db.Exec(`UPDATE transmissions SET decoded_json = ? WHERE id = ?`, decodedJSON, id)
+	return err
+}
+
 func nilIfEmpty(s string) interface{} {
 	if s == "" {
 		return nil

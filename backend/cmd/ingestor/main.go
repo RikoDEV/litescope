@@ -44,6 +44,7 @@ func main() {
 		log.Printf("no channel keys configured — GRP_TXT will not be decrypted")
 	} else {
 		log.Printf("loaded %d channel keys", len(channelKeys))
+		redecodeExisting(database, channelKeys)
 	}
 
 	if len(cfg.MQTTSources) == 0 {
@@ -254,6 +255,36 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 		origin := strField(msg, "origin")
 		now2 := time.Now().UTC().Format(time.RFC3339)
 		database.UpsertObserver(observerID, origin, region, now2, nil)
+	}
+}
+
+func redecodeExisting(database *db.DB, channelKeys map[string]string) {
+	rows, err := database.UndecryptedChannelMessages()
+	if err != nil {
+		log.Printf("redecode: query failed: %v", err)
+		return
+	}
+	if len(rows) == 0 {
+		return
+	}
+	updated := 0
+	for _, row := range rows {
+		dec, err := decoder.DecodePacket(row.RawHex, channelKeys)
+		if err != nil {
+			continue
+		}
+		if dec.Payload.DecryptionStatus != "decrypted" {
+			continue
+		}
+		j := decoder.PayloadJSON(&dec.Payload)
+		if err := database.UpdateDecodedJSON(row.ID, j); err != nil {
+			log.Printf("redecode: update %d: %v", row.ID, err)
+			continue
+		}
+		updated++
+	}
+	if updated > 0 {
+		log.Printf("redecode: updated %d/%d previously undecrypted GRP_TXT packets", updated, len(rows))
 	}
 }
 
