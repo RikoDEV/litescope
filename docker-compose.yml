@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: litescope-mqtt
+    entrypoint: ["/mosquitto/config/entrypoint.sh"]
+    env_file: .env
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mqtt-entrypoint.sh:/mosquitto/config/entrypoint.sh:ro
+      - mqtt-data:/mosquitto/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: litescope-backend
+    depends_on:
+      - mosquitto
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./supervisord.conf:/etc/supervisord.conf:ro
+      - db-data:/app/data
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: litescope-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mqtt-data:
+  db-data:
+  caddy-data:

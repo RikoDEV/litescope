@@ -1,0 +1,14 @@
+{
+    admin off
+}
+
+:80 {
+    @api path /api/* /ws
+    reverse_proxy @api backend:3000
+
+    header Access-Control-Allow-Origin *
+    header Access-Control-Allow-Methods "GET, OPTIONS"
+    header Access-Control-Allow-Headers "Content-Type"
+
+    respond /health 200
+}

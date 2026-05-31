@@ -1,0 +1,35 @@
+name = "litescope"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── Cloudflare Pages ──────────────────────────────────────────────────────────
+# Deploy: wrangler pages deploy frontend/dist --project-name litescope
+# Docs:   https://developers.cloudflare.com/pages/
+
+[pages_build_output_dir]
+# Path to the Vite build output (relative to repo root)
+path = "frontend/dist"
+
+# ── Build command (used by Cloudflare Pages CI) ───────────────────────────────
+[build]
+command = "cd frontend && npm ci && npm run build"
+cwd = "."
+
+# ── Environment variables ─────────────────────────────────────────────────────
+# Vite bakes VITE_* vars into the bundle at build time.
+# Set these in the Cloudflare dashboard (Settings → Environment variables)
+# or in a .env.production file locally — DO NOT commit secrets here.
+#
+# Required when the backend is on a different origin:
+#   VITE_API_URL = "https://litescope.example.com"
+#
+# The WebSocket URL is derived automatically from VITE_API_URL (http→ws, https→wss).
+# When deploying frontend + backend on the same domain this can be left empty.
+
+[env.production]
+# Example: uncomment and fill in your backend URL
+# [env.production.vars]
+# VITE_API_URL = "https://litescope.example.com"
+
+[env.preview]
+# Preview deployments use the same vars unless overridden here

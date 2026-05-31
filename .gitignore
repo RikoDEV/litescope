@@ -1,0 +1,8 @@
+.claude
+.zed
+frontend/node_modules
+frontend/dist
+
+# Secrets — use .env.example / config.example.json as templates
+.env
+config.json

@@ -1,0 +1,360 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import L from 'leaflet'
+import Box from '@mui/material/Box'
+import Paper from '@mui/material/Paper'
+import Typography from '@mui/material/Typography'
+import IconButton from '@mui/material/IconButton'
+import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import Tooltip from '@mui/material/Tooltip'
+import { alpha, useTheme } from '@mui/material/styles'
+import PauseIcon from '@mui/icons-material/Pause'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import FastForwardIcon from '@mui/icons-material/FastForward'
+import CloseIcon from '@mui/icons-material/Close'
+import FilterListIcon from '@mui/icons-material/FilterList'
+import { api } from '../services/api'
+import { stream } from '../services/stream'
+import type { Node, Packet } from '../types'
+import { PAYLOAD_NAMES } from '../types'
+import { formatDistanceToNow } from 'date-fns'
+
+// Fix leaflet icon
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+})
+
+type VcrMode = 'LIVE' | 'PAUSED' | 'REPLAY'
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8]
+
+const roleShapes: Record<string, (color: string, op: number) => string> = {
+  repeater:  (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,10 10,19 1,10" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
+  companion: (c, o) => `<svg width="20" height="20" style="opacity:${o}"><circle cx="10" cy="10" r="8" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
+  room:      (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 17.6,5.5 17.6,14.5 10,19 2.4,14.5 2.4,5.5" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
+  sensor:    (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,18 1,18" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
+}
+
+const TYPE_COLORS: Record<number, string> = { 4: '#22c55e', 5: '#3b82f6', 2: '#f59e0b', 3: '#6b7280', 9: '#ec4899', 8: '#14b8a6' }
+const TYPE_ICONS:  Record<number, string> = { 4: '📡', 5: '💬', 2: '✉️', 3: '✓', 9: '🔍', 8: '🛤️' }
+
+export default function MapView() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+
+  const mapDiv        = useRef<HTMLDivElement>(null)
+  const mapInstance   = useRef<L.Map | null>(null)
+  const animLayer     = useRef<L.LayerGroup | null>(null)
+  const markersRef    = useRef<Map<string, L.Marker>>(new Map())
+  const animRAFs      = useRef<number[]>([])
+  const timelineCanvas = useRef<HTMLCanvasElement>(null)
+
+  const vcrMode     = useRef<VcrMode>('LIVE')
+  const vcrBuffer   = useRef<Packet[]>([])
+  const vcrPlayhead = useRef(-1)
+  const vcrMissed   = useRef(0)
+  const vcrSpeed    = useRef(1)
+  const replayTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const rateWindow  = useRef<number[]>([])
+
+  const [mode, setMode]     = useState<VcrMode>('LIVE')
+  const [missed, setMissed] = useState(0)
+  const [speed, setSpeed]   = useState(1)
+  const [nodes, setNodes]   = useState<Node[]>([])
+  const [selected, setSelected] = useState<Node | null>(null)
+  const [liveFeed, setLiveFeed] = useState<Packet[]>([])
+  const [pktRate, setPktRate]   = useState(0)
+  const [showFeed, setShowFeed] = useState(true)
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = useState({ repeater: true, companion: true, room: true, sensor: true, active: false })
+
+  const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
+
+  function makeIcon(role: string, active: boolean) {
+    const color = roleColor(role)
+    const fn    = roleShapes[role] ?? roleShapes.companion
+    return L.divIcon({ html: fn(color, active ? 1 : 0.35), className: '', iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -13] })
+  }
+
+  // Rate counter
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now()
+      rateWindow.current = rateWindow.current.filter(t => now - t < 60000)
+      setPktRate(rateWindow.current.length)
+    }, 2000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Map init
+  useEffect(() => {
+    if (!mapDiv.current || mapInstance.current) return
+    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2 })
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map)
+    animLayer.current = L.layerGroup().addTo(map)
+    mapInstance.current = map
+    return () => { animRAFs.current.forEach(cancelAnimationFrame); map.remove(); mapInstance.current = null }
+  }, [])
+
+  // Load nodes + seed VCR buffer
+  useEffect(() => {
+    api.nodes().then(res => setNodes(res.nodes ?? []))
+    api.packets(500, 0).then(res => { vcrBuffer.current = [...(res.packets ?? [])].sort((a, b) => new Date(a.firstSeen).getTime() - new Date(b.firstSeen).getTime()); drawTimeline() })
+  }, [])
+
+  // Sync markers
+  useEffect(() => {
+    const map = mapInstance.current; if (!map) return
+    const cutoff = Date.now() - 24 * 3600e3
+    nodes.forEach(n => {
+      if (n.lat == null || n.lon == null) return
+      if (!filters[n.role as keyof typeof filters] && n.role !== 'unknown') return
+      const active = new Date(n.lastSeen).getTime() > cutoff
+      if (filters.active && !active) return
+      const icon = makeIcon(n.role, active)
+      const existing = markersRef.current.get(n.pubKey)
+      if (existing) { existing.setIcon(icon); return }
+      const m = L.marker([n.lat, n.lon], { icon }).bindPopup(makePopup(n)).addTo(map)
+      m.on('click', () => setSelected(n))
+      markersRef.current.set(n.pubKey, m)
+    })
+    markersRef.current.forEach((m, key) => {
+      const n = nodes.find(nd => nd.pubKey === key)
+      if (!n || n.lat == null) { m.remove(); markersRef.current.delete(key) }
+    })
+  }, [nodes, filters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // WebSocket
+  useEffect(() => {
+    const unsub = stream.subscribe(msg => {
+      if (msg.type !== 'packet') return
+      rateWindow.current.push(Date.now())
+      vcrBuffer.current.push(msg.data)
+      if (vcrBuffer.current.length > 2000) vcrBuffer.current.shift()
+      drawTimeline()
+      if (vcrMode.current === 'PAUSED') { vcrMissed.current++; setMissed(vcrMissed.current); return }
+      if (vcrMode.current !== 'LIVE') return
+      processPacket(msg.data)
+    })
+    return unsub
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const processPacket = useCallback((pkt: Packet) => {
+    const dec = pkt.decoded; if (!dec) return
+    const color = TYPE_COLORS[pkt.payloadType] ?? md3.outline
+    setLiveFeed(prev => [pkt, ...prev.slice(0, 19)])
+    if (pkt.payloadType === 4 && dec.pubKey) {
+      const lat = dec.lat as number | undefined; const lon = dec.lon as number | undefined
+      const pubKey = dec.pubKey as string; const name = dec.name as string | undefined
+      setNodes(prev => {
+        const idx = prev.findIndex(n => n.pubKey === pubKey)
+        const flags = dec.flags as { type?: number } | undefined
+        const role = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
+        const updated: Node = { pubKey, name: name ?? pubKey.slice(0, 8), role, lat: lat ?? (idx >= 0 ? prev[idx].lat : null), lon: lon ?? (idx >= 0 ? prev[idx].lon : null), lastSeen: pkt.firstSeen, firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen, advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1 }
+        if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n }
+        return [...prev, updated]
+      })
+      if (lat != null && lon != null) { animatePacket(lat, lon, color); flashMarker(pubKey) }
+    }
+  }, [md3.outline])
+
+  const animatePacket = useCallback((lat: number, lon: number, color: string) => {
+    const map = mapInstance.current; const layer = animLayer.current; if (!map || !layer) return
+    const dot = L.circleMarker([lat, lon], { radius: 6, color, fillColor: color, fillOpacity: 0.8, weight: 1.5, opacity: 1 }).addTo(layer)
+    let r = 6, op = 0.85
+    const step = () => {
+      r += 1.5; op -= 0.045
+      if (op <= 0) { dot.remove(); return }
+      dot.setRadius(r); dot.setStyle({ opacity: op, fillOpacity: op * 0.7 })
+      animRAFs.current.push(requestAnimationFrame(step))
+    }
+    animRAFs.current.push(requestAnimationFrame(step))
+  }, [])
+
+  const flashMarker = useCallback((pk: string) => {
+    const m = markersRef.current.get(pk); if (!m) return
+    const el = (m as unknown as { _icon?: HTMLElement })._icon; if (!el) return
+    el.style.transition = 'transform 0.15s, filter 0.4s'
+    el.style.transform = 'scale(1.7)'; el.style.filter = 'brightness(2)'
+    setTimeout(() => { el.style.transform = 'scale(1)'; el.style.filter = '' }, 150)
+  }, [])
+
+  // VCR controls
+  const pause = useCallback(() => { vcrMode.current = 'PAUSED'; vcrMissed.current = 0; setMode('PAUSED'); setMissed(0) }, [])
+  const skipToLive = useCallback(() => {
+    if (replayTimer.current) { clearInterval(replayTimer.current); replayTimer.current = null }
+    vcrMode.current = 'LIVE'; vcrPlayhead.current = -1; vcrMissed.current = 0
+    setMode('LIVE'); setMissed(0); drawTimeline()
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startReplay = useCallback((from?: number) => {
+    if (replayTimer.current) clearInterval(replayTimer.current)
+    const buf = vcrBuffer.current; if (!buf.length) return
+    vcrPlayhead.current = from ?? 0; vcrMode.current = 'REPLAY'; vcrMissed.current = 0; setMode('REPLAY'); setMissed(0)
+    replayTimer.current = setInterval(() => {
+      if (vcrPlayhead.current >= buf.length - 1) { skipToLive(); return }
+      vcrPlayhead.current++; processPacket(buf[vcrPlayhead.current]); drawTimeline()
+    }, 1000 / vcrSpeed.current)
+  }, [processPacket, skipToLive])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeSpeed = (s: number) => { vcrSpeed.current = s; setSpeed(s); if (vcrMode.current === 'REPLAY') startReplay(vcrPlayhead.current) }
+
+  const onTimelineClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = timelineCanvas.current; if (!canvas) return
+    const pct = (e.clientX - canvas.getBoundingClientRect().left) / canvas.width
+    startReplay(Math.round(pct * Math.max(vcrBuffer.current.length - 1, 0)))
+  }, [startReplay])
+
+  const drawTimeline = useCallback(() => {
+    const canvas = timelineCanvas.current; if (!canvas) return
+    const ctx = canvas.getContext('2d'); if (!ctx) return
+    const W = canvas.width, H = canvas.height
+    ctx.clearRect(0, 0, W, H); ctx.fillStyle = md3.surfaceContainerHighest; ctx.fillRect(0, 0, W, H)
+    const buf = vcrBuffer.current; if (!buf.length) return
+    const minTs = new Date(buf[0].firstSeen).getTime(), maxTs = new Date(buf[buf.length - 1].firstSeen).getTime()
+    const range = maxTs - minTs || 1; const BUCKETS = 80; const counts = new Array(BUCKETS).fill(0)
+    for (const p of buf) { const i = Math.min(BUCKETS - 1, Math.floor((new Date(p.firstSeen).getTime() - minTs) / range * BUCKETS)); counts[i]++ }
+    const maxC = Math.max(...counts, 1); const bw = W / BUCKETS
+    ctx.fillStyle = alpha(md3.primary, 0.4)
+    for (let i = 0; i < BUCKETS; i++) { const h = (counts[i] / maxC) * (H - 2); ctx.fillRect(i * bw, H - h, bw - 0.5, h) }
+    const ph = vcrPlayhead.current < 0 ? W : (vcrPlayhead.current / Math.max(buf.length - 1, 1)) * W
+    ctx.strokeStyle = md3.primary; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(ph, 0); ctx.lineTo(ph, H); ctx.stroke()
+    if (vcrMode.current === 'LIVE') { ctx.fillStyle = '#22c55e'; ctx.fillRect(W - 4, 0, 4, H) }
+  }, [md3.primary, md3.surfaceContainerHighest])
+
+  function makePopup(n: Node) {
+    const color = roleColor(n.role)
+    return `<div style="font-family:system-ui;font-size:13px;min-width:170px;color:#1D1B20">
+      <b style="font-size:14px">${n.name || n.pubKey.slice(0, 12)}</b>
+      <div style="margin:4px 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${color}22;color:${color};font-size:11px">${n.role}</div>
+      <div style="font-size:11px;color:#49454F;margin-top:4px">Adverts: ${n.advertCount}<br/>Last: ${new Date(n.lastSeen).toLocaleString()}</div>
+    </div>`
+  }
+
+  const panelBg = alpha(md3.surfaceContainer, 0.92)
+
+  return (
+    <Box sx={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Map canvas */}
+      <Box ref={mapDiv} sx={{ flex: 1 }} />
+
+      {/* ── VCR bar ── */}
+      <Paper elevation={3} sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75, borderRadius: 0, flexShrink: 0, borderTop: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerHigh }}>
+        {/* Mode badge */}
+        <Chip label={mode} size="small" sx={{
+          background: mode === 'LIVE' ? alpha('#22c55e', 0.2) : mode === 'PAUSED' ? alpha('#f59e0b', 0.2) : alpha(md3.primary, 0.2),
+          color:      mode === 'LIVE' ? '#22c55e'              : mode === 'PAUSED' ? '#f59e0b'              : md3.primary,
+          fontWeight: 700, fontSize: 11,
+        }} />
+
+        {mode === 'LIVE' && <IconButton size="small" onClick={pause} sx={{ color: md3.onSurfaceVariant }}><PauseIcon fontSize="small" /></IconButton>}
+        {mode === 'PAUSED' && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Typography variant="caption" sx={{ color: '#f59e0b' }}>+{missed} missed</Typography>
+            <Button size="small" variant="outlined" onClick={() => startReplay(Math.max(0, vcrBuffer.current.length - missed - 1))}>Replay</Button>
+            <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
+          </Box>
+        )}
+        {mode === 'REPLAY' && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
+            <Typography variant="caption" sx={{ color: md3.primary }}>{vcrPlayhead.current + 1} / {vcrBuffer.current.length}</Typography>
+          </Box>
+        )}
+
+        {/* Speed */}
+        <ToggleButtonGroup exclusive value={speed} onChange={(_, s) => s && changeSpeed(s)} size="small" sx={{ ml: 1 }}>
+          {SPEEDS.map(s => (
+            <ToggleButton key={s} value={s} sx={{ fontSize: 10, px: 1, py: 0.25 }}>{s}×</ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+
+        {/* Timeline */}
+        <canvas ref={timelineCanvas} width={360} height={28} onClick={onTimelineClick}
+          style={{ cursor: 'crosshair', borderRadius: 8, border: `1px solid ${md3.outlineVariant}`, flexShrink: 0 }} />
+
+        {/* Stats */}
+        <Typography variant="caption" sx={{ ml: 'auto', color: md3.onSurfaceVariant, whiteSpace: 'nowrap' }}>
+          <Box component="span" sx={{ color: '#22c55e' }}>{nodes.filter(n => n.lat != null).length}</Box> nodes ·{' '}
+          <Box component="span" sx={{ color: '#f59e0b' }}>{pktRate}</Box>/min
+        </Typography>
+      </Paper>
+
+      {/* ── Filter panel (top-left) ── */}
+      <Paper elevation={4} sx={{ position: 'absolute', top: 8, left: 8, zIndex: 1000, p: 1.5, borderRadius: 3, minWidth: 150, background: panelBg }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+          <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>Filter</Typography>
+          <IconButton size="small" onClick={() => setShowFilters(v => !v)} sx={{ color: showFilters ? md3.primary : md3.onSurfaceVariant, p: 0.25 }}>
+            <FilterListIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Box>
+        {(['repeater', 'companion', 'room', 'sensor'] as const).map(role => (
+          <Box key={role} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+            <Box component="input" type="checkbox" checked={filters[role]} onChange={e => setFilters(f => ({ ...f, [role]: e.target.checked }))} />
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: roleColor(role) }} />
+            <Typography variant="caption" sx={{ color: roleColor(role) }}>{role}</Typography>
+          </Box>
+        ))}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+          <Box component="input" type="checkbox" checked={filters.active} onChange={e => setFilters(f => ({ ...f, active: e.target.checked }))} />
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>Active only (24h)</Typography>
+        </Box>
+      </Paper>
+
+      {/* ── Live feed (bottom-left) ── */}
+      {showFeed && (
+        <Paper elevation={4} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, p: 1.5, borderRadius: 3, minWidth: 260, maxHeight: 240, overflow: 'auto', background: panelBg }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
+            <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>Live Feed</Typography>
+            <IconButton size="small" onClick={() => setShowFeed(false)} sx={{ color: md3.outline, p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
+          </Box>
+          {liveFeed.length === 0 && <Typography variant="caption" sx={{ color: md3.outline }}>Waiting…</Typography>}
+          {liveFeed.map(pkt => {
+            const dec = pkt.decoded; const color = TYPE_COLORS[pkt.payloadType] ?? md3.outline; const icon = TYPE_ICONS[pkt.payloadType] ?? '·'
+            const name = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
+            return (
+              <Box key={pkt.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 0.35, borderBottom: `1px solid ${alpha(md3.outlineVariant, 0.4)}` }}>
+                <Box component="span" sx={{ fontSize: 14 }}>{icon}</Box>
+                <Typography variant="caption" sx={{ color, fontWeight: 700 }}>{PAYLOAD_NAMES[pkt.payloadType] ?? pkt.payloadType}</Typography>
+                {name && <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</Typography>}
+                <Typography variant="caption" sx={{ color: md3.outline, flexShrink: 0 }}>{formatDistanceToNow(new Date(pkt.firstSeen), { addSuffix: true })}</Typography>
+              </Box>
+            )
+          })}
+        </Paper>
+      )}
+      {!showFeed && (
+        <Button size="small" variant="outlined" onClick={() => setShowFeed(true)} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, background: panelBg }}>Feed</Button>
+      )}
+
+      {/* ── Node detail sidebar ── */}
+      {selected && (
+        <Paper elevation={4} sx={{ position: 'absolute', top: 0, right: 0, bottom: 52, zIndex: 999, width: 280, borderRadius: 0, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', background: panelBg, p: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: roleColor(selected.role) }}>{selected.name || selected.pubKey.slice(0, 12)}</Typography>
+            <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: md3.onSurfaceVariant, p: 0.25 }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
+          </Box>
+          {[
+            ['Role', selected.role], ['Adverts', selected.advertCount],
+            ...(selected.lat != null ? [['Lat', selected.lat.toFixed(5)], ['Lon', selected.lon?.toFixed(5)]] : []),
+            ['Last Seen', new Date(selected.lastSeen).toLocaleString()],
+            ...(selected.batteryMv ? [['Battery', `${selected.batteryMv} mV`]] : []),
+          ].map(([l, v]) => (
+            <Box key={l} sx={{ display: 'flex', gap: 1, mb: 0.5 }}>
+              <Typography variant="caption" sx={{ color: md3.outline, width: 70, flexShrink: 0 }}>{l}</Typography>
+              <Typography variant="caption" sx={{ color: md3.onSurface }}>{v}</Typography>
+            </Box>
+          ))}
+          <Button size="small" variant="contained" sx={{ mt: 1 }} onClick={() => {
+            const map = mapInstance.current
+            if (map && selected.lat && selected.lon) map.flyTo([selected.lat, selected.lon], 12, { duration: 1 })
+          }}>Center map</Button>
+        </Paper>
+      )}
+    </Box>
+  )
+}

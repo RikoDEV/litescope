@@ -1,0 +1,18 @@
+{
+  "port": 3000,
+  "dbPath": "/app/data/litescope.db",
+  "mqttSources": [
+    {
+      "name": "local",
+      "broker": "mqtt://mosquitto:1883",
+      "username": "litescope",
+      "password": "change_me_please",
+      "topics": ["meshcore/#"],
+      "region": ""
+    }
+  ],
+  "channelKeys": {
+    "Public": "8b3387e9c5cdea6ac9e5edbaa115cd72"
+  },
+  "hashChannels": []
+}
