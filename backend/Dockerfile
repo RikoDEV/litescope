@@ -1,7 +1,8 @@
 FROM golang:1.22-alpine AS builder
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download -x
+COPY go.mod ./
+# go.sum may not exist yet in a fresh clone — tidy generates it
+RUN go mod tidy
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/ingestor ./cmd/ingestor
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/server  ./cmd/server
