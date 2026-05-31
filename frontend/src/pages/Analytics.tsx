@@ -205,12 +205,14 @@ function RFTab() {
   const [rf, setRF] = useState<{ rssi: number[]; snr: number[]; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number }; totalObservations: number } | null>(null)
   useEffect(() => { api.analyticsRF().then(setRF) }, [])
   if (!rf) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
-  if (rf.totalObservations === 0) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noRf')}</Typography>
+  const snr  = rf.snr  ?? []
+  const rssi = rf.rssi ?? []
+  if (rf.totalObservations === 0 || (snr.length === 0 && rssi.length === 0)) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noRf')}</Typography>
 
-  const snrB  = bucketize(rf.snr,  -25, 15, 16)
-  const rssiB = bucketize(rf.rssi, -125, -30, 19)
-  const step  = Math.max(1, Math.floor(rf.snr.length / 400))
-  const scatter = rf.snr.filter((_, i) => i % step === 0).map((snr, i) => ({ snr, rssi: rf.rssi[i * step] ?? 0 }))
+  const snrB  = bucketize(snr,  -25, 15, 16)
+  const rssiB = bucketize(rssi, -125, -30, 19)
+  const step  = Math.max(1, Math.floor(snr.length / 400))
+  const scatter = snr.filter((_, i) => i % step === 0).map((s, i) => ({ snr: s, rssi: rssi[i * step] ?? 0 }))
 
   return (
     <Box>

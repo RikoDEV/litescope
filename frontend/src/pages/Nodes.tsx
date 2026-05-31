@@ -261,12 +261,12 @@ export default function Nodes() {
             ))}
 
             {/* RF Charts */}
-            {rf && rf.rssi.length > 0 && (
+            {rf && (rf.rssi ?? []).length > 0 && (
               <>
                 <Divider sx={{ my: 1.5 }} />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                   <SignalCellularAltIcon sx={{ fontSize: 14, color: md3.primary }} />
-                  <Typography variant="overline" sx={{ color: md3.onSurfaceVariant }}>RF ({rf.rssi.length} {t('packets.obs').toLowerCase()})</Typography>
+                  <Typography variant="overline" sx={{ color: md3.onSurfaceVariant }}>RF ({(rf.rssi ?? []).length} {t('packets.obs').toLowerCase()})</Typography>
                 </Box>
                 <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 0.5 }}>{t('analytics.rssiDistribution')}</Typography>
                 <ResponsiveContainer width="100%" height={90}>
@@ -294,7 +294,7 @@ export default function Nodes() {
                 </ResponsiveContainer>
               </>
             )}
-            {rf && rf.rssi.length === 0 && (
+            {rf && (rf.rssi ?? []).length === 0 && (
               <Typography variant="caption" sx={{ color: md3.outline, display: 'block', mt: 2 }}>{t('nodes.noRf')}</Typography>
             )}
           </Box>
