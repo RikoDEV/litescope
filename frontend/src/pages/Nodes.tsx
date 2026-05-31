@@ -273,12 +273,12 @@ export default function Nodes() {
               {[
                 { l: t('common.lastSeen'), v: formatDistanceToNow(new Date(selected.lastSeen), { addSuffix: true }) },
                 { l: t('common.firstSeen'), v: formatDistanceToNow(new Date(selected.firstSeen), { addSuffix: true }) },
-                { l: 'Adverts', v: String(selected.advertCount) },
-                { l: 'Total pkts', v: overview ? String(overview.totalPackets) : '…' },
-                { l: 'Pkts today', v: overview ? String(overview.packetsToday) : '…' },
-                { l: 'Avg hops', v: overview ? overview.avgHops.toFixed(1) : '…' },
-                ...(overview?.avgSnr != null ? [{ l: 'Avg SNR', v: `${overview.avgSnr.toFixed(1)} dB` }] : []),
-                ...(selected.lat != null ? [{ l: 'Location', v: `${selected.lat.toFixed(4)}, ${selected.lon?.toFixed(4)}` }] : []),
+                { l: t('common.adverts'), v: String(selected.advertCount) },
+                { l: t('nodes.totalPkts'), v: overview ? String(overview.totalPackets) : '…' },
+                { l: t('nodes.pktsToday'), v: overview ? String(overview.packetsToday) : '…' },
+                { l: t('nodes.avgHops'), v: overview ? overview.avgHops.toFixed(1) : '…' },
+                ...(overview?.avgSnr != null ? [{ l: t('nodes.avgSnr'), v: `${overview.avgSnr.toFixed(1)} dB` }] : []),
+                ...(selected.lat != null ? [{ l: t('common.location'), v: `${selected.lat.toFixed(4)}, ${selected.lon?.toFixed(4)}` }] : []),
               ].map(({ l, v }) => (
                 <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75 }}>
                   <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
@@ -291,7 +291,7 @@ export default function Nodes() {
             {overview && overview.recentPackets.length > 0 && (
               <Box sx={{ mb: 2 }}>
                 <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
-                  Recent packets ({overview.recentPackets.length})
+                  {t('nodes.recentPackets', { count: overview.recentPackets.length })}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   {overview.recentPackets.map(p => (
@@ -322,7 +322,7 @@ export default function Nodes() {
                         )}
                       </Box>
                       <Typography variant="caption" sx={{ color: md3.primary, fontSize: 10, flexShrink: 0, fontWeight: 600 }}>
-                        Analyze →
+                        {t('nodes.analyze')}
                       </Typography>
                     </Box>
                   ))}
@@ -334,7 +334,7 @@ export default function Nodes() {
             {overview && overview.heardBy.length > 0 && (
               <Box sx={{ mb: 2 }}>
                 <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
-                  Heard by ({overview.heardBy.length} observers)
+                  {t('nodes.heardBy', { count: overview.heardBy.length })}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   {overview.heardBy.map(o => (

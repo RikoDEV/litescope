@@ -277,7 +277,7 @@ export default function Packets() {
             <TableHead>
               <TableRow>
                 {([
-                  { col: 'id' as SortCol, label: 'ID', width: 60 },
+                  { col: 'id' as SortCol, label: t('packets.id'), width: 60 },
                   { col: null, label: t('packets.hash'), width: '1fr' },
                   { col: 'payloadType' as SortCol, label: t('common.type'), width: 130 },
                   { col: 'routeType' as SortCol, label: t('common.route'), width: 100 },
@@ -452,8 +452,8 @@ function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onCl
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 2 }}>
           {[
             { l: t('common.firstSeen'), v: relativeTime(selected.firstSeen) },
-            { l: 'Propagation', v: propagationMs > 0 ? `${(propagationMs / 1000).toFixed(1)}s` : '—' },
-            { l: 'Max hops', v: longestObs.hops.length > 0 ? `${longestObs.hops.length}` : '—' },
+            { l: t('packets.propagation'), v: propagationMs > 0 ? `${(propagationMs / 1000).toFixed(1)}s` : '—' },
+            { l: t('packets.maxHops'), v: longestObs.hops.length > 0 ? `${longestObs.hops.length}` : '—' },
           ].map(({ l, v }) => (
             <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75, textAlign: 'center' }}>
               <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
@@ -465,7 +465,7 @@ function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onCl
         {/* Longest path */}
         {longestObs.hops.length > 0 && (
           <Box sx={{ mb: 2 }}>
-            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>Longest path — {longestObs.hops.length} hops</Typography>
+            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.longestPath', { count: longestObs.hops.length })}</Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
               {longestObs.hops.map((hop, i) => (
                 <Chip key={i} label={hop.toUpperCase()} size="small"
@@ -502,7 +502,7 @@ function PacketDetailPanel({ selected, onClose }: { selected: PacketDetail; onCl
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {['Observer', 'Hops', 'SNR', 'RSSI', 'Time'].map(h => (
+                    {[t('packets.observer'), t('packets.hops'), 'SNR', 'RSSI', t('common.lastSeen')].map(h => (
                       <TableCell key={h} sx={{ fontSize: 10, py: 0.5, color: md3.outline, background: md3.surfaceContainerHighest }}>{h}</TableCell>
                     ))}
                   </TableRow>

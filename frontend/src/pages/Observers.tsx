@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Collapse from '@mui/material/Collapse'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -12,14 +15,19 @@ import TableCell from '@mui/material/TableCell'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import IconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
 import Divider from '@mui/material/Divider'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import CheckIcon from '@mui/icons-material/Check'
+import WifiIcon from '@mui/icons-material/Wifi'
 import { api } from '../services/api'
 import type { Observer } from '../types'
 import { formatDistanceToNow } from 'date-fns'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie } from 'recharts'
 
 const DAYS_OPTIONS = [{ l: '24 h', d: 1 }, { l: '3 d', d: 3 }, { l: '7 d', d: 7 }, { l: '30 d', d: 30 }]
 const COLORS = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6']
@@ -80,6 +88,7 @@ export default function Observers() {
             <Box component="span" sx={{ color: '#22c55e' }}>{observers.filter(isActive).length}</Box> {t('common.active').toLowerCase()}
           </Typography>
         </Box>
+        <ObserverSetupCard />
         <Box sx={{ flex: 1, overflow: 'auto' }}>
           <Table size="small" stickyHeader>
             <TableHead>
@@ -165,7 +174,7 @@ export default function Observers() {
                         <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
                         <XAxis dataKey="displayLabel" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} interval={0} />
                         <YAxis tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
-                        <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
                         <Bar dataKey="count" fill={md3.primary} radius={[2, 2, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -180,7 +189,7 @@ export default function Observers() {
                         <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                         <YAxis hide />
-                        <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
                         <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                           {snrBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
                         </Bar>
@@ -198,7 +207,7 @@ export default function Observers() {
                           label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
                           {typePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </>
@@ -209,6 +218,109 @@ export default function Observers() {
         </Paper>
       )}
     </Box>
+  )
+}
+
+// ── ObserverSetupCard ──────────────────────────────────────────────────────────
+const MQTT_HOST     = (import.meta.env.VITE_MQTT_HOST     as string | undefined) || window.location.hostname
+const MQTT_USERNAME = (import.meta.env.VITE_MQTT_USERNAME as string | undefined) || ''
+const MQTT_PASSWORD = (import.meta.env.VITE_MQTT_PASSWORD as string | undefined) || ''
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 1800)
+    })
+  }
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+      <Typography variant="caption" sx={{ color: md3.outline, width: 80, flexShrink: 0 }}>{label}</Typography>
+      <Box sx={{
+        flex: 1, display: 'flex', alignItems: 'center', gap: 0.75,
+        px: 1.25, py: 0.4, borderRadius: 1.5,
+        background: alpha(md3.surfaceContainerHighest, 0.8),
+        border: `1px solid ${alpha(md3.outlineVariant, 0.5)}`,
+        fontFamily: 'monospace', fontSize: 12, color: md3.onSurface, minWidth: 0,
+      }}>
+        <Box sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</Box>
+        <Tooltip title={copied ? 'Copied!' : 'Copy'}>
+          <IconButton size="small" onClick={copy} sx={{ p: 0.25, color: copied ? '#22c55e' : md3.outline, flexShrink: 0 }}>
+            {copied ? <CheckIcon sx={{ fontSize: 13 }} /> : <ContentCopyIcon sx={{ fontSize: 13 }} />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  )
+}
+
+function ObserverSetupCard() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const [open, setOpen] = useState(false)
+
+  const steps = [
+    'Connect your MeshCore device to a host machine via USB, BLE, or TCP.',
+    'Install the observer integration script on the host (meshcore-packet-capture or meshcore-ha).',
+    'Configure the script with the MQTT connection details shown on the right.',
+    'Run the script — it will read packets from the device and forward them to this liteScope instance.',
+  ]
+
+  return (
+    <Card sx={{ borderRadius: 0, borderBottom: `1px solid ${md3.outlineVariant}`, flexShrink: 0 }} elevation={0}>
+      <Box
+        onClick={() => setOpen(v => !v)}
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1.5,
+          px: 2, py: 1.25, cursor: 'pointer',
+          background: md3.surfaceContainerLow,
+          '&:hover': { background: alpha(md3.primary, 0.04) },
+        }}
+      >
+        <WifiIcon sx={{ fontSize: 16, color: md3.primary, flexShrink: 0 }} />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>Connect an Observer</Typography>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
+            How to forward MeshCore packets to this liteScope instance
+          </Typography>
+        </Box>
+        <ExpandMoreIcon sx={{
+          color: md3.outline, fontSize: 18, flexShrink: 0,
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.2s',
+        }} />
+      </Box>
+
+      <Collapse in={open}>
+        <CardContent sx={{ background: md3.surfaceContainerLowest, pt: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+            <Box>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>Setup Steps</Typography>
+              {steps.map((s, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1.25, mb: 1.25 }}>
+                  <Box sx={{
+                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0, mt: 0.15,
+                    background: alpha(md3.primary, 0.15),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Typography sx={{ fontSize: 10, fontWeight: 700, color: md3.primary, lineHeight: 1 }}>{i + 1}</Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: md3.onSurface, lineHeight: 1.5 }}>{s}</Typography>
+                </Box>
+              ))}
+            </Box>
+            <Box>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>MQTT Connection Details</Typography>
+              <CopyField label="Server"   value={MQTT_HOST} />
+              <CopyField label="Port"     value="1883" />
+              <CopyField label="Username" value={MQTT_USERNAME || 'litescope'} />
+              <CopyField label="Password" value={MQTT_PASSWORD || '—'} />
+              <CopyField label="Topic"    value="meshcore/#" />
+            </Box>
+          </Box>
+        </CardContent>
+      </Collapse>
+    </Card>
   )
 }
 

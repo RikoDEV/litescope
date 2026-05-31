@@ -20,6 +20,7 @@ import PauseIcon from '@mui/icons-material/Pause'
 import FastForwardIcon from '@mui/icons-material/FastForward'
 import CloseIcon from '@mui/icons-material/Close'
 import MapIcon from '@mui/icons-material/Map'
+import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
@@ -38,15 +39,6 @@ type VcrMode = 'LIVE' | 'PAUSED' | 'REPLAY'
 const SPEEDS = [0.25, 0.5, 1, 2, 4, 8]
 const ACTIVE_MS = 24 * 3600e3
 
-const LH_OPTIONS = [
-  { value: '', label: 'All time' },
-  { value: '1h',  label: '1 hour' },
-  { value: '6h',  label: '6 hours' },
-  { value: '24h', label: '24 hours' },
-  { value: '7d',  label: '7 days' },
-  { value: '30d', label: '30 days' },
-]
-
 const LH_MS: Record<string, number> = {
   '1h': 3600e3, '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*24*3600e3, '30d': 30*24*3600e3,
 }
@@ -58,12 +50,7 @@ const roleShapes: Record<string, (color: string, op: number) => string> = {
   sensor:    (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,18 1,18" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
 }
 
-const ROLE_INFO: { role: 'repeater'|'companion'|'room'|'sensor'; label: string; shape: string }[] = [
-  { role: 'repeater',  label: 'Repeaters',    shape: '◆' },
-  { role: 'companion', label: 'Companions',   shape: '●' },
-  { role: 'room',      label: 'Room Servers', shape: '■' },
-  { role: 'sensor',    label: 'Sensors',      shape: '▲' },
-]
+const ROLE_SHAPES: Record<string, string> = { repeater: '◆', companion: '●', room: '■', sensor: '▲' }
 
 const TYPE_COLORS: Record<number, string> = { 4: '#22c55e', 5: '#3b82f6', 2: '#f59e0b', 3: '#6b7280', 9: '#ec4899', 8: '#14b8a6' }
 const TYPE_ICONS:  Record<number, string> = { 4: '📡', 5: '💬', 2: '✉️', 3: '✓', 9: '🔍', 8: '🛤️' }
@@ -71,6 +58,23 @@ const TYPE_ICONS:  Record<number, string> = { 4: '📡', 5: '💬', 2: '✉️',
 export default function MapView() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const navigate = useNavigate()
+  const { t } = useTranslation()
+
+  const LH_OPTIONS = [
+    { value: '',    label: t('common.anyTime') },
+    { value: '1h',  label: '1h' },
+    { value: '6h',  label: '6h' },
+    { value: '24h', label: '24h' },
+    { value: '7d',  label: '7d' },
+    { value: '30d', label: '30d' },
+  ]
+
+  const ROLE_INFO: { role: 'repeater'|'companion'|'room'|'sensor'; label: string; shape: string }[] = [
+    { role: 'repeater',  label: t('map.repeaters'),   shape: ROLE_SHAPES.repeater },
+    { role: 'companion', label: t('map.companions'),  shape: ROLE_SHAPES.companion },
+    { role: 'room',      label: t('map.roomServers'), shape: ROLE_SHAPES.room },
+    { role: 'sensor',    label: t('map.sensors'),     shape: ROLE_SHAPES.sensor },
+  ]
 
   const mapDiv         = useRef<HTMLDivElement>(null)
   const mapInstance    = useRef<L.Map | null>(null)
@@ -401,7 +405,7 @@ export default function MapView() {
         }}>
           <MapIcon sx={{ fontSize: 15, color: md3.primary }} />
           <Typography variant="caption" sx={{ fontWeight: 700, color: md3.onSurface, flex: 1, fontSize: 12 }}>
-            Map Controls
+            {t('map.controls')}
           </Typography>
           <IconButton size="small" onClick={() => setCtrlOpen(v => !v)} sx={{ color: md3.onSurfaceVariant, p: 0.25 }}>
             <CloseIcon sx={{ fontSize: 13 }} />
@@ -413,7 +417,7 @@ export default function MapView() {
 
             {/* Node Types */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Node Types</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('map.nodeTypes')}</Typography>
               {ROLE_INFO.map(({ role, label, shape }) => {
                 const color  = roleColor(role)
                 const counts = typeCounts[role] ?? { active: 0, stale: 0 }
@@ -441,7 +445,7 @@ export default function MapView() {
 
             {/* Byte Size */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Byte Size</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('map.byteSize')}</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 {(['all', '1', '2', '3'] as const).map(v => (
                   <Chip
@@ -465,7 +469,7 @@ export default function MapView() {
 
             {/* Display */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Display</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('map.display')}</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Checkbox
                   size="small"
@@ -473,7 +477,7 @@ export default function MapView() {
                   onChange={e => setShowLabels(e.target.checked)}
                   sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
                 />
-                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>Hash prefix labels</Typography>
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>{t('map.hashPrefixLabels')}</Typography>
               </Box>
             </Box>
 
@@ -528,10 +532,10 @@ export default function MapView() {
 
             {/* Quick Jump */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Quick Jump</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('map.quickJump')}</Typography>
               <TextField
                 size="small"
-                placeholder="Node name or pubkey…"
+                placeholder={t('map.nodeNamePlaceholder')}
                 value={quickJump}
                 onChange={e => setQuickJump(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && doQuickJump()}
@@ -544,13 +548,13 @@ export default function MapView() {
                 onClick={doQuickJump}
                 sx={{ mt: 0.75, fontSize: 11 }}
               >
-                Jump →
+                {t('map.jump')}
               </Button>
             </Box>
 
             {/* Visible count */}
             <Typography variant="caption" sx={{ color: md3.outline, fontSize: 9, textAlign: 'center', pb: 0.5 }}>
-              {totalVisible} nodes visible on map
+              {t('map.nodesVisible', { count: totalVisible })}
             </Typography>
           </Box>
         )}
@@ -558,7 +562,7 @@ export default function MapView() {
 
       {/* Collapsed toggle */}
       {!ctrlOpen && (
-        <Tooltip title="Map Controls">
+        <Tooltip title={t('map.controls')}>
           <IconButton
             size="small"
             onClick={() => setCtrlOpen(true)}
@@ -573,10 +577,10 @@ export default function MapView() {
       {showFeed && (
         <Paper elevation={4} sx={{ position: 'absolute', bottom: 64, left: 8, zIndex: 1000, p: 1.5, borderRadius: 3, minWidth: 260, maxHeight: 240, overflow: 'auto', background: panelBg }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75 }}>
-            <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>Live Feed</Typography>
+            <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>{t('map.liveFeed')}</Typography>
             <IconButton size="small" onClick={() => setShowFeed(false)} sx={{ color: md3.outline, p: 0.25 }}><CloseIcon sx={{ fontSize: 14 }} /></IconButton>
           </Box>
-          {liveFeed.length === 0 && <Typography variant="caption" sx={{ color: md3.outline }}>Waiting…</Typography>}
+          {liveFeed.length === 0 && <Typography variant="caption" sx={{ color: md3.outline }}>{t('map.waiting')}</Typography>}
           {liveFeed.map(pkt => {
             const dec = pkt.decoded; const color = TYPE_COLORS[pkt.payloadType] ?? md3.outline; const icon = TYPE_ICONS[pkt.payloadType] ?? '·'
             const name = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
