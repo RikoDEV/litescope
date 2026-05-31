@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -21,7 +22,8 @@ import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
 import { api } from '../services/api'
-import type { Node, RFStats } from '../types'
+import type { Node, NodeOverview, RFStats } from '../types'
+import { PAYLOAD_NAMES } from '../types'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -51,11 +53,15 @@ export default function Nodes() {
     room: t('nodes.rooms'), sensor: t('nodes.sensors'),
   }
 
-  const [allNodes, setAllNodes] = useState<Node[]>([])
-  const [counts, setCounts]     = useState<Record<string, number>>({})
-  const [iatas, setIATAs]       = useState<string[]>([])
-  const [selected, setSelected] = useState<Node | null>(null)
-  const [rf, setRF]             = useState<RFStats | null>(null)
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const [allNodes, setAllNodes]   = useState<Node[]>([])
+  const [counts, setCounts]       = useState<Record<string, number>>({})
+  const [iatas, setIATAs]         = useState<string[]>([])
+  const [selected, setSelected]   = useState<Node | null>(null)
+  const [overview, setOverview]   = useState<NodeOverview | null>(null)
+  const [rf, setRF]               = useState<RFStats | null>(null)
 
   const [search, setSearch]     = useState('')
   const [roleTab, setRoleTab]   = useState('all')
@@ -86,10 +92,20 @@ export default function Nodes() {
     })
   }, [allNodes, roleTab, search, sortCol, sortDir])
 
+  // Auto-select from URL param
+  useEffect(() => {
+    const pk = searchParams.get('pubkey')
+    if (!pk || !allNodes.length) return
+    const n = allNodes.find(x => x.pubKey === pk)
+    if (n) { selectNode(n); setSearchParams({}, { replace: true }) }
+  }, [allNodes]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectNode = async (n: Node) => {
-    if (selected?.pubKey === n.pubKey) { setSelected(null); setRF(null); return }
-    setSelected(n); setRF(null)
-    setRF(await api.nodeRF(n.pubKey))
+    if (selected?.pubKey === n.pubKey) { setSelected(null); setOverview(null); setRF(null); return }
+    setSelected(n); setOverview(null); setRF(null)
+    const [ov, rfData] = await Promise.all([api.nodeOverview(n.pubKey), api.nodeRF(n.pubKey)])
+    setOverview(ov)
+    setRF(rfData)
   }
 
   const toggleSort = (col: SortCol) => {
@@ -224,41 +240,127 @@ export default function Nodes() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <Paper elevation={2} sx={{ width: 400, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }}>
+        <Paper elevation={2} sx={{ width: 460, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }}>
+          {/* Header */}
           <Box sx={{ p: 2, borderBottom: `1px solid ${md3.outlineVariant}` }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: roleColor(selected.role) }}>{selected.name || t('nodes.unnamed')}</Typography>
-                <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', wordBreak: 'break-all' }}>{selected.pubKey.slice(0, 32)}…</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: roleColor(selected.role), lineHeight: 1.2 }}>{selected.name || t('nodes.unnamed')}</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
+                  {isActive(selected)
+                    ? <Typography variant="caption" sx={{ color: '#22c55e', fontWeight: 600 }}>🟢 {t('common.active')}</Typography>
+                    : <Typography variant="caption" sx={{ color: md3.outline, fontWeight: 600 }}>⚪ {t('common.stale')}</Typography>}
+                  <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
+                    — {t('common.lastSeen')} {formatDistanceToNow(new Date(selected.lastSeen), { addSuffix: true })}
+                  </Typography>
+                </Box>
+                <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', wordBreak: 'break-all', fontSize: 9, display: 'block', mt: 0.5 }}>{selected.pubKey}</Typography>
               </Box>
-              <IconButton size="small" onClick={() => { setSelected(null); setRF(null) }} sx={{ alignSelf: 'flex-start', color: md3.onSurfaceVariant }}>
+              <IconButton size="small" onClick={() => { setSelected(null); setOverview(null); setRF(null) }} sx={{ alignSelf: 'flex-start', color: md3.onSurfaceVariant, ml: 1 }}>
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Box>
-
-            {/* Badges */}
-            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
               <Chip label={selected.role} size="small" sx={{ background: alpha(roleColor(selected.role), 0.2), color: roleColor(selected.role) }} />
-              {isActive(selected)
-                ? <Chip label={`🟢 ${t('common.active')}`} size="small" sx={{ background: alpha('#22c55e', 0.15), color: '#22c55e' }} />
-                : <Chip label={`⚪ ${t('common.stale')}`} size="small" sx={{ background: alpha(md3.outline, 0.1), color: md3.outline }} />}
               {selected.batteryMv && <Chip label={`🔋 ${selected.batteryMv} mV`} size="small" sx={{ background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
               {selected.temperatureC && <Chip label={`🌡 ${selected.temperatureC.toFixed(1)}°C`} size="small" sx={{ background: alpha(md3.secondary, 0.15), color: md3.secondary }} />}
             </Box>
           </Box>
 
           <Box sx={{ p: 2 }}>
-            {[
-              [t('common.lastSeen'), new Date(selected.lastSeen).toLocaleString()],
-              [t('common.firstSeen'), new Date(selected.firstSeen).toLocaleString()],
-              [t('common.adverts'), selected.advertCount],
-              ...(selected.lat != null ? [['Lat', selected.lat.toFixed(6)], ['Lon', selected.lon?.toFixed(6) ?? '—']] : []),
-            ].map(([label, value]) => (
-              <Box key={label} sx={{ display: 'flex', gap: 1, mb: 0.75 }}>
-                <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, width: 80, flexShrink: 0 }}>{label}</Typography>
-                <Typography variant="caption" sx={{ color: md3.onSurface }}>{value}</Typography>
+            {/* Stats grid */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 2 }}>
+              {[
+                { l: t('common.lastSeen'), v: formatDistanceToNow(new Date(selected.lastSeen), { addSuffix: true }) },
+                { l: t('common.firstSeen'), v: formatDistanceToNow(new Date(selected.firstSeen), { addSuffix: true }) },
+                { l: 'Adverts', v: String(selected.advertCount) },
+                { l: 'Total pkts', v: overview ? String(overview.totalPackets) : '…' },
+                { l: 'Pkts today', v: overview ? String(overview.packetsToday) : '…' },
+                { l: 'Avg hops', v: overview ? overview.avgHops.toFixed(1) : '…' },
+                ...(overview?.avgSnr != null ? [{ l: 'Avg SNR', v: `${overview.avgSnr.toFixed(1)} dB` }] : []),
+                ...(selected.lat != null ? [{ l: 'Location', v: `${selected.lat.toFixed(4)}, ${selected.lon?.toFixed(4)}` }] : []),
+              ].map(({ l, v }) => (
+                <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75 }}>
+                  <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12 }}>{v}</Typography>
+                </Box>
+              ))}
+            </Box>
+
+            {/* Recent packets */}
+            {overview && overview.recentPackets.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
+                  Recent packets ({overview.recentPackets.length})
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {overview.recentPackets.map(p => (
+                    <Box key={p.id} onClick={() => navigate(`/packets?hash=${p.hash}`)} sx={{
+                      display: 'flex', alignItems: 'center', gap: 1,
+                      background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75,
+                      cursor: 'pointer',
+                      '&:hover': { background: alpha(md3.primary, 0.08) },
+                    }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
+                          <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, flexShrink: 0 }}>
+                            {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true })}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: md3.primary, fontWeight: 600, fontSize: 11 }}>
+                            📡 {PAYLOAD_NAMES[p.payloadType] ?? p.payloadType}
+                          </Typography>
+                          {p.obsCount > 0 && (
+                            <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>👁 {p.obsCount}</Typography>
+                          )}
+                        </Box>
+                        {p.bestObserver && (
+                          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10 }}>
+                            via {p.bestObserver}
+                            {p.bestSnr != null && ` · SNR ${p.bestSnr.toFixed(1)}dB`}
+                            {p.bestRssi != null && ` · RSSI ${p.bestRssi.toFixed(0)}dBm`}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Typography variant="caption" sx={{ color: md3.primary, fontSize: 10, flexShrink: 0, fontWeight: 600 }}>
+                        Analyze →
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
               </Box>
-            ))}
+            )}
+
+            {/* Heard by */}
+            {overview && overview.heardBy.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
+                  Heard by ({overview.heardBy.length} observers)
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {overview.heardBy.map(o => (
+                    <Box key={o.observerId} onClick={() => navigate(`/observers?id=${o.observerId}`)} sx={{
+                      display: 'flex', alignItems: 'center', gap: 1,
+                      background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75,
+                      cursor: 'pointer',
+                      '&:hover': { background: alpha('#22c55e', 0.08) },
+                    }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 11, display: 'block' }}>
+                          {o.observerName || o.observerId.slice(0, 16)}
+                          {o.observerIata && <Box component="span" sx={{ ml: 0.5, color: md3.tertiary }}>{o.observerIata}</Box>}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
+                          {o.count} pkts
+                          {o.avgSnr != null && ` · SNR ${o.avgSnr.toFixed(1)}dB`}
+                          {o.avgRssi != null && ` · RSSI ${o.avgRssi.toFixed(0)}`}
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" sx={{ color: '#22c55e', fontSize: 10, flexShrink: 0 }}>→</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
 
             {/* RF Charts */}
             {rf && (rf.rssi ?? []).length > 0 && (

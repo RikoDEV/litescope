@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -33,6 +34,7 @@ interface Analytics {
 export default function Observers() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [observers, setObservers] = useState<Observer[]>([])
   const [selected, setSelected]   = useState<Observer | null>(null)
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
@@ -40,6 +42,14 @@ export default function Observers() {
   const [loadingA, setLoadingA]   = useState(false)
 
   useEffect(() => { api.observers().then(res => setObservers(res.observers ?? [])) }, [])
+
+  // Auto-select from URL param
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (!id || !observers.length) return
+    const o = observers.find(x => x.id === id)
+    if (o) { select(o); setSearchParams({}, { replace: true }) }
+  }, [observers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = async (o: Observer) => {
     if (selected?.id === o.id) { setSelected(null); setAnalytics(null); return }

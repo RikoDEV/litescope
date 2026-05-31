@@ -386,18 +386,19 @@ func (s *Store) NodeByPubKey(pk string) *Node {
 	return s.nodes[pk]
 }
 
-// NodePackets returns recent packets for a node (newest first, max limit).
+// NodePackets returns recent packets for a node (newest first). limit=0 returns all.
 func (s *Store) NodePackets(pk string, limit int) []*Tx {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	list := s.byNode[pk]
 	if len(list) == 0 {
-		// Fall back: scan all packets for this pubkey in decoded_json
 		return nil
 	}
-	start := len(list) - 1
-	var out []*Tx
-	for i := start; i >= 0 && len(out) < limit; i-- {
+	out := make([]*Tx, 0, len(list))
+	for i := len(list) - 1; i >= 0; i-- {
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 		out = append(out, list[i])
 	}
 	return out

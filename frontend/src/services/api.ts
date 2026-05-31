@@ -29,6 +29,9 @@ export const api = {
   node: (pubKey: string) =>
     get<Node>(`/api/nodes/${encodeURIComponent(pubKey)}`),
 
+  nodeOverview: (pubKey: string) =>
+    get<import('../types').NodeOverview>(`/api/nodes/${encodeURIComponent(pubKey)}/overview`),
+
   nodePackets: (pubKey: string, limit = 50) =>
     get<Packet[]>(`/api/nodes/${encodeURIComponent(pubKey)}/packets?limit=${limit}`),
 

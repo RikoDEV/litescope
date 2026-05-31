@@ -316,9 +316,10 @@ export default function Home() {
                 const icon  = TYPE_ICON[p.payloadType] ?? '·'
                 const label = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
                 return (
-                  <Box key={p.id} sx={{
-                    display: 'flex', alignItems: 'center', gap: 1.25, py: 0.65,
+                  <Box key={p.id} onClick={() => navigate(`/packets?hash=${p.hash}`)} sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.25, py: 0.65, cursor: 'pointer',
                     borderBottom: i < recent.length - 1 ? `1px solid ${alpha(md3.outlineVariant, 0.4)}` : 'none',
+                    '&:hover': { background: alpha(md3.primary, 0.04), mx: -2, px: 2, borderRadius: 1 },
                   }}>
                     <Box sx={{
                       width: 28, height: 28, borderRadius: 2, flexShrink: 0,
@@ -369,9 +370,10 @@ export default function Home() {
                 const color  = roleColor(n.role, md3.primary)
                 const active = isActive(n)
                 return (
-                  <Box key={n.pubKey} sx={{
-                    display: 'flex', alignItems: 'center', gap: 1.25, py: 0.5,
+                  <Box key={n.pubKey} onClick={() => navigate(`/nodes?pubkey=${n.pubKey}`)} sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.25, py: 0.5, cursor: 'pointer',
                     borderBottom: i < topNodes.length - 1 ? `1px solid ${alpha(md3.outlineVariant, 0.4)}` : 'none',
+                    '&:hover': { background: alpha(md3.primary, 0.04), mx: -2, px: 2, borderRadius: 1 },
                   }}>
                     {/* Rank + role shape */}
                     <Box sx={{

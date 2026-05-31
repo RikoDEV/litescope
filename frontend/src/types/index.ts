@@ -87,6 +87,31 @@ export interface RFStats {
   snr: number[]
 }
 
+export interface ObserverStat {
+  observerId: string
+  observerName: string
+  observerIata: string
+  count: number
+  avgSnr?: number
+  avgRssi?: number
+}
+
+export interface RichPacket extends Packet {
+  bestObserver: string
+  bestIata?: string
+  bestSnr?: number
+  bestRssi?: number
+}
+
+export interface NodeOverview extends Node {
+  packetsToday: number
+  totalPackets: number
+  avgHops: number
+  avgSnr?: number
+  heardBy: ObserverStat[]
+  recentPackets: RichPacket[]
+}
+
 export interface WSMessage {
   type: 'packet'
   data: Packet

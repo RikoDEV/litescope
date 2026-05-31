@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/litescope/backend/internal/decoder"
@@ -43,6 +45,7 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/nodes/{pubkey}", s.getNode).Methods("GET", "OPTIONS")
 	api.HandleFunc("/nodes/{pubkey}/packets", s.getNodePackets).Methods("GET", "OPTIONS")
 	api.HandleFunc("/nodes/{pubkey}/rf", s.getNodeRF).Methods("GET", "OPTIONS")
+	api.HandleFunc("/nodes/{pubkey}/overview", s.getNodeOverview).Methods("GET", "OPTIONS")
 	api.HandleFunc("/iatas", s.listIATAs).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers", s.listObservers).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}", s.getObserver).Methods("GET", "OPTIONS")
@@ -163,6 +166,122 @@ func (s *Server) getNodePackets(w http.ResponseWriter, r *http.Request) {
 		out = append(out, summarizeTx(tx))
 	}
 	writeJSON(w, out)
+}
+
+func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
+	pk := mux.Vars(r)["pubkey"]
+	n := s.Store.NodeByPubKey(pk)
+	if n == nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	packets := s.Store.NodePackets(pk, 0)
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+
+	type obsStat struct {
+		ObserverID   string   `json:"observerId"`
+		ObserverName string   `json:"observerName"`
+		ObserverIATA string   `json:"observerIata"`
+		Count        int      `json:"count"`
+		AvgSnr       *float64 `json:"avgSnr,omitempty"`
+		AvgRssi      *float64 `json:"avgRssi,omitempty"`
+	}
+	type richPacket struct {
+		packetSummary
+		BestObserver string   `json:"bestObserver"`
+		BestIATA     string   `json:"bestIata,omitempty"`
+		BestSnr      *float64 `json:"bestSnr,omitempty"`
+		BestRssi     *float64 `json:"bestRssi,omitempty"`
+	}
+
+	packetsToday := 0
+	totalHops, hopCount := 0, 0
+	snrSum, snrN := 0.0, 0
+
+	type obsAccum struct {
+		name, iata         string
+		count              int
+		snrSum, rssiSum    float64
+		snrN, rssiN        int
+	}
+	byObs := make(map[string]*obsAccum)
+
+	recentPkts := make([]richPacket, 0, 10)
+
+	for _, tx := range packets {
+		if t, err := time.Parse(time.RFC3339, tx.FirstSeen); err == nil && !t.UTC().Before(today) {
+			packetsToday++
+		}
+
+		rp := richPacket{packetSummary: summarizeTx(tx)}
+		for _, obs := range tx.Observations {
+			var hops []string
+			if json.Unmarshal([]byte(obs.PathJSON), &hops) == nil && len(hops) > 0 {
+				totalHops += len(hops); hopCount++
+			}
+			if obs.SNR != nil {
+				snrSum += *obs.SNR; snrN++
+			}
+			a := byObs[obs.ObserverID]
+			if a == nil {
+				a = &obsAccum{name: obs.ObserverName, iata: obs.ObserverIATA}
+				byObs[obs.ObserverID] = a
+			}
+			a.count++
+			if obs.SNR != nil { a.snrSum += *obs.SNR; a.snrN++ }
+			if obs.RSSI != nil { a.rssiSum += *obs.RSSI; a.rssiN++ }
+			// pick best SNR observation for this packet
+			if obs.SNR != nil && (rp.BestSnr == nil || *obs.SNR > *rp.BestSnr) {
+				rp.BestObserver = obs.ObserverName
+				rp.BestIATA = obs.ObserverIATA
+				rp.BestSnr = obs.SNR
+				rp.BestRssi = obs.RSSI
+			}
+		}
+		if rp.BestObserver == "" && len(tx.Observations) > 0 {
+			o := tx.Observations[0]
+			rp.BestObserver = o.ObserverName
+			rp.BestIATA = o.ObserverIATA
+			rp.BestSnr = o.SNR
+			rp.BestRssi = o.RSSI
+		}
+		if len(recentPkts) < 10 {
+			recentPkts = append(recentPkts, rp)
+		}
+	}
+
+	avgHops := 0.0
+	if hopCount > 0 { avgHops = float64(totalHops) / float64(hopCount) }
+	var avgSnr *float64
+	if snrN > 0 { v := snrSum / float64(snrN); avgSnr = &v }
+
+	heardBy := make([]obsStat, 0, len(byObs))
+	for id, a := range byObs {
+		stat := obsStat{ObserverID: id, ObserverName: a.name, ObserverIATA: a.iata, Count: a.count}
+		if a.snrN > 0 { v := a.snrSum / float64(a.snrN); stat.AvgSnr = &v }
+		if a.rssiN > 0 { v := a.rssiSum / float64(a.rssiN); stat.AvgRssi = &v }
+		heardBy = append(heardBy, stat)
+	}
+	sort.Slice(heardBy, func(i, j int) bool { return heardBy[i].Count > heardBy[j].Count })
+
+	writeJSON(w, struct {
+		nodeSummary
+		PacketsToday  int          `json:"packetsToday"`
+		TotalPackets  int          `json:"totalPackets"`
+		AvgHops       float64      `json:"avgHops"`
+		AvgSnr        *float64     `json:"avgSnr,omitempty"`
+		HeardBy       []obsStat    `json:"heardBy"`
+		RecentPackets []richPacket `json:"recentPackets"`
+	}{
+		nodeSummary:   summarizeNode(n),
+		PacketsToday:  packetsToday,
+		TotalPackets:  len(packets),
+		AvgHops:       avgHops,
+		AvgSnr:        avgSnr,
+		HeardBy:       heardBy,
+		RecentPackets: recentPkts,
+	})
 }
 
 func (s *Server) getNodeRF(w http.ResponseWriter, r *http.Request) {
