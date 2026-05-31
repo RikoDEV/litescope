@@ -45,6 +45,7 @@ services:
   frontend:
     image: ghcr.io/rikodev/litescope-frontend:latest
     container_name: litescope-frontend
+    env_file: .env
     restart: unless-stopped
     expose:
       - "80"

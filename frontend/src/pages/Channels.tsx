@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Popover from '@mui/material/Popover'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -88,21 +88,45 @@ export default function Channels() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { hash: urlHash } = useParams<{ hash?: string }>()
   const [channels, setChannels]     = useState<Channel[]>([])
   const [selected, setSelected]     = useState<Channel | null>(null)
   const [messages, setMessages]     = useState<Packet[]>([])
   const [showKeyMgr, setShowKeyMgr] = useState(false)
   const [decrypted, setDecrypted]   = useState<Record<number, { sender: string; text: string }>>({})
   const [storedKeys, setStoredKeys] = useState<StoredKey[]>(loadKeys)
+  const [nodes, setNodes]           = useState<{ pubKey: string; name: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { api.channels().then(setChannels) }, [])
+  useEffect(() => {
+    api.nodes().then(res => setNodes((res.nodes ?? []).map(n => ({ pubKey: n.pubKey, name: n.name }))))
+  }, [])
 
-  const selectChannel = async (ch: Channel) => {
+  // Auto-select channel from URL path param
+  useEffect(() => {
+    if (!urlHash || !channels.length) return
+    const ch = channels.find(c => c.hash === urlHash)
+    if (ch && ch.hash !== selected?.hash) selectChannelData(ch)
+  }, [urlHash, channels]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectChannel = (ch: Channel) => {
+    navigate(`/channels/${ch.hash}`, { replace: false })
+  }
+
+  const selectChannelData = async (ch: Channel) => {
     setSelected(ch); setDecrypted({})
+    document.title = `${ch.name} — liteScope`
     const msgs = await api.channelMessages(ch.hash); setMessages(msgs)
     decryptBatch(msgs, storedKeys)
+  }
+
+  const clickSender = (senderName: string) => {
+    if (!senderName || senderName === 'Unknown') return
+    const q = senderName.toLowerCase()
+    const match = nodes.find(n => n.name.toLowerCase() === q || n.name.toLowerCase().includes(q))
+    if (match) navigate(`/nodes/${match.pubKey}`)
   }
 
   const decryptBatch = async (msgs: Packet[], keys: StoredKey[]) => {
@@ -185,13 +209,20 @@ export default function Channels() {
                 const text   = rawT.startsWith(sender + ': ') ? rawT.slice(sender.length + 2) : rawT
                 return (
                   <Box key={msg.id} sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', opacity: noKey ? 0.5 : 1 }}>
-                    <Avatar sx={{ width: 34, height: 34, background: hashColor(sender), fontSize: 14, fontWeight: 700 }}>
+                    <Avatar
+                      onClick={() => clickSender(sender)}
+                      sx={{ width: 34, height: 34, background: hashColor(sender), fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                    >
                       {sender[0]?.toUpperCase() ?? '?'}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       {/* Header: sender + time + encryption badge */}
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.25, flexWrap: 'wrap' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: hashColor(sender) }}>{sender}</Typography>
+                        <Typography
+                          variant="body2"
+                          onClick={() => clickSender(sender)}
+                          sx={{ fontWeight: 700, color: hashColor(sender), cursor: nodes.some(n => n.name.toLowerCase().includes(sender.toLowerCase())) ? 'pointer' : 'default', '&:hover': { textDecoration: 'underline' } }}
+                        >{sender}</Typography>
                         <Typography variant="caption" sx={{ color: md3.outline }}>
                           {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true })}
                         </Typography>

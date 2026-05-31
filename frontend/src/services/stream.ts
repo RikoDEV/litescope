@@ -1,9 +1,10 @@
 import type { WSMessage } from '../types'
+import { getEnv } from '../env'
 
 type Handler = (msg: WSMessage) => void
 
 const WS_URL = (() => {
-  const base = import.meta.env.VITE_API_URL ?? ''
+  const base = getEnv('VITE_API_URL')
   if (base.startsWith('http')) return base.replace(/^http/, 'ws') + '/ws'
   const loc = window.location
   return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`

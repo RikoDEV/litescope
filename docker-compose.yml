@@ -36,6 +36,16 @@ services:
     expose:
       - "3000"
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: litescope-frontend
+    env_file: .env
+    restart: unless-stopped
+    expose:
+      - "80"
+
   caddy:
     image: caddy:2-alpine
     container_name: litescope-caddy

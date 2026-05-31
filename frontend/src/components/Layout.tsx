@@ -55,6 +55,33 @@ export default function Layout() {
     return () => clearInterval(id)
   }, [])
 
+  // Dynamic page title
+  useEffect(() => {
+    const p = loc.pathname
+    const suffix = ' — liteScope'
+    const base   = 'liteScope — MeshCore Network Monitor'
+
+    const exact: Record<string, string> = {
+      '/':           base,
+      '/packets':    t('nav.packets') + suffix,
+      '/map':        t('nav.map')     + suffix,
+      '/live':       t('nav.live')    + suffix,
+      '/nodes':      t('nav.nodes')   + suffix,
+      '/channels':   t('nav.channels')  + suffix,
+      '/observers':  t('nav.observers') + suffix,
+      '/analytics':  t('nav.analytics') + suffix,
+      '/decode':     t('nav.decoder')   + suffix,
+    }
+
+    if (exact[p]) { document.title = exact[p]; return }
+
+    if (p.startsWith('/packets/'))  { document.title = p.split('/')[2]?.slice(0, 12) + suffix; return }
+    if (p.startsWith('/nodes/'))    { document.title = p.split('/')[2]?.slice(0, 16) + suffix; return }
+    if (p.startsWith('/channels/')) { document.title = '#' + p.split('/')[2] + suffix; return }
+
+    document.title = base
+  }, [loc.pathname, t])
+
   const statusColor =
     wsStatus === 'connected'  ? md3.tertiary :
     wsStatus === 'connecting' ? md3.tertiary + '88' :

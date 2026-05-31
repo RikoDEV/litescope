@@ -1,6 +1,7 @@
 import type { Channel, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats } from '../types'
+import { getEnv } from '../env'
 
-const BASE = import.meta.env.VITE_API_URL ?? ''
+const BASE = getEnv('VITE_API_URL')
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)

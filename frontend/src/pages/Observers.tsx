@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getEnv } from '../env'
 import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
@@ -222,9 +223,9 @@ export default function Observers() {
 }
 
 // ── ObserverSetupCard ──────────────────────────────────────────────────────────
-const MQTT_HOST     = (import.meta.env.VITE_MQTT_HOST     as string | undefined) || window.location.hostname
-const MQTT_USERNAME = (import.meta.env.VITE_MQTT_USERNAME as string | undefined) || ''
-const MQTT_PASSWORD = (import.meta.env.VITE_MQTT_PASSWORD as string | undefined) || ''
+const MQTT_HOST     = getEnv('VITE_MQTT_HOST')     || window.location.hostname
+const MQTT_USERNAME = getEnv('VITE_MQTT_USERNAME')
+const MQTT_PASSWORD = getEnv('VITE_MQTT_PASSWORD')
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const theme = useTheme(); const md3 = theme.palette.md3
