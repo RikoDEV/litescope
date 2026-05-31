@@ -646,15 +646,14 @@ function HashesTab() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                {['#', 'Node', 'PubKey', 'Multi-byte Pkts', 'Max Size'].map(h => <TableCell key={h}>{h}</TableCell>)}
+                {['#', 'Hop Identifier', 'Occurrences in Paths', 'Max Size'].map(h => <TableCell key={h}>{h}</TableCell>)}
               </TableRow>
             </TableHead>
             <TableBody>
               {data.multiByteAdopters.map((a, i) => (
                 <TableRow key={a.pubKey}>
                   <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{a.name || '—'}</TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace', fontSize: 10, color: md3.outline }}>{a.pubKey.slice(0, 20)}…</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: md3.onSurface }}>{a.pubKey.toUpperCase()}</TableCell>
                   <TableCell sx={{ color: '#f59e0b', fontWeight: 700 }}>{a.count.toLocaleString()}</TableCell>
                   <TableCell>
                     <Chip label={`${a.maxSize} B`} size="small" sx={{ fontSize: 10, height: 20, background: alpha('#ec4899', 0.15), color: '#ec4899' }} />

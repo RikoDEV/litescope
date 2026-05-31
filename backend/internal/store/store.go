@@ -857,7 +857,23 @@ type SNRTypeStat struct {
 	Count int     `json:"count"`
 }
 
-// HashStats computes byte-size distribution, role breakdown, time-series, and multi-byte adopter list.
+// isHexHop returns true when s is a non-empty, even-length pure-hex string —
+// i.e. a compact node identifier used in mesh routing paths (e.g. "BF57", "1536").
+func isHexHop(s string) bool {
+	if len(s) == 0 || len(s)%2 != 0 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// HashStats derives byte-size distribution from hex hop identifiers found in
+// observation paths (PathJSON).  "1-byte" means a 2-char hex hop like "AB",
+// "2-byte" means "ABCD", etc.  Full node names in paths are ignored.
 func (s *Store) HashStats() HashStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -865,82 +881,91 @@ func (s *Store) HashStats() HashStatsData {
 	sizeCount := make(map[int]int)
 	roleSize := make(map[string]map[int]int)
 
-	type adopterAcc struct {
-		name    string
-		count   int
-		maxSize int
-	}
-	adopters := make(map[string]*adopterAcc)
+	type adopterAcc struct{ count, maxSize int }
+	adopters := make(map[string]*adopterAcc) // hex hop → acc
 
 	const days = 14
 	now := time.Now().UTC()
 	start := now.AddDate(0, 0, -days).Truncate(24 * time.Hour)
-	type timeBins [4]int // [1-byte, 2-byte, 3-byte, 4+-byte]
+	type timeBins [4]int
 	overTimeMap := make(map[int64]timeBins)
 
-	for _, tx := range s.packets {
-		bs := len(tx.RawHex) / 2
-		if bs == 0 {
-			continue
-		}
-		sizeCount[bs]++
-
-		t := parseTimeToTime(tx.FirstSeen)
-		if !t.IsZero() && !t.Before(start) {
-			day := t.Truncate(24 * time.Hour).Unix()
-			arr := overTimeMap[day]
-			switch {
-			case bs == 1:
-				arr[0]++
-			case bs == 2:
-				arr[1]++
-			case bs == 3:
-				arr[2]++
-			default:
-				arr[3]++
-			}
-			overTimeMap[day] = arr
-		}
-
-		if tx.PayloadType == 4 {
-			dec := tx.Decoded()
-			if dec == nil {
+	for _, obsList := range s.byObserver {
+		for _, o := range obsList {
+			tx, ok := s.byTxID[o.TxID]
+			if !ok {
 				continue
 			}
-			pk, _ := dec["pubKey"].(string)
-			if pk == "" {
+			var hops []string
+			if json.Unmarshal([]byte(o.PathJSON), &hops) != nil || len(hops) == 0 {
 				continue
 			}
-			if n := s.nodes[pk]; n != nil {
-				if roleSize[n.Role] == nil {
-					roleSize[n.Role] = make(map[int]int)
+
+			t := parseTimeToTime(tx.FirstSeen)
+			inWindow := !t.IsZero() && !t.Before(start)
+
+			// Sender role for role breakdown (only meaningful for advert packets)
+			senderRole := ""
+			if tx.PayloadType == 4 {
+				if dec := tx.Decoded(); dec != nil {
+					if pk, _ := dec["pubKey"].(string); pk != "" {
+						if n := s.nodes[pk]; n != nil {
+							senderRole = n.Role
+						}
+					}
 				}
-				roleSize[n.Role][bs]++
 			}
-			if bs > 1 {
-				a := adopters[pk]
-				if a == nil {
-					a = &adopterAcc{}
-					adopters[pk] = a
+
+			for _, hop := range hops {
+				if !isHexHop(hop) {
+					continue
 				}
-				a.count++
-				if bs > a.maxSize {
-					a.maxSize = bs
+				bs := len(hop) / 2
+				sizeCount[bs]++
+
+				if senderRole != "" {
+					if roleSize[senderRole] == nil {
+						roleSize[senderRole] = make(map[int]int)
+					}
+					roleSize[senderRole][bs]++
 				}
-				if n := s.nodes[pk]; n != nil && a.name == "" {
-					a.name = n.Name
+
+				if inWindow {
+					day := t.Truncate(24 * time.Hour).Unix()
+					arr := overTimeMap[day]
+					switch {
+					case bs == 1:
+						arr[0]++
+					case bs == 2:
+						arr[1]++
+					case bs == 3:
+						arr[2]++
+					default:
+						arr[3]++
+					}
+					overTimeMap[day] = arr
+				}
+
+				if bs > 1 {
+					a := adopters[hop]
+					if a == nil {
+						a = &adopterAcc{}
+						adopters[hop] = a
+					}
+					a.count++
+					if bs > a.maxSize {
+						a.maxSize = bs
+					}
 				}
 			}
 		}
 	}
 
-	// size distribution as string keys
 	sizeDist := make(map[string]int, len(sizeCount))
 	for k, v := range sizeCount {
 		sizeDist[strconv.Itoa(k)] = v
 	}
 
-	// role breakdown as string keys
 	byRole := make(map[string]map[string]int, len(roleSize))
 	for role, sizes := range roleSize {
 		byRole[role] = make(map[string]int, len(sizes))
@@ -949,7 +974,6 @@ func (s *Store) HashStats() HashStatsData {
 		}
 	}
 
-	// fill all days
 	overTime := make([]HashTimeBucket, 0, days)
 	for i := 0; i < days; i++ {
 		day := start.AddDate(0, 0, i)
@@ -960,10 +984,9 @@ func (s *Store) HashStats() HashStatsData {
 		})
 	}
 
-	// multi-byte adopters sorted by count
 	adopterList := make([]HashAdopter, 0, len(adopters))
-	for pk, a := range adopters {
-		adopterList = append(adopterList, HashAdopter{PubKey: pk, Name: a.name, Count: a.count, MaxSize: a.maxSize})
+	for hop, a := range adopters {
+		adopterList = append(adopterList, HashAdopter{PubKey: hop, Name: hop, Count: a.count, MaxSize: a.maxSize})
 	}
 	sort.Slice(adopterList, func(i, j int) bool { return adopterList[i].Count > adopterList[j].Count })
 	if len(adopterList) > 20 {
