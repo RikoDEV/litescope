@@ -59,6 +59,7 @@ type Obs struct {
 	Score        *float64
 	Direction    string
 	PathJSON     string
+	FloodScope   string
 	Timestamp    string
 }
 
@@ -791,7 +792,7 @@ func obsFromRow(r *db.ObsRow) *Obs {
 	return &Obs{
 		ID: r.ID, TxID: r.TxID, ObserverID: r.ObserverID, ObserverName: r.ObserverName,
 		ObserverIATA: r.ObserverIATA, RSSI: r.RSSI, SNR: r.SNR, Score: r.Score,
-		Direction: r.Direction, PathJSON: r.PathJSON, Timestamp: r.Timestamp,
+		Direction: r.Direction, PathJSON: r.PathJSON, FloodScope: r.FloodScope, Timestamp: r.Timestamp,
 	}
 }
 

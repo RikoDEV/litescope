@@ -18,7 +18,9 @@ import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Tooltip from '@mui/material/Tooltip'
 import { alpha, useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTranslation } from 'react-i18next'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import KeyIcon from '@mui/icons-material/Key'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -31,6 +33,7 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
 import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 
 // ── channel key storage ───────────────────────────────────────────────────────
 const LS_KEY = 'litescope-channel-keys'
@@ -86,7 +89,9 @@ function hashColor(s: string) {
 // ── component ────────────────────────────────────────────────────────────────
 export default function Channels() {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
   const navigate = useNavigate()
   const { hash: urlHash } = useParams<{ hash?: string }>()
   const [channels, setChannels]     = useState<Channel[]>([])
@@ -177,31 +182,41 @@ export default function Channels() {
 
   const persistKeys = (k: StoredKey[]) => { setStoredKeys(k); saveKeys(k) }
 
+  const showSidebar = !isMobile || (!selected && !showKeyMgr)
+  const showMain    = !isMobile || selected || showKeyMgr
+
   return (
     <Box sx={{ display: 'flex', height: '100%', background: md3.background }}>
       {/* ── Channel list ── */}
-      <Paper elevation={1} sx={{ width: 220, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${md3.outlineVariant}`, borderRadius: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
-          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('channels.count', { count: channels.length })}</Typography>
-          <Tooltip title={t('channels.manageKeys')}>
-            <IconButton size="small" onClick={() => setShowKeyMgr(v => !v)} sx={{ color: showKeyMgr ? md3.primary : md3.onSurfaceVariant }}>
-              <KeyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-        <ChannelList channels={channels} selected={selected} onSelect={selectChannel} />
-      </Paper>
+      {showSidebar && (
+        <Paper elevation={1} sx={{ width: { xs: '100%', md: 220 }, display: 'flex', flexDirection: 'column', borderRight: { md: `1px solid ${md3.outlineVariant}` }, borderRadius: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('channels.count', { count: channels.length })}</Typography>
+            <Tooltip title={t('channels.manageKeys')}>
+              <IconButton size="small" onClick={() => setShowKeyMgr(v => !v)} sx={{ color: showKeyMgr ? md3.primary : md3.onSurfaceVariant }}>
+                <KeyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <ChannelList channels={channels} selected={selected} onSelect={selectChannel} />
+        </Paper>
+      )}
 
       {/* ── Main ── */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      {showMain && <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {showKeyMgr ? (
-          <KeyManager keys={storedKeys} onChange={persistKeys} onClose={() => setShowKeyMgr(false)} />
+          <KeyManager keys={storedKeys} onChange={persistKeys} onClose={() => { setShowKeyMgr(false); if (isMobile) navigate('/channels') }} />
         ) : selected ? (
           <>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
+              {isMobile && (
+                <IconButton size="small" onClick={() => navigate('/channels')} sx={{ color: md3.onSurfaceVariant, mr: 0.5 }}>
+                  <ArrowBackIcon fontSize="small" />
+                </IconButton>
+              )}
               <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: hashColor(selected.name) }} />
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{selected.name}</Typography>
-              <Typography variant="caption" sx={{ color: md3.outline }}>#{selected.hash}</Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'block' } }}>#{selected.hash}</Typography>
               <Typography variant="caption" sx={{ color: md3.outline, ml: 'auto' }}>{t('channels.messages', { count: messages.length })}</Typography>
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -228,9 +243,11 @@ export default function Channels() {
                           onClick={() => clickSender(sender)}
                           sx={{ fontWeight: 700, color: hashColor(sender), cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                         >{sender}</Typography>
-                        <Typography variant="caption" sx={{ color: md3.outline }}>
-                          {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true })}
-                        </Typography>
+                        <Tooltip title={new Date(msg.firstSeen).toLocaleString()} placement="top">
+                          <Typography variant="caption" sx={{ color: md3.outline, cursor: 'default' }}>
+                            {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true, locale: dateLocale })}
+                          </Typography>
+                        </Tooltip>
                         {noKey && <Chip label={`🔒 ${t('channels.encrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
                         {cdec && <Chip label={`🔓 ${t('channels.decrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#22c55e', 0.15), color: '#22c55e' }} />}
                       </Box>
@@ -238,20 +255,22 @@ export default function Channels() {
                       {/* Message body */}
                       {noKey
                         ? <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace' }}>{(dec?.encryptedData as string | undefined)?.slice(0, 40) ?? ''}…</Typography>
-                        : <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>{text}</Typography>
+                        : <MessageText text={text} onMentionClick={clickSender} channels={channels} onChannelClick={selectChannel} />
                       }
 
                       {/* Meta row: obs · hops popover · link */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
-                        {msg.obsCount > 0 && (
-                          <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
-                            {msg.obsCount} obs
-                          </Typography>
-                        )}
+                        {msg.obsCount > 0 && <ObsPopover packet={msg} />}
                         {msg.maxHops > 0 && (
                           <>
-                            {msg.obsCount > 0 && <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>}
-                            <HopsPopover packet={msg} />
+                            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
+                            <HopsPopover packet={msg} nodes={nodes} />
+                          </>
+                        )}
+                        {msg.bestScope && (
+                          <>
+                            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
+                            <Chip label={msg.bestScope} size="small" sx={{ fontSize: 10, height: 18, background: alpha(md3.primary, 0.1), color: md3.primary }} />
                           </>
                         )}
                         <Tooltip title="View packet">
@@ -275,13 +294,75 @@ export default function Channels() {
             <Button variant="outlined" size="small" onClick={() => setShowKeyMgr(true)}>{t('channels.manageKeys')}</Button>
           </Box>
         )}
-      </Box>
+      </Box>}
     </Box>
   )
 }
 
+// ── Message text with mention + channel parsing ───────────────────────────────
+const TOKEN_RE = /@\[([^\]]+)\]|(https?:\/\/[^\s]+)|#(\S+)/g
+
+function MessageText({ text, onMentionClick, channels, onChannelClick }: {
+  text: string
+  onMentionClick: (name: string) => void
+  channels: Channel[]
+  onChannelClick: (ch: Channel) => void
+}) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const parts: React.ReactNode[] = []
+  let last = 0; let m: RegExpExecArray | null; let i = 0
+  TOKEN_RE.lastIndex = 0
+  while ((m = TOKEN_RE.exec(text)) !== null) {
+    if (m.index > last) parts.push(<span key={i++}>{text.slice(last, m.index)}</span>)
+    if (m[1] !== undefined) {
+      // @[mention]
+      const name = m[1]
+      parts.push(
+        <Box key={i++} component="span" onClick={() => onMentionClick(name)}
+          sx={{ display: 'inline-flex', alignItems: 'center', px: 0.6, py: 0.1, borderRadius: 1,
+            background: alpha(md3.primary, 0.12), color: md3.primary,
+            fontWeight: 600, fontSize: '0.8em', cursor: 'pointer',
+            '&:hover': { background: alpha(md3.primary, 0.22) } }}>
+          @{name}
+        </Box>
+      )
+    } else if (m[2] !== undefined) {
+      // URL
+      const url = m[2]
+      parts.push(
+        <Box key={i++} component="a" href={url} target="_blank" rel="noopener noreferrer"
+          sx={{ color: md3.primary, textDecoration: 'underline', wordBreak: 'break-all',
+            '&:hover': { color: md3.tertiary } }}>
+          {url}
+        </Box>
+      )
+    } else {
+      // #channel
+      const tag = m[3]
+      const ch = channels.find(c => c.name.toLowerCase() === tag.toLowerCase() ||
+        c.name.toLowerCase() === '#' + tag.toLowerCase())
+      parts.push(
+        <Box key={i++} component="span" onClick={() => ch ? onChannelClick(ch) : undefined}
+          sx={{ display: 'inline-flex', alignItems: 'center', px: 0.6, py: 0.1, borderRadius: 1,
+            background: alpha(md3.tertiary, 0.12), color: ch ? md3.tertiary : md3.outline,
+            fontWeight: 600, fontSize: '0.8em', cursor: ch ? 'pointer' : 'default',
+            '&:hover': ch ? { background: alpha(md3.tertiary, 0.22) } : {} }}>
+          #{tag}
+        </Box>
+      )
+    }
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push(<span key={i++}>{text.slice(last)}</span>)
+  return (
+    <Typography variant="body2" sx={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+      {parts}
+    </Typography>
+  )
+}
+
 // ── Hops popover ─────────────────────────────────────────────────────────────
-function HopsPopover({ packet }: { packet: Packet }) {
+function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: string; name: string }[] }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const [detail, setDetail] = useState<PacketDetail | null>(null)
@@ -321,7 +402,7 @@ function HopsPopover({ packet }: { packet: Packet }) {
           transition: 'color 0.15s, border-color 0.15s',
         }}
       >
-        {packet.maxHops} hops
+        {packet.maxHops} hops{packet.hopSize ? ` (${packet.hopSize}b)` : ''}
       </Typography>
 
       <Popover
@@ -362,6 +443,7 @@ function HopsPopover({ packet }: { packet: Packet }) {
               const byteLen = hop.length / 2
               const label = `${byteLen}b`
               const color = byteLen === 1 ? '#f59e0b' : byteLen === 2 ? md3.primary : '#22c55e'
+              const nodeName = nodes.find(n => n.pubKey.toUpperCase().startsWith(hop.toUpperCase()))?.name
               return (
                 <Box key={hi} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
                   <Typography variant="caption" sx={{ color: md3.outline, fontSize: 9, width: 14, textAlign: 'right', flexShrink: 0 }}>
@@ -370,12 +452,102 @@ function HopsPopover({ packet }: { packet: Packet }) {
                   <Typography variant="caption" sx={{ fontFamily: 'monospace', color: md3.onSurface, fontSize: 11, letterSpacing: '0.5px' }}>
                     {hop.toUpperCase()}
                   </Typography>
-                  <Box sx={{ ml: 'auto', px: 0.75, py: 0.1, borderRadius: 1, background: alpha(color, 0.15), border: `1px solid ${alpha(color, 0.4)}` }}>
+                  {nodeName && (
+                    <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      {nodeName}
+                    </Typography>
+                  )}
+                  <Box sx={{ ml: 'auto', px: 0.75, py: 0.1, borderRadius: 1, background: alpha(color, 0.15), border: `1px solid ${alpha(color, 0.4)}`, flexShrink: 0 }}>
                     <Typography variant="caption" sx={{ fontSize: 9, color, fontWeight: 700 }}>{label}</Typography>
                   </Box>
                 </Box>
               )
             })}
+          </Box>
+        ))}
+      </Popover>
+    </>
+  )
+}
+
+// ── Observers popover ─────────────────────────────────────────────────────────
+function ObsPopover({ packet }: { packet: Packet }) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const navigate = useNavigate()
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const [detail, setDetail] = useState<PacketDetail | null>(null)
+  const [loading, setLoading] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleEnter = (e: React.MouseEvent<HTMLElement>) => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    setAnchor(e.currentTarget)
+    if (!detail && !loading) {
+      setLoading(true)
+      api.packet(packet.hash).then(d => { setDetail(d); setLoading(false) }).catch(() => setLoading(false))
+    }
+  }
+  const handleLeave = () => { closeTimer.current = setTimeout(() => setAnchor(null), 180) }
+  const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current) }
+
+  const obs = detail?.observations ?? []
+
+  return (
+    <>
+      <Typography
+        variant="caption"
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        sx={{
+          fontSize: 10, color: anchor ? md3.primary : md3.outline,
+          cursor: 'default', borderBottom: '1px dashed',
+          borderColor: anchor ? md3.primary : 'transparent',
+          transition: 'color 0.15s, border-color 0.15s',
+        }}
+      >
+        {packet.obsCount} obs
+      </Typography>
+
+      <Popover
+        open={Boolean(anchor)}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        disableRestoreFocus
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        sx={{ pointerEvents: 'none' }}
+        slotProps={{
+          root: { style: { pointerEvents: 'none' } },
+          paper: {
+            onMouseEnter: keepOpen,
+            onMouseLeave: handleLeave,
+            style: { pointerEvents: 'auto' },
+            sx: {
+              mt: 0.5, p: 1.5, borderRadius: 2, minWidth: 200, maxWidth: 320,
+              background: md3.surfaceContainerHigh,
+              border: `1px solid ${md3.outlineVariant}`,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            },
+          },
+        }}
+      >
+        {loading && <Typography variant="caption" sx={{ color: md3.outline }}>Loading…</Typography>}
+        {!loading && obs.length === 0 && <Typography variant="caption" sx={{ color: md3.outline }}>No observers</Typography>}
+        {!loading && obs.map((o, i) => (
+          <Box key={o.id} onClick={() => navigate(`/observers?id=${o.observerId}`)}
+            sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: i < obs.length - 1 ? 0.75 : 0, cursor: 'pointer', borderRadius: 1, px: 0.5, '&:hover': { background: alpha(md3.primary, 0.06) } }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 11, display: 'block' }}>
+                {o.observerName || o.observerId.slice(0, 16)}
+                {o.observerIata && <Box component="span" sx={{ ml: 0.5, color: md3.tertiary }}>{o.observerIata}</Box>}
+              </Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
+                {o.snr != null && `SNR ${o.snr.toFixed(1)} dB`}
+                {o.snr != null && o.rssi != null && ' · '}
+                {o.rssi != null && `${o.rssi.toFixed(0)} dBm`}
+              </Typography>
+            </Box>
+            <Typography variant="caption" sx={{ color: '#22c55e', fontSize: 10, flexShrink: 0 }}>→</Typography>
           </Box>
         ))}
       </Popover>

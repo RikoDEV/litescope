@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import Home from './pages/Home'
 import Packets from './pages/Packets'
-import PacketPage from './pages/PacketPage'
 import MapView from './pages/MapView'
 import TraceMap from './pages/TraceMap'
 import Nodes from './pages/Nodes'
@@ -20,7 +19,6 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="packets" element={<Packets />} />
-          <Route path="packets/:hash" element={<PacketPage />} />
           <Route path="map" element={<MapView />} />
           <Route path="live" element={<TraceMap />} />
           <Route path="nodes" element={<Nodes />} />

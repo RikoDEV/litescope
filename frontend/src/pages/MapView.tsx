@@ -28,6 +28,7 @@ import type { Node, NodeOverview, Packet, RFStats } from '../types'
 import { PAYLOAD_NAMES } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -60,6 +61,7 @@ const TYPE_ICONS:  Record<number, string> = { 4: '📡', 5: '💬', 2: '✉️',
 export default function MapView() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
 
   const LH_OPTIONS = [
     { value: '',    label: t('common.anyTime') },
@@ -619,7 +621,7 @@ export default function MapView() {
                 <Box component="span" sx={{ fontSize: 14 }}>{icon}</Box>
                 <Typography variant="caption" sx={{ color, fontWeight: 700 }}>{PAYLOAD_NAMES[pkt.payloadType] ?? pkt.payloadType}</Typography>
                 {name && <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</Typography>}
-                <Typography variant="caption" sx={{ color: md3.outline, flexShrink: 0 }}>{formatDistanceToNow(new Date(pkt.firstSeen), { addSuffix: true })}</Typography>
+                <Typography variant="caption" sx={{ color: md3.outline, flexShrink: 0 }}>{formatDistanceToNow(new Date(pkt.firstSeen), { addSuffix: true, locale: dateLocale })}</Typography>
               </Box>
             )
           })}

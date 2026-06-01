@@ -242,8 +242,8 @@ func decodeAdvert(buf []byte) Payload {
 			}
 		}
 		name := sanitizeName(string(appdata[off:end]))
-		if len(name) > 32 {
-			name = name[:32]
+		if len([]rune(name)) > 32 {
+			name = string([]rune(name)[:32])
 		}
 		p.Name = name
 		off = end
@@ -537,6 +537,46 @@ func DecodePacket(hexStr string, channelKeys map[string]string) (*DecodedPacket,
 		Header: hdr, TransportCodes: tc, Path: path, Payload: payload,
 		Raw: strings.ToUpper(hexStr), PayloadRaw: payloadBuf,
 	}, nil
+}
+
+// ResolveFloodScope matches a TC_FLOOD packet's transport code against a scope
+// allowlist using the same HMAC derivation as the firmware's TransportKey::calcTransportCode.
+// Returns the first matching scope name (e.g. "#waw") or "".
+func (p *DecodedPacket) ResolveFloodScope(allowlist []string) string {
+	if p.Header.RouteType != RouteTransportFlood || p.TransportCodes == nil {
+		return ""
+	}
+	codeBytes, err := hex.DecodeString(p.TransportCodes.Code1)
+	if err != nil || len(codeBytes) < 2 {
+		return ""
+	}
+	pktCode := binary.LittleEndian.Uint16(codeBytes)
+
+	msg := append([]byte{byte(p.Header.PayloadType)}, p.PayloadRaw...)
+	for _, name := range allowlist {
+		n := name
+		if len(n) == 0 {
+			continue
+		}
+		if n[0] != '#' {
+			n = "#" + n
+		}
+		h := sha256.Sum256([]byte(n))
+		key := h[:16]
+		mac := hmac.New(sha256.New, key)
+		mac.Write(msg)
+		sig := mac.Sum(nil)
+		code := binary.LittleEndian.Uint16(sig[:2])
+		if code == 0 {
+			code = 1
+		} else if code == 0xFFFF {
+			code = 0xFFFE
+		}
+		if code == pktCode {
+			return n
+		}
+	}
+	return ""
 }
 
 // ComputeContentHash returns a 16-char SHA-256-based dedup key.

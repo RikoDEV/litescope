@@ -25,6 +25,7 @@ import { stream } from '../services/stream'
 import type { Node, Observer, OverviewStats, Packet } from '../types'
 import { PAYLOAD_NAMES } from '../types'
 import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 
 // ── colour helpers ─────────────────────────────────────────────────────────────
 const TYPE_COLOR: Record<number, string> = {
@@ -51,6 +52,7 @@ export default function Home() {
   const md3      = theme.palette.md3
   const navigate = useNavigate()
   const { t }    = useTranslation()
+  const dateLocale = useDateLocale()
 
   // data
   const [stats,     setStats]     = useState<OverviewStats | null>(null)
@@ -337,7 +339,7 @@ export default function Home() {
                       </Typography>
                     </Box>
                     <Typography variant="caption" sx={{ color: md3.outline, flexShrink: 0, fontSize: 10 }}>
-                      {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true, locale: dateLocale })}
                     </Typography>
                   </Box>
                 )

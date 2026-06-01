@@ -81,7 +81,6 @@ export default function Layout() {
 
     if (exact[p]) { document.title = exact[p]; return }
 
-    if (p.startsWith('/packets/'))  { document.title = p.split('/')[2]?.slice(0, 12) + suffix; return }
     if (p.startsWith('/nodes/'))    { document.title = p.split('/')[2]?.slice(0, 16) + suffix; return }
     if (p.startsWith('/channels/')) { document.title = '#' + p.split('/')[2] + suffix; return }
 

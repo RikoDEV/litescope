@@ -190,7 +190,7 @@ const pl: typeof en = {
   },
   nodes: {
     searchPlaceholder: 'Szukaj nazwy lub klucza…',
-    repeaters: 'przekaźniki', companions: 'towarzysze', rooms: 'pokoje', sensors: 'czujniki',
+    repeaters: 'przekaźniki', companions: 'companiony', rooms: 'pokoje', sensors: 'czujniki',
     lastHeard: 'Ostatnio słyszany', noMatch: 'Brak węzłów pasujących do filtrów.',
     namePubkey: 'Nazwa / Klucz', unnamed: 'Bez nazwy', noRf: 'Brak danych RF dla tego węzła.',
     totalPkts: 'Łącznie pkt', pktsToday: 'Pkt dzisiaj', avgHops: 'Śr. skoki', avgSnr: 'Śr. SNR',

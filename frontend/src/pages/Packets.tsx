@@ -17,6 +17,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Badge from '@mui/material/Badge'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
+import { useDateLocale } from '../hooks/useDateLocale'
 import PauseIcon from '@mui/icons-material/Pause'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import RefreshIcon from '@mui/icons-material/Refresh'
@@ -48,6 +49,7 @@ export default function Packets() {
   const theme = useTheme()
   const md3   = theme.palette.md3
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [packets, setPackets]   = useState<Packet[]>([])
@@ -125,10 +127,7 @@ export default function Packets() {
   useEffect(() => {
     const hash = searchParams.get('hash')
     if (!hash) return
-    api.packet(hash).then(detail => {
-      setSelected(detail)
-      setSearchParams({}, { replace: true })
-    }).catch(() => setSearchParams({}, { replace: true }))
+    api.packet(hash).then(detail => setSelected(detail)).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -143,8 +142,10 @@ export default function Packets() {
   useEffect(() => { stream.setPaused(paused) }, [paused])
 
   const selectPacket = async (p: Packet) => {
-    if (selected?.hash === p.hash) { setSelected(null); return }
-    setSelected(await api.packet(p.hash))
+    if (selected?.hash === p.hash) { setSelected(null); setSearchParams({}, { replace: true }); return }
+    const detail = await api.packet(p.hash)
+    setSelected(detail)
+    setSearchParams({ hash: p.hash }, { replace: true })
   }
 
   const activeFilters = (typeFilter.size > 0 ? 1 : 0) + (routeFilter !== null ? 1 : 0) + (minObs > 1 ? 1 : 0) + (search ? 1 : 0) + (windowMs > 0 ? 1 : 0)
@@ -315,6 +316,7 @@ export default function Packets() {
                 {([
                   { col: 'id' as SortCol, label: t('packets.id'), width: 60 },
                   { col: null, label: t('packets.hash'), width: '1fr' },
+                  { col: null, label: t('nodes.avgHops'), width: 70 },
                   { col: 'payloadType' as SortCol, label: t('common.type'), width: 130 },
                   { col: 'routeType' as SortCol, label: t('common.route'), width: 100 },
                   { col: 'obsCount' as SortCol, label: t('packets.obs'), width: 60 },
@@ -330,7 +332,7 @@ export default function Packets() {
             <TableBody>
               {filtered.length === 0 && !loading && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 5, color: md3.onSurfaceVariant }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 5, color: md3.onSurfaceVariant }}>
                     {packets.length === 0 ? t('packets.noPackets') : t('packets.noMatch')}
                   </TableCell>
                 </TableRow>
@@ -339,6 +341,7 @@ export default function Packets() {
                 const dec   = p.decoded
                 const color = typeColor(p.payloadType)
                 const label = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
+                const msgText = dec?.text as string | undefined
                 const isSelected = selected?.hash === p.hash
                 return (
                   <TableRow key={p.id} selected={isSelected} onClick={() => selectPacket(p)}>
@@ -346,6 +349,14 @@ export default function Packets() {
                     <TableCell>
                       <Box component="span" sx={{ fontFamily: 'monospace', color: md3.primary, fontSize: 12 }}>{p.hash}</Box>
                       {label && <Box component="span" sx={{ ml: 1, color: md3.onSurfaceVariant, fontSize: 11 }}>· {label}</Box>}
+                      {msgText && (
+                        <Box sx={{ fontSize: 11, color: md3.onSurfaceVariant, mt: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
+                          {msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText}
+                        </Box>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ color: p.maxHops > 0 ? md3.onSurfaceVariant : md3.outline, fontSize: 11 }}>
+                      {p.maxHops > 0 ? p.maxHops : '—'}
                     </TableCell>
                     <TableCell>
                       <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
@@ -358,7 +369,7 @@ export default function Packets() {
                       {p.obsCount}
                     </TableCell>
                     <TableCell sx={{ color: md3.outline, fontSize: 11 }}>
-                      {new Date(p.firstSeen).toLocaleTimeString()}
+                      {new Date(p.firstSeen).toLocaleTimeString(dateLocale.code)}
                     </TableCell>
                   </TableRow>
                 )
@@ -375,7 +386,7 @@ export default function Packets() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <PacketDetailPanel selected={selected} onClose={() => setSelected(null)} />
+        <PacketDetailPanel selected={selected} onClose={() => { setSelected(null); setSearchParams({}, { replace: true }) }} />
       )}
     </Box>
   )

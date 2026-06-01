@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	Port         int               `json:"port"`
-	DBPath       string            `json:"dbPath"`
-	MQTTSources  []MQTTSource      `json:"mqttSources"`
-	ChannelKeys  map[string]string `json:"channelKeys"`
-	HashChannels []string          `json:"hashChannels"`
+	Port           int               `json:"port"`
+	DBPath         string            `json:"dbPath"`
+	MQTTSources    []MQTTSource      `json:"mqttSources"`
+	ChannelKeys    map[string]string `json:"channelKeys"`
+	HashChannels   []string          `json:"hashChannels"`
+	ScopeAllowlist []string          `json:"scopeAllowlist"`
 }
 
 type MQTTSource struct {

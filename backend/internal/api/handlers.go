@@ -430,6 +430,8 @@ type packetSummary struct {
 	PayloadType int                    `json:"payloadType"`
 	ObsCount    int                    `json:"obsCount"`
 	MaxHops     int                    `json:"maxHops"`
+	HopSize     int                    `json:"hopSize,omitempty"`
+	BestScope   string                 `json:"bestScope,omitempty"`
 	ByteSize    int                    `json:"byteSize"`
 	ChannelHash string                 `json:"channelHash,omitempty"`
 	Decoded     map[string]interface{} `json:"decoded,omitempty"`
@@ -450,6 +452,7 @@ type obsDetail struct {
 	SNR          *float64 `json:"snr"`
 	Direction    string   `json:"direction"`
 	PathJSON     string   `json:"pathJson"`
+	FloodScope   string   `json:"floodScope,omitempty"`
 	Timestamp    string   `json:"timestamp"`
 }
 
@@ -482,16 +485,24 @@ type observerSummary struct {
 
 func summarizeTx(tx *store.Tx) packetSummary {
 	maxHops := 0
+	hopSize := 0
+	bestScope := ""
 	for _, o := range tx.Observations {
 		var hops []string
 		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
 			maxHops = len(hops)
+			if len(hops) > 0 {
+				hopSize = len(hops[0]) / 2 // hex chars → bytes
+			}
+		}
+		if bestScope == "" && o.FloodScope != "" {
+			bestScope = o.FloodScope
 		}
 	}
 	return packetSummary{
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
-		ObsCount: tx.ObsCount, MaxHops: maxHops,
+		ObsCount: tx.ObsCount, MaxHops: maxHops, HopSize: hopSize, BestScope: bestScope,
 		ByteSize: len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}
@@ -506,7 +517,7 @@ func txDetail(tx *store.Tx) packetDetail {
 		d.Observations = append(d.Observations, obsDetail{
 			ID: o.ID, ObserverID: o.ObserverID, ObserverName: o.ObserverName,
 			ObserverIATA: o.ObserverIATA, RSSI: o.RSSI, SNR: o.SNR,
-			Direction: o.Direction, PathJSON: o.PathJSON, Timestamp: o.Timestamp,
+			Direction: o.Direction, PathJSON: o.PathJSON, FloodScope: o.FloodScope, Timestamp: o.Timestamp,
 		})
 	}
 	return d

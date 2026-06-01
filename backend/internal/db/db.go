@@ -34,6 +34,7 @@ type ObsRow struct {
 	Score        *float64
 	Direction    string
 	PathJSON     string
+	FloodScope   string
 	Timestamp    string
 }
 
@@ -120,6 +121,7 @@ func (d *DB) applySchema() error {
 			score         REAL,
 			direction     TEXT,
 			path_json     TEXT,
+			flood_scope   TEXT,
 			timestamp     TEXT    NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_obs_tx_id    ON observations(tx_id)`,
@@ -156,6 +158,8 @@ func (d *DB) applySchema() error {
 			return fmt.Errorf("exec %q: %w", s[:min(40, len(s))], err)
 		}
 	}
+	// Migrations for existing databases
+	d.db.Exec(`ALTER TABLE observations ADD COLUMN flood_scope TEXT`)
 	return nil
 }
 
@@ -194,10 +198,10 @@ func (d *DB) InsertTransmission(tx *TxRow, obs *ObsRow) (int64, bool, error) {
 
 	// Insert observation
 	_, err = d.db.Exec(
-		`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, timestamp)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, flood_scope, timestamp)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		txID, obs.ObserverID, obs.ObserverName, obs.ObserverIATA,
-		obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, obs.Timestamp,
+		obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, nilIfEmpty(obs.FloodScope), obs.Timestamp,
 	)
 	if err != nil {
 		return txID, isNew, fmt.Errorf("insert obs: %w", err)
@@ -273,7 +277,7 @@ func (d *DB) LoadAll() ([]*TxRow, []*ObsRow, []*NodeRow, []*ObserverRow, error) 
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	obss, err := d.loadObs(`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), timestamp FROM observations ORDER BY id ASC`)
+	obss, err := d.loadObs(`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp FROM observations ORDER BY id ASC`)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -298,7 +302,7 @@ func (d *DB) LoadSince(afterTxID, afterObsID int64) ([]*TxRow, []*ObsRow, error)
 		return nil, nil, err
 	}
 	obss, err := d.loadObs(fmt.Sprintf(
-		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), timestamp FROM observations WHERE id > %d ORDER BY id ASC`,
+		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp FROM observations WHERE id > %d ORDER BY id ASC`,
 		afterObsID,
 	))
 	if err != nil {
@@ -333,7 +337,7 @@ func (d *DB) loadObs(query string) ([]*ObsRow, error) {
 	var out []*ObsRow
 	for rows.Next() {
 		var r ObsRow
-		if err := rows.Scan(&r.ID, &r.TxID, &r.ObserverID, &r.ObserverName, &r.ObserverIATA, &r.RSSI, &r.SNR, &r.Score, &r.Direction, &r.PathJSON, &r.Timestamp); err != nil {
+		if err := rows.Scan(&r.ID, &r.TxID, &r.ObserverID, &r.ObserverName, &r.ObserverIATA, &r.RSSI, &r.SNR, &r.Score, &r.Direction, &r.PathJSON, &r.FloodScope, &r.Timestamp); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)

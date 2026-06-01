@@ -13,6 +13,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 import type { Node, NodeOverview, RFStats } from '../types'
 import { PAYLOAD_NAMES } from '../types'
 import L from 'leaflet'
@@ -61,6 +62,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
   const theme = useTheme()
   const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
   const navigate = useNavigate()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
@@ -98,7 +100,8 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
       <Box sx={{ p: 2, borderBottom: `1px solid ${md3.outlineVariant}` }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: roleColor(selected.role), lineHeight: 1.2 }}>
+            <Typography variant="subtitle1" onClick={() => navigate(`/nodes/${selected.pubKey}`)}
+              sx={{ fontWeight: 700, color: roleColor(selected.role), lineHeight: 1.2, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
               {selected.name || t('nodes.unnamed')}
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.25 }}>
@@ -106,7 +109,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
                 ? <Typography variant="caption" sx={{ color: '#22c55e', fontWeight: 600 }}>🟢 {t('common.active')}</Typography>
                 : <Typography variant="caption" sx={{ color: md3.outline, fontWeight: 600 }}>⚪ {t('common.stale')}</Typography>}
               <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
-                — {t('common.lastSeen')} {formatDistanceToNow(new Date(selected.lastSeen), { addSuffix: true })}
+                — {t('common.lastSeen')} {formatDistanceToNow(new Date(selected.lastSeen), { addSuffix: true, locale: dateLocale })}
               </Typography>
             </Box>
             <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', wordBreak: 'break-all', fontSize: 9, display: 'block', mt: 0.5 }}>
@@ -130,8 +133,8 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
         {/* Stats grid */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 2 }}>
           {[
-            { l: t('common.lastSeen'),  v: formatDistanceToNow(new Date(selected.lastSeen),  { addSuffix: true }) },
-            { l: t('common.firstSeen'), v: formatDistanceToNow(new Date(selected.firstSeen), { addSuffix: true }) },
+            { l: t('common.lastSeen'),  v: formatDistanceToNow(new Date(selected.lastSeen),  { addSuffix: true, locale: dateLocale }) },
+            { l: t('common.firstSeen'), v: formatDistanceToNow(new Date(selected.firstSeen), { addSuffix: true, locale: dateLocale }) },
             { l: t('common.adverts'),   v: String(selected.advertCount) },
             { l: t('nodes.totalPkts'),  v: overview ? String(overview.totalPackets) : '…' },
             { l: t('nodes.pktsToday'),  v: overview ? String(overview.packetsToday) : '…' },
@@ -168,7 +171,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
                       <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, flexShrink: 0 }}>
-                        {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true, locale: dateLocale })}
                       </Typography>
                       <Typography variant="caption" sx={{ color: md3.primary, fontWeight: 600, fontSize: 11 }}>
                         📡 {PAYLOAD_NAMES[p.payloadType] ?? p.payloadType}

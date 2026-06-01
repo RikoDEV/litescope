@@ -22,6 +22,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import { api } from '../services/api'
 import type { Node, NodeOverview, RFStats } from '../types'
 import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 
 function isActive(n: Node) {
@@ -35,6 +36,7 @@ export default function Nodes() {
   const theme = useTheme()
   const md3   = theme.palette.md3
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
 
   const LAST_HEARD_OPTIONS = [
     { value: '', label: t('common.anyTime') },
@@ -220,7 +222,7 @@ export default function Nodes() {
                     </TableCell>
                     <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{n.advertCount}</TableCell>
                     <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
-                      {formatDistanceToNow(new Date(n.lastSeen), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(n.lastSeen), { addSuffix: true, locale: dateLocale })}
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption" sx={{ color: active ? '#22c55e' : md3.outline }}>

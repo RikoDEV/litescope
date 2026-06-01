@@ -1,4 +1,8 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Box from '@mui/material/Box'
+import Avatar from '@mui/material/Avatar'
+import Snackbar from '@mui/material/Snackbar'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -12,8 +16,17 @@ import { alpha, useTheme, type SxProps, type Theme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
-import type { PacketDetail } from '../types'
+import ShareIcon from '@mui/icons-material/Share'
+import type { Node, PacketDetail } from '../types'
 import { PAYLOAD_NAMES, ROUTE_NAMES } from '../types'
+import { formatDistanceToNow } from 'date-fns'
+import { api } from '../services/api'
+import { useDateLocale } from '../hooks/useDateLocale'
+
+function hashColor(s: string) {
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffff
+  return `hsl(${h % 360}, 65%, 55%)`
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +120,12 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const navigate = useNavigate()
+  const dateLocale = useDateLocale()
+  const [nodes, setNodes] = useState<Node[]>([])
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { api.nodes().then(r => setNodes(r.nodes ?? [])) }, [])
+  const matchHop = (hex: string) => nodes.find(n => n.pubKey.toUpperCase().startsWith(hex.toUpperCase()))
 
   const obs = selected.observations ?? []
   const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))
@@ -129,6 +148,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
     : { width: 460, borderLeft: `1px solid ${md3.outlineVariant}`, overflow: 'auto', flexShrink: 0, background: md3.surfaceContainerLow, borderRadius: 0 }
 
   return (
+    <>
     <Paper elevation={2} sx={{ ...defaultSx, ...(paperSx as object) }}>
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, borderBottom: `1px solid ${md3.outlineVariant}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -149,9 +169,18 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
             {selected.hash}
           </Typography>
         </Box>
-        <IconButton size="small" onClick={onClose} sx={{ color: md3.onSurfaceVariant, ml: 1, flexShrink: 0 }}>
-          <CloseIcon fontSize="small" />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, flexShrink: 0 }}>
+          <IconButton size="small" onClick={() => {
+            const url = `${window.location.origin}/packets?hash=${selected.hash}`
+            navigator.clipboard?.writeText(url)
+            setCopied(true)
+          }} sx={{ color: md3.onSurfaceVariant }}>
+            <ShareIcon fontSize="small" />
+          </IconButton>
+          <IconButton size="small" onClick={onClose} sx={{ color: md3.onSurfaceVariant }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
       </Box>
 
       <Box sx={{ p: 2 }}>
@@ -169,15 +198,47 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
           ))}
         </Box>
 
+        {/* Chat message */}
+        {dec?.text && (() => {
+          const sender = (dec.sender as string) || 'Unknown'
+          const rawText = dec.text as string
+          const text = rawText.startsWith(sender + ': ') ? rawText.slice(sender.length + 2) : rawText
+          const color = hashColor(sender)
+          return (
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', mb: 2, background: md3.surfaceContainerHighest, borderRadius: 3, p: 1.5 }}>
+              <Avatar sx={{ width: 34, height: 34, background: color, fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+                {sender[0]?.toUpperCase() ?? '?'}
+              </Avatar>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.25, flexWrap: 'wrap' }}>
+                  <Typography variant="body2" onClick={() => navigate(`/nodes?search=${encodeURIComponent(sender)}`)}
+                    sx={{ fontWeight: 700, color, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>{sender}</Typography>
+                  <Typography variant="caption" sx={{ color: md3.outline }}>
+                    {formatDistanceToNow(new Date(selected.firstSeen), { addSuffix: true, locale: dateLocale })}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</Typography>
+              </Box>
+            </Box>
+          )
+        })()}
+
         {/* Longest path */}
         {longestObs.hops.length > 0 && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.longestPath', { count: longestObs.hops.length })}</Typography>
-            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
-              {longestObs.hops.map((hop, i) => (
-                <Chip key={i} label={hop.toUpperCase()} size="small"
-                  sx={{ fontFamily: 'monospace', fontSize: 10, height: 20, background: alpha('#22c55e', 0.1), color: '#22c55e', border: `1px solid ${alpha('#22c55e', 0.3)}` }} />
-              ))}
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center', mt: 0.5 }}>
+              {longestObs.hops.map((hop, i) => {
+                const node = matchHop(hop)
+                const label = node?.name ? `${hop.toUpperCase()} · ${node.name}` : hop.toUpperCase()
+                return (
+                  <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {i > 0 && <Typography variant="caption" sx={{ color: md3.outline, fontSize: 12 }}>→</Typography>}
+                    <Chip label={label} size="small"
+                      sx={{ fontFamily: 'monospace', fontSize: 10, height: 20, background: alpha('#22c55e', 0.1), color: '#22c55e', border: `1px solid ${alpha('#22c55e', 0.3)}` }} />
+                  </Box>
+                )
+              })}
             </Box>
           </Box>
         )}
@@ -268,5 +329,13 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
         </Box>
       </Box>
     </Paper>
+    <Snackbar
+      open={copied}
+      autoHideDuration={2000}
+      onClose={() => setCopied(false)}
+      message="Link copied to clipboard"
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+    />
+    </>
   )
 }

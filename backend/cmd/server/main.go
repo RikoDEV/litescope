@@ -77,19 +77,37 @@ func main() {
 
 			// Broadcast new packets over WebSocket
 			for _, tx := range added {
-				msg, _ := json.Marshal(map[string]interface{}{
-					"type": "packet",
-					"data": map[string]interface{}{
-						"id":          tx.ID,
-						"hash":        tx.Hash,
-						"firstSeen":   tx.FirstSeen,
-						"routeType":   tx.RouteType,
-						"payloadType": tx.PayloadType,
-						"obsCount":    tx.ObsCount,
-						"channelHash": tx.ChannelHash,
-						"decoded":     tx.Decoded(),
-					},
-				})
+				maxHops := 0
+				hopSize := 0
+				bestScope := ""
+				for _, o := range tx.Observations {
+					var hops []string
+					if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
+						maxHops = len(hops)
+						if len(hops) > 0 {
+							hopSize = len(hops[0]) / 2
+						}
+					}
+					if bestScope == "" && o.FloodScope != "" {
+						bestScope = o.FloodScope
+					}
+				}
+				data := map[string]interface{}{
+					"id":          tx.ID,
+					"hash":        tx.Hash,
+					"firstSeen":   tx.FirstSeen,
+					"routeType":   tx.RouteType,
+					"payloadType": tx.PayloadType,
+					"obsCount":    tx.ObsCount,
+					"maxHops":     maxHops,
+					"hopSize":     hopSize,
+					"channelHash": tx.ChannelHash,
+					"decoded":     tx.Decoded(),
+				}
+				if bestScope != "" {
+					data["bestScope"] = bestScope
+				}
+				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
 				hub.Broadcast(msg)
 			}
 		}
