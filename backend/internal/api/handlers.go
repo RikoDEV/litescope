@@ -423,18 +423,20 @@ func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 // Response shape types
 
 type packetSummary struct {
-	ID          int64                  `json:"id"`
-	Hash        string                 `json:"hash"`
-	FirstSeen   string                 `json:"firstSeen"`
-	RouteType   int                    `json:"routeType"`
-	PayloadType int                    `json:"payloadType"`
-	ObsCount    int                    `json:"obsCount"`
-	MaxHops     int                    `json:"maxHops"`
-	HopSize     int                    `json:"hopSize,omitempty"`
-	BestScope   string                 `json:"bestScope,omitempty"`
-	ByteSize    int                    `json:"byteSize"`
-	ChannelHash string                 `json:"channelHash,omitempty"`
-	Decoded     map[string]interface{} `json:"decoded,omitempty"`
+	ID           int64                  `json:"id"`
+	Hash         string                 `json:"hash"`
+	FirstSeen    string                 `json:"firstSeen"`
+	RouteType    int                    `json:"routeType"`
+	PayloadType  int                    `json:"payloadType"`
+	ObsCount     int                    `json:"obsCount"`
+	MaxHops      int                    `json:"maxHops"`
+	HopSize      int                    `json:"hopSize,omitempty"`
+	BestScope    string                 `json:"bestScope,omitempty"`
+	BestPath     []string               `json:"bestPath,omitempty"`
+	BestObserver string                 `json:"bestObserver,omitempty"`
+	ByteSize     int                    `json:"byteSize"`
+	ChannelHash  string                 `json:"channelHash,omitempty"`
+	Decoded      map[string]interface{} `json:"decoded,omitempty"`
 }
 
 type packetDetail struct {
@@ -487,10 +489,14 @@ func summarizeTx(tx *store.Tx) packetSummary {
 	maxHops := 0
 	hopSize := 0
 	bestScope := ""
+	var bestPath []string
+	bestObserver := ""
 	for _, o := range tx.Observations {
 		var hops []string
 		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
 			maxHops = len(hops)
+			bestPath = hops
+			bestObserver = o.ObserverID
 			if len(hops) > 0 {
 				hopSize = len(hops[0]) / 2 // hex chars → bytes
 			}
@@ -503,6 +509,7 @@ func summarizeTx(tx *store.Tx) packetSummary {
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
 		ObsCount: tx.ObsCount, MaxHops: maxHops, HopSize: hopSize, BestScope: bestScope,
+		BestPath: bestPath, BestObserver: bestObserver,
 		ByteSize: len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}

@@ -107,7 +107,7 @@ function drawDot(
 
 // ─── component ───────────────────────────────────────────────────────────────
 
-export default function TraceMap() {
+export default function LiveMap() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
 
@@ -177,8 +177,9 @@ export default function TraceMap() {
 
   // ── Node markers ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const layer = nodesLayer.current; if (!layer) return
+    const layer = nodesLayer.current; const map = mapRef.current; if (!layer) return
     layer.clearLayers()
+    const latlngs: L.LatLngExpression[] = []
     nodes.forEach(n => {
       if (n.lat == null || n.lon == null || (n.lat === 0 && n.lon === 0)) return
       const color = roleColors[n.role] ?? '#64748b'
@@ -188,7 +189,11 @@ export default function TraceMap() {
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
       }).bindTooltip(n.name || n.pubKey.slice(0, 12), { permanent: false, direction: 'top', offset: [0, -8] })
       layer.addLayer(marker)
+      latlngs.push([n.lat, n.lon])
     })
+    if (map && latlngs.length > 0 && map.getZoom() === 2) {
+      map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
+    }
   }, [nodes])
 
   // ── Create trace from packet ─────────────────────────────────────────────
@@ -200,22 +205,31 @@ export default function TraceMap() {
       return [la, lo]
     }
 
-    // Resolve sender position from decoded payload first, then stored node
+    // Case-insensitive node lookup by full pubKey or prefix
+    const findNode = (id: string) => {
+      const up = id.toUpperCase()
+      return nodesRef.current.find(n =>
+        n.pubKey.toUpperCase() === up || n.pubKey.toUpperCase().startsWith(up)
+      )
+    }
+
+    // Resolve observer node (used both as path endpoint and as fallback origin)
+    const obsNode = pkt.bestObserver ? findNode(pkt.bestObserver) : undefined
+    const obsLoc  = validLoc(obsNode?.lat, obsNode?.lon)
+
+    // Resolve sender position: decoded lat/lon → node lookup → observer fallback
+    const senderPk  = (dec?.pubKey ?? '') as string
     let origin: [number, number] | null =
       validLoc(dec?.lat as number | undefined, dec?.lon as number | undefined) ??
-      (dec?.pubKey
-        ? validLoc(
-            nodesRef.current.find(n => n.pubKey === (dec.pubKey as string))?.lat,
-            nodesRef.current.find(n => n.pubKey === (dec.pubKey as string))?.lon,
-          )
-        : null)
+      (senderPk ? validLoc(findNode(senderPk)?.lat, findNode(senderPk)?.lon) : null) ??
+      obsLoc  // last resort: animate at the observer so every received packet is shown
 
     if (!origin) return
 
     const hopCount = Math.max(pkt.maxHops ?? 0, 1)
     const color    = TYPE_COLORS[pkt.payloadType] ?? '#94a3b8'
 
-    // Build multi-point path: sender → intermediate hops → observer (receiver)
+    // Build multi-point path: sender → intermediate hops → observer
     const points: TracePoint[] = [{ lat: origin[0], lon: origin[1] }]
 
     const addPoint = (la: number | null | undefined, lo: number | null | undefined) => {
@@ -225,18 +239,14 @@ export default function TraceMap() {
       }
     }
 
-    ;(pkt.bestPath ?? []).forEach(hop => {
-      const matched = matchHop(hop, nodesRef.current)
-      if (matched) addPoint(matched.lat, matched.lon)
-    })
-
-    // Append observer location as the final destination
-    if (pkt.bestObserver) {
-      const obs = nodesRef.current.find(n =>
-        n.pubKey === pkt.bestObserver ||
-        n.pubKey.toUpperCase().startsWith((pkt.bestObserver as string).toUpperCase())
-      )
-      addPoint(obs?.lat, obs?.lon)
+    // Only build the full path when we have a real sender (not the observer fallback)
+    const hasSender = origin !== obsLoc || senderPk === (obsNode?.pubKey ?? '')
+    if (hasSender) {
+      ;(pkt.bestPath ?? []).forEach(hop => {
+        const matched = matchHop(hop, nodesRef.current)
+        if (matched) addPoint(matched.lat, matched.lon)
+      })
+      addPoint(obsLoc?.[0], obsLoc?.[1])
     }
 
     const numSegs = Math.max(1, points.length - 1)
@@ -417,64 +427,56 @@ export default function TraceMap() {
         const { x: cx, y: cy } = canvasPts[0]
 
         if (trace.points.length > 1) {
-          // ── Multi-point: segment-by-segment travel ──────────────────────────
+          // ── Multi-point: growing trail + segment-by-segment dot ─────────────
           const numSegs    = canvasPts.length - 1
-          const segsDone   = Math.min(Math.floor(elapsed / HOP_MS), numSegs)
-          const tailElapsed = elapsed - numSegs * HOP_MS   // negative until last node hit
+          const travelMs   = numSegs * HOP_MS
+          const travelling = elapsed < travelMs
+          const progress   = Math.min(elapsed / travelMs, 1)  // 0→1 over travel phase
 
-          // Draw already-completed segments (fading)
-          for (let i = 0; i < segsDone; i++) {
-            const segAge   = elapsed - (i + 1) * HOP_MS    // how long ago this seg finished
-            const segFade  = Math.max(0, 1 - segAge / (TAIL_MS * 0.8))
-            ctx.save()
-            ctx.globalAlpha = segFade * 0.55
-            ctx.strokeStyle = trace.color; ctx.shadowColor = trace.color; ctx.shadowBlur = 6
-            ctx.lineWidth = 2; ctx.setLineDash([6, 4])
-            ctx.beginPath()
-            ctx.moveTo(canvasPts[i].x, canvasPts[i].y)
-            ctx.lineTo(canvasPts[i + 1].x, canvasPts[i + 1].y)
-            ctx.stroke()
-            ctx.setLineDash([]); ctx.restore()
+          // Current segment index and intra-segment progress (eased)
+          const segsF   = progress * numSegs
+          const segIdx  = Math.min(Math.floor(segsF), numSegs - 1)
+          const rawSegT = segsF - segIdx
+          const ep      = rawSegT < 0.5 ? 2*rawSegT*rawSegT : -1+(4-2*rawSegT)*rawSegT
+          const from    = canvasPts[segIdx]
+          const to      = canvasPts[segIdx + 1]
+          const dotX    = travelling ? from.x + (to.x - from.x) * ep : canvasPts[numSegs].x
+          const dotY    = travelling ? from.y + (to.y - from.y) * ep : canvasPts[numSegs].y
+
+          // Tail fade after travel completes
+          const tailFade = travelling ? 1 : Math.max(0, 1 - (elapsed - travelMs) / TAIL_MS)
+
+          // Draw the TRAIL: only from start up to the dot's current position.
+          // This means: all completed segments + partial current segment (never ahead of dot).
+          ctx.save()
+          ctx.globalAlpha = 0.5 * tailFade
+          ctx.strokeStyle = trace.color; ctx.shadowColor = trace.color; ctx.shadowBlur = 8
+          ctx.lineWidth = 2; ctx.setLineDash([6, 4])
+          ctx.beginPath()
+          ctx.moveTo(canvasPts[0].x, canvasPts[0].y)
+          for (let i = 1; i <= segIdx; i++) {
+            ctx.lineTo(canvasPts[i].x, canvasPts[i].y)
+          }
+          ctx.lineTo(dotX, dotY)
+          ctx.stroke()
+          ctx.setLineDash([]); ctx.restore()
+
+          // Traveling dot
+          if (travelling) {
+            drawDot(ctx, dotX, dotY, DOT_RADIUS + 2, trace.color, 0.95)
+            drawDot(ctx, dotX, dotY, DOT_RADIUS - 1, '#fff', 0.85)
           }
 
-          // Draw active segment (dot traveling)
-          if (segsDone < numSegs) {
-            const segT  = (elapsed % HOP_MS) / HOP_MS
-            const ep    = segT < 0.5 ? 2 * segT * segT : -1 + (4 - 2 * segT) * segT
-            const from  = canvasPts[segsDone]
-            const to    = canvasPts[segsDone + 1]
-            const dotX  = from.x + (to.x - from.x) * ep
-            const dotY  = from.y + (to.y - from.y) * ep
-
-            // Partial line behind dot
-            ctx.save()
-            ctx.globalAlpha = 0.4
-            ctx.strokeStyle = trace.color; ctx.shadowColor = trace.color; ctx.shadowBlur = 6
-            ctx.lineWidth = 2; ctx.setLineDash([6, 4])
-            ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(dotX, dotY)
-            ctx.stroke(); ctx.setLineDash([]); ctx.restore()
-
-            // Traveling dot (bright white core)
-            drawDot(ctx, dotX, dotY, DOT_RADIUS + 2, trace.color, 0.9)
-            drawDot(ctx, dotX, dotY, DOT_RADIUS - 1, '#fff', 0.8)
-          }
-
-          // Burst ring at each node when the dot arrives
-          for (let i = 0; i <= segsDone && i < canvasPts.length; i++) {
+          // Burst at each node as the dot arrives: node i is reached at t = i * HOP_MS
+          for (let i = 0; i < canvasPts.length; i++) {
             const arrivalAge = elapsed - i * HOP_MS
-            if (arrivalAge < 0) continue
+            if (arrivalAge < 0 || arrivalAge > BURST_MS) continue
             const bt = arrivalAge / BURST_MS
-            if (bt > 1) continue
-            const ba = 1 - bt * bt
+            const ba = (1 - bt * bt) * tailFade
             const pt = canvasPts[i]
-            drawRing(ctx, pt.x, pt.y, 4 + bt * 24, trace.color, ba * 0.85, i === canvasPts.length - 1 ? 2 : 1.5)
-            drawDot(ctx, pt.x, pt.y, 3.5, trace.color, ba)
-          }
-
-          // Tail fade at the last node after all segments done
-          if (tailElapsed > 0) {
-            const tailFade = Math.max(0, 1 - tailElapsed / TAIL_MS)
-            drawDot(ctx, canvasPts[numSegs].x, canvasPts[numSegs].y, 4, trace.color, tailFade * 0.5)
+            const isLast = i === canvasPts.length - 1
+            drawRing(ctx, pt.x, pt.y, 4 + bt * (isLast ? 30 : 22), trace.color, ba * 0.9, isLast ? 2.5 : 1.5)
+            drawDot(ctx, pt.x, pt.y, isLast ? 4 : 3, trace.color, ba)
           }
 
         } else {

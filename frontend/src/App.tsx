@@ -3,7 +3,7 @@ import Layout from './components/Layout'
 import Home from './pages/Home'
 import Packets from './pages/Packets'
 import MapView from './pages/MapView'
-import TraceMap from './pages/TraceMap'
+import LiveMap from './pages/LiveMap'
 import Nodes from './pages/Nodes'
 import NodePage from './pages/NodePage'
 import Channels from './pages/Channels'
@@ -20,7 +20,7 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="packets" element={<Packets />} />
           <Route path="map" element={<MapView />} />
-          <Route path="live" element={<TraceMap />} />
+          <Route path="live" element={<LiveMap />} />
           <Route path="nodes" element={<Nodes />} />
           <Route path="nodes/:pubkey" element={<NodePage />} />
           <Route path="channels" element={<Channels />} />
