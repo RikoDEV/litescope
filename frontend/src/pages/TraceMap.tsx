@@ -62,7 +62,7 @@ function parseHops(pathJson: string): string[] {
 function matchHop(hopHex: string, nodes: Node[]): Node | undefined {
   const h = hopHex.toUpperCase()
   if (h.length < 2) return undefined
-  return nodes.find(n => n.lat != null && n.pubKey.toUpperCase().startsWith(h))
+  return nodes.find(n => n.lat != null && !(n.lat === 0 && n.lon === 0) && n.pubKey.toUpperCase().startsWith(h))
 }
 
 /** Draw a glowing rounded arc on canvas. */
@@ -214,7 +214,7 @@ export default function TraceMap() {
     const layer = nodesLayer.current; if (!layer) return
     layer.clearLayers()
     nodes.forEach(n => {
-      if (n.lat == null || n.lon == null) return
+      if (n.lat == null || n.lon == null || (n.lat === 0 && n.lon === 0)) return
       const color = roleColors[n.role] ?? '#64748b'
       const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
       const marker = L.circleMarker([n.lat, n.lon], {

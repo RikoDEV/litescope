@@ -55,10 +55,13 @@ async function tryDecrypt(encHex: string, macHex: string, keyHex: string): Promi
     const ct    = hexToBytes(encHex)
     if (key.length !== 16 || mac.length !== 2 || ct.length === 0 || ct.length % 16 !== 0) return null
     const secret = new Uint8Array(32); secret.set(key)
-    const hmacKey = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, ct))
+    const secretBuf = new ArrayBuffer(secret.length); new Uint8Array(secretBuf).set(secret)
+    const ctBuf     = new ArrayBuffer(ct.length);     new Uint8Array(ctBuf).set(ct)
+    const keyBuf    = new ArrayBuffer(key.length);    new Uint8Array(keyBuf).set(key)
+    const hmacKey = await crypto.subtle.importKey('raw', secretBuf, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, ctBuf))
     if (sig[0] !== mac[0] || sig[1] !== mac[1]) return null
-    const ck  = await crypto.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt'])
+    const ck  = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt'])
     const iv  = new Uint8Array(16)
     const plain = new Uint8Array(ct.length)
     for (let i = 0; i < ct.length; i += 16) {

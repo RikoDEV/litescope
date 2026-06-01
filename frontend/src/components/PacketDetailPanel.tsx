@@ -199,9 +199,10 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
         </Box>
 
         {/* Chat message */}
-        {dec?.text && ((() => {
-          const sender = (dec.sender as string) || 'Unknown'
-          const rawText = dec.text as string
+        {(() => {
+          if (!dec?.text) return null
+          const sender = String(dec.sender ?? 'Unknown') || 'Unknown'
+          const rawText = String(dec.text)
           const text = rawText.startsWith(sender + ': ') ? rawText.slice(sender.length + 2) : rawText
           const color = hashColor(sender)
           return (
@@ -221,7 +222,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
               </Box>
             </Box>
           )
-        })() as React.ReactNode)}
+        })()}
 
         {/* Longest path */}
         {longestObs.hops.length > 0 && (

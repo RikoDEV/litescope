@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -82,6 +85,7 @@ export default function MapView() {
   const mapDiv         = useRef<HTMLDivElement>(null)
   const mapInstance    = useRef<L.Map | null>(null)
   const animLayer      = useRef<L.LayerGroup | null>(null)
+  const clusterGroup   = useRef<L.MarkerClusterGroup | null>(null)
   const markersRef     = useRef<Map<string, L.Marker>>(new Map())
   const animRAFs       = useRef<number[]>([])
   const timelineCanvas = useRef<HTMLCanvasElement>(null)
@@ -163,11 +167,17 @@ export default function MapView() {
 
   // Map init
   useEffect(() => {
-    if (!mapDiv.current || mapInstance.current) return
-    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: false })
+    const el = mapDiv.current
+    if (!el || mapInstance.current) return
+    // Guard against React StrictMode double-invoke leaving a stale leaflet container
+    if ((el as unknown as Record<string, unknown>)._leaflet_id) return
+    const map = L.map(el, { center: [20, 0], zoom: 2, zoomControl: false, maxZoom: 19 })
     animLayer.current = L.layerGroup().addTo(map)
+    const cluster = L.markerClusterGroup({ disableClusteringAtZoom: 12, maxClusterRadius: 60 })
+    cluster.addTo(map)
+    clusterGroup.current = cluster
     mapInstance.current = map
-    return () => { animRAFs.current.forEach(cancelAnimationFrame); map.remove(); mapInstance.current = null }
+    return () => { animRAFs.current.forEach(cancelAnimationFrame); map.remove(); mapInstance.current = null; clusterGroup.current = null }
   }, [])
 
   // Swap tile layer when theme changes
@@ -212,7 +222,7 @@ export default function MapView() {
     const lhCut      = lastHeardFilter ? now - (LH_MS[lastHeardFilter] ?? 0) : 0
 
     const passes = (n: Node) => {
-      if (n.lat == null || n.lon == null) return false
+      if (n.lat == null || n.lon == null || (n.lat === 0 && n.lon === 0)) return false
       if (!roleVis[n.role as keyof typeof roleVis]) return false
       const lastTs = new Date(n.lastSeen).getTime()
       const active = lastTs > activeCut
@@ -226,13 +236,16 @@ export default function MapView() {
       return true
     }
 
+    const cluster = clusterGroup.current
+
     // Remove markers that no longer match
     markersRef.current.forEach((m, key) => {
       const n = nodes.find(nd => nd.pubKey === key)
-      if (!n || !passes(n)) { m.remove(); markersRef.current.delete(key) }
+      if (!n || !passes(n)) { cluster?.removeLayer(m); markersRef.current.delete(key) }
     })
 
     // Add / update matching nodes
+    const toAdd: L.Marker[] = []
     nodes.forEach(n => {
       if (!passes(n)) return
       const active = new Date(n.lastSeen).getTime() > activeCut
@@ -240,10 +253,18 @@ export default function MapView() {
       const icon   = makeIcon(n.role, active, label)
       const exist  = markersRef.current.get(n.pubKey)
       if (exist) { exist.setIcon(icon); return }
-      const m = L.marker([n.lat!, n.lon!], { icon }).bindPopup(makePopup(n)).addTo(map)
+      const m = L.marker([n.lat!, n.lon!], { icon }).bindPopup(makePopup(n))
       m.on('click', () => selectNode(n))
       markersRef.current.set(n.pubKey, m)
+      toAdd.push(m)
     })
+    if (cluster && toAdd.length > 0) cluster.addLayers(toAdd)
+
+    // Fit bounds to all visible markers on initial load
+    if (markersRef.current.size > 0 && map.getZoom() === 2) {
+      const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
+      if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
+    }
   }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
