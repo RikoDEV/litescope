@@ -288,7 +288,7 @@ export default function MapView() {
         {/* Header */}
         <Box sx={{
           display: 'flex', alignItems: 'center', gap: 0.75,
-          px: 1.5, py: 1, borderBottom: `1px solid ${alpha(md3.outlineVariant, 0.5)}`,
+          px: 1.5, py: 1, borderBottom: `1px solid ${alpha(md3.outlineVariant, 0.2)}`,
           position: 'sticky', top: 0, background: panelBg, zIndex: 1,
         }}>
           <MapIcon sx={{ fontSize: 15, color: md3.primary }} />
@@ -346,7 +346,7 @@ export default function MapView() {
                       fontSize: 10, height: 22,
                       background: byteSizeFilter === v ? alpha(md3.primary, 0.2) : 'transparent',
                       color: byteSizeFilter === v ? md3.primary : md3.outline,
-                      border: `1px solid ${byteSizeFilter === v ? md3.primary : alpha(md3.outlineVariant, 0.6)}`,
+                      border: `1px solid ${byteSizeFilter === v ? md3.primary : alpha(md3.outlineVariant, 0.25)}`,
                     }}
                   />
                 ))}
@@ -392,7 +392,7 @@ export default function MapView() {
                         : md3.outline,
                       border: `1px solid ${statusFilter === s
                         ? (s === 'active' ? '#22c55e' : s === 'stale' ? md3.error : md3.outline)
-                        : alpha(md3.outlineVariant, 0.6)}`,
+                        : alpha(md3.outlineVariant, 0.25)}`,
                     }}
                   />
                 ))}
@@ -454,7 +454,7 @@ export default function MapView() {
           <IconButton
             size="small"
             onClick={() => setCtrlOpen(true)}
-            sx={{ position: 'absolute', top: 8, left: 8, zIndex: 1000, background: panelBg, border: `1px solid ${md3.outlineVariant}`, borderRadius: 2, color: md3.primary, '&:hover': { background: alpha(md3.primary, 0.12) } }}
+            sx={{ position: 'absolute', top: 8, left: 8, zIndex: 1000, background: panelBg, border: `1px solid ${alpha(md3.outlineVariant, 0.3)}`, borderRadius: 2, color: md3.primary, '&:hover': { background: alpha(md3.primary, 0.12) } }}
           >
             <MapIcon sx={{ fontSize: 18 }} />
           </IconButton>

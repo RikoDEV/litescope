@@ -14,6 +14,8 @@ import PauseIcon from '@mui/icons-material/Pause'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import FastForwardIcon from '@mui/icons-material/FastForward'
 import CloseIcon from '@mui/icons-material/Close'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
@@ -143,7 +145,8 @@ export default function LiveMap() {
   const [speed,     setSpeed]     = useState(1)
   const [pktRate,   setPktRate]   = useState(0)
   const [totalTraces, setTotalTraces] = useState(0)
-  const [showFeed,  setShowFeed]  = useState(true)
+  const [showFeed,   setShowFeed]   = useState(true)
+  const [showLegend, setShowLegend] = useState(true)
 
   // Keep nodesRef in sync
   useEffect(() => { nodesRef.current = nodes }, [nodes])
@@ -601,30 +604,36 @@ export default function LiveMap() {
         </Typography>
       </Paper>
 
-      {/* ── Stats overlay (top-right) ────────────────────────────────────────── */}
+      {/* ── Legend (top-right, collapsible) ─────────────────────────────────── */}
       <Paper elevation={3} sx={{
         position: 'absolute', top: 8, right: 8, zIndex: 1000,
-        px: 1.5, py: 1, borderRadius: 2,
-        background: panelBg, backdropFilter: 'blur(8px)',
-        display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 140,
+        borderRadius: 2, background: panelBg, backdropFilter: 'blur(8px)',
+        overflow: 'hidden',
       }}>
-        {/* Legend */}
-        {[4, 5, 2, 9, 8].filter(pt => PAYLOAD_COLORS[pt]).map(pt => (
-          <Box key={pt} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: PAYLOAD_COLORS[pt], boxShadow: `0 0 6px ${PAYLOAD_COLORS[pt]}` }} />
-            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10 }}>
-              {PAYLOAD_NAMES[pt]}
-            </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.75, cursor: 'pointer' }}
+          onClick={() => setShowLegend(v => !v)}>
+          <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, fontSize: 9, lineHeight: 1 }}>Legend</Typography>
+          <IconButton size="small" sx={{ color: md3.outline, p: 0, ml: 1 }}>
+            {showLegend ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+          </IconButton>
+        </Box>
+        {showLegend && (
+          <Box sx={{ px: 1.5, pb: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {[4, 5, 2, 9, 8].filter(pt => PAYLOAD_COLORS[pt]).map(pt => (
+              <Box key={pt} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: PAYLOAD_COLORS[pt], boxShadow: `0 0 6px ${PAYLOAD_COLORS[pt]}` }} />
+                <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10 }}>{PAYLOAD_NAMES[pt]}</Typography>
+              </Box>
+            ))}
+            <Box sx={{ height: '1px', background: alpha(md3.outlineVariant, 0.4), my: 0.25 }} />
+            {Object.entries(roleColors).map(([role, color]) => (
+              <Box key={role} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, textTransform: 'capitalize' }}>{role}</Typography>
+              </Box>
+            ))}
           </Box>
-        ))}
-        <Box sx={{ height: '1px', background: alpha(md3.outlineVariant, 0.4), my: 0.25 }} />
-        {/* Node role legend */}
-        {Object.entries(roleColors).map(([role, color]) => (
-          <Box key={role} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
-            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, textTransform: 'capitalize' }}>{role}</Typography>
-          </Box>
-        ))}
+        )}
       </Paper>
 
       {/* ── Live feed (bottom-left) ──────────────────────────────────────────── */}
