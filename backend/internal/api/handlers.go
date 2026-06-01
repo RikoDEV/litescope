@@ -492,6 +492,9 @@ func summarizeTx(tx *store.Tx) packetSummary {
 	var bestPath []string
 	bestObserver := ""
 	for _, o := range tx.Observations {
+		if bestObserver == "" {
+			bestObserver = o.ObserverID
+		}
 		var hops []string
 		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
 			maxHops = len(hops)

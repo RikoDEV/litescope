@@ -83,6 +83,9 @@ func main() {
 				var bestPath []string
 				var bestObserver string
 				for _, o := range tx.Observations {
+					if bestObserver == "" {
+						bestObserver = o.ObserverID
+					}
 					var hops []string
 					if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
 						maxHops = len(hops)
