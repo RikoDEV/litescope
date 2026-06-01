@@ -49,11 +49,11 @@ const LH_MS: Record<string, number> = {
   '1h': 3600e3, '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*24*3600e3, '30d': 30*24*3600e3,
 }
 
-const roleShapes: Record<string, (color: string, op: number) => string> = {
-  repeater:  (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,10 10,19 1,10" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
-  companion: (c, o) => `<svg width="20" height="20" style="opacity:${o}"><circle cx="10" cy="10" r="8" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
-  room:      (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 17.6,5.5 17.6,14.5 10,19 2.4,14.5 2.4,5.5" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
-  sensor:    (c, o) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,18 1,18" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>`,
+const roleShapes: Record<string, (color: string, op: number, stroke: string) => string> = {
+  repeater:  (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,10 10,19 1,10" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
+  companion: (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><circle cx="10" cy="10" r="8" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
+  room:      (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 17.6,5.5 17.6,14.5 10,19 2.4,14.5 2.4,5.5" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
+  sensor:    (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,18 1,18" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
 }
 
 const ROLE_SHAPES: Record<string, string> = { repeater: '◆', companion: '●', room: '■', sensor: '▲' }
@@ -87,6 +87,7 @@ export default function MapView() {
   const animLayer      = useRef<L.LayerGroup | null>(null)
   const clusterGroup   = useRef<L.MarkerClusterGroup | null>(null)
   const markersRef     = useRef<Map<string, L.Marker>>(new Map())
+  const nodeLocRef     = useRef<Map<string, [number, number]>>(new Map())
   const animRAFs       = useRef<number[]>([])
   const timelineCanvas = useRef<HTMLCanvasElement>(null)
 
@@ -144,9 +145,10 @@ export default function MapView() {
   }, [nodes])
 
   function makeIcon(role: string, active: boolean, label?: string) {
-    const color = roleColor(role)
-    const fn    = roleShapes[role] ?? roleShapes.companion
-    const svg   = fn(color, active ? 1 : 0.35)
+    const color  = roleColor(role)
+    const stroke = theme.palette.mode === 'dark' ? '#111827' : '#ffffff'
+    const fn     = roleShapes[role] ?? roleShapes.companion
+    const svg    = fn(color, active ? 1 : 0.35, stroke)
     const html  = label
       ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:rgba(0,0,0,0.55);padding:0 3px;border-radius:2px">${label}</span></div>`
       : svg
@@ -199,7 +201,15 @@ export default function MapView() {
 
   // Load nodes + seed VCR buffer
   useEffect(() => {
-    api.nodes().then(res => setNodes(res.nodes ?? []))
+    api.nodes().then(res => {
+      const ns = res.nodes ?? []
+      setNodes(ns)
+      for (const n of ns) {
+        if (n.lat != null && n.lon != null && !(n.lat === 0 && n.lon === 0)) {
+          nodeLocRef.current.set(n.pubKey, [n.lat, n.lon])
+        }
+      }
+    })
     api.packets(500, 0).then(res => {
       const sorted = [...(res.packets ?? [])].sort((a, b) => new Date(a.firstSeen).getTime() - new Date(b.firstSeen).getTime())
       vcrBuffer.current = sorted
@@ -265,7 +275,7 @@ export default function MapView() {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
@@ -281,39 +291,6 @@ export default function MapView() {
     })
     return unsub
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const processPacket = useCallback((pkt: Packet) => {
-    const dec = pkt.decoded; if (!dec) return
-    // Keep byte-size index up to date from live stream
-    if (pkt.payloadType === 4 && pkt.byteSize > 0) {
-      const pk = (dec.pubKey ?? '') as string
-      if (pk) nodeByteSizeRef.current.set(pk, pkt.byteSize)
-    }
-    const color = TYPE_COLORS[pkt.payloadType] ?? md3.outline
-    setLiveFeed(prev => [pkt, ...prev.slice(0, 19)])
-    if (pkt.payloadType === 4 && dec.pubKey) {
-      const lat    = dec.lat as number | undefined
-      const lon    = dec.lon as number | undefined
-      const pubKey = dec.pubKey as string
-      const name   = dec.name as string | undefined
-      setNodes(prev => {
-        const idx   = prev.findIndex(n => n.pubKey === pubKey)
-        const flags = dec.flags as { type?: number } | undefined
-        const role  = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
-        const updated: Node = {
-          pubKey, name: name ?? pubKey.slice(0, 8), role,
-          lat: lat ?? (idx >= 0 ? prev[idx].lat : null),
-          lon: lon ?? (idx >= 0 ? prev[idx].lon : null),
-          lastSeen: pkt.firstSeen,
-          firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen,
-          advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1,
-        }
-        if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n }
-        return [...prev, updated]
-      })
-      if (lat != null && lon != null) { animatePacket(lat, lon, color); flashMarker(pubKey) }
-    }
-  }, [md3.outline])
 
   const animatePacket = useCallback((lat: number, lon: number, color: string) => {
     const map = mapInstance.current; const layer = animLayer.current; if (!map || !layer) return
@@ -335,6 +312,119 @@ export default function MapView() {
     el.style.transform  = 'scale(1.7)'; el.style.filter = 'brightness(2)'
     setTimeout(() => { el.style.transform = 'scale(1)'; el.style.filter = '' }, 150)
   }, [])
+
+  // Resolve a short hex prefix (from pathJson) to a known node location + full pubKey
+  const resolveHop = useCallback((prefix: string): { loc: [number, number]; pk: string } | null => {
+    const up = prefix.toUpperCase()
+    for (const [pk, loc] of nodeLocRef.current) {
+      if (pk.toUpperCase().startsWith(up)) return { loc, pk }
+    }
+    return null
+  }, [])
+
+  // Sequential flow animation: traveling dot + line per segment, ripple+flash on arrival
+  const animateFlow = useCallback((
+    path: [number, number][],
+    pubKeys: (string | null)[],
+    color: string,
+  ) => {
+    const layer = animLayer.current; if (!layer || path.length < 1) return
+    const HOP_MS = 380
+
+    // Source node fires immediately
+    animatePacket(path[0][0], path[0][1], color)
+    if (pubKeys[0]) flashMarker(pubKeys[0])
+
+    for (let i = 0; i < path.length - 1; i++) {
+      const from = path[i]
+      const to   = path[i + 1]
+      const segDelay = i * HOP_MS
+
+      setTimeout(() => {
+        if (!animLayer.current) return
+        const lyr = animLayer.current
+
+        // Dashed line for the segment, fades after dot arrives
+        const line = L.polyline([from, to], {
+          color, weight: 2, opacity: 0.55, dashArray: '6 5',
+        }).addTo(lyr)
+
+        // Traveling dot
+        const dot = L.circleMarker(from, {
+          radius: 4, color, fillColor: '#fff', fillOpacity: 0.9, weight: 1.5, opacity: 1,
+        }).addTo(lyr)
+
+        const t0 = performance.now()
+        const step = (now: number) => {
+          const p = Math.min(1, (now - t0) / HOP_MS)
+          const ep = p < 0.5 ? 2 * p * p : -1 + (4 - 2 * p) * p  // ease in-out
+          dot.setLatLng([from[0] + (to[0] - from[0]) * ep, from[1] + (to[1] - from[1]) * ep])
+          if (p < 1) {
+            animRAFs.current.push(requestAnimationFrame(step))
+          } else {
+            dot.remove()
+            animatePacket(to[0], to[1], color)
+            if (pubKeys[i + 1]) flashMarker(pubKeys[i + 1]!)
+            let op = 0.55
+            const fade = () => {
+              op -= 0.04
+              if (op <= 0) { line.remove(); return }
+              line.setStyle({ opacity: op })
+              animRAFs.current.push(requestAnimationFrame(fade))
+            }
+            setTimeout(() => animRAFs.current.push(requestAnimationFrame(fade)), 400)
+          }
+        }
+        animRAFs.current.push(requestAnimationFrame(step))
+      }, segDelay)
+    }
+  }, [animatePacket, flashMarker])
+
+  const processPacket = useCallback((pkt: Packet) => {
+    const dec = pkt.decoded; if (!dec) return
+    const color  = TYPE_COLORS[pkt.payloadType] ?? md3.outline
+    const pubKey = (dec.pubKey ?? '') as string
+    setLiveFeed(prev => [pkt, ...prev.slice(0, 19)])
+
+    if (pkt.payloadType === 4 && pubKey) {
+      if (pkt.byteSize > 0) nodeByteSizeRef.current.set(pubKey, pkt.byteSize)
+      const lat  = dec.lat as number | undefined
+      const lon  = dec.lon as number | undefined
+      const name = dec.name as string | undefined
+      if (lat != null && lon != null && !(lat === 0 && lon === 0)) {
+        nodeLocRef.current.set(pubKey, [lat, lon])
+      }
+      setNodes(prev => {
+        const idx   = prev.findIndex(n => n.pubKey === pubKey)
+        const flags = dec.flags as { type?: number } | undefined
+        const role  = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
+        const updated: Node = {
+          pubKey, name: name ?? pubKey.slice(0, 8), role,
+          lat: lat ?? (idx >= 0 ? prev[idx].lat : null),
+          lon: lon ?? (idx >= 0 ? prev[idx].lon : null),
+          lastSeen: pkt.firstSeen,
+          firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen,
+          advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1,
+        }
+        if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n }
+        return [...prev, updated]
+      })
+    }
+
+    // Build ordered path: sender + resolved hops, then run flow animation
+    if (pubKey) {
+      const senderLoc = nodeLocRef.current.get(pubKey)
+      if (senderLoc) {
+        const locs: [number, number][] = [senderLoc]
+        const pks: (string | null)[]   = [pubKey]
+        for (const prefix of (pkt.bestPath ?? [])) {
+          const r = resolveHop(prefix)
+          if (r) { locs.push(r.loc); pks.push(r.pk) }
+        }
+        animateFlow(locs, pks, color)
+      }
+    }
+  }, [md3.outline, resolveHop, animateFlow])
 
   // VCR
   const pause      = useCallback(() => { vcrMode.current = 'PAUSED'; vcrMissed.current = 0; setMode('PAUSED'); setMissed(0) }, [])

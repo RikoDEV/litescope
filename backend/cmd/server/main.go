@@ -80,10 +80,12 @@ func main() {
 				maxHops := 0
 				hopSize := 0
 				bestScope := ""
+				var bestPath []string
 				for _, o := range tx.Observations {
 					var hops []string
 					if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
 						maxHops = len(hops)
+						bestPath = hops
 						if len(hops) > 0 {
 							hopSize = len(hops[0]) / 2
 						}
@@ -106,6 +108,9 @@ func main() {
 				}
 				if bestScope != "" {
 					data["bestScope"] = bestScope
+				}
+				if len(bestPath) > 0 {
+					data["bestPath"] = bestPath
 				}
 				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
 				hub.Broadcast(msg)
