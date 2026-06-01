@@ -128,6 +128,27 @@ export const PAYLOAD_NAMES: Record<number, string> = {
   10: 'MULTIPART', 11: 'CONTROL', 15: 'RAW_CUSTOM',
 }
 
+export const PAYLOAD_COLORS: Record<number, string> = {
+  0: '#a855f7', // REQ
+  1: '#06b6d4', // RESPONSE
+  2: '#f59e0b', // TXT_MSG
+  3: '#6b7280', // ACK
+  4: '#22c55e', // ADVERT
+  5: '#3b82f6', // GRP_TXT
+  6: '#8b5cf6', // GRP_DATA
+  7: '#64748b', // ANON_REQ
+  8: '#14b8a6', // PATH
+  9: '#ec4899', // TRACE
+  10: '#94a3b8', // MULTIPART
+  11: '#475569', // CONTROL
+  15: '#f97316', // RAW_CUSTOM
+}
+
+export const PAYLOAD_ICONS: Record<number, string> = {
+  0: '❓', 1: '📨', 2: '✉️', 3: '✓', 4: '📡',
+  5: '💬', 6: '📦', 7: '🔒', 8: '🛤️', 9: '🔍',
+}
+
 export const ROUTE_NAMES: Record<number, string> = {
   0: 'TRANSPORT_FLOOD', 1: 'FLOOD', 2: 'DIRECT', 3: 'TRANSPORT_DIRECT',
 }

@@ -17,7 +17,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
-import { PAYLOAD_NAMES } from '../types'
+import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -26,17 +26,13 @@ const SPEEDS      = [0.25, 0.5, 1, 2, 4, 8]
 const HOP_MS      = 900    // ms per path segment
 const BURST_MS    = 600    // burst/ring duration at each node on arrival
 const TAIL_MS     = 900    // fade-out after last node
-const SNAKE_MS    = 1800   // how far back (in ms) the snake body is visible
+const SNAKE_MS    = HOP_MS // tail fully gone when dot reaches the next node
 const SINGLE_LIFE = 7000   // lifetime for single-point (ring) traces
 const MAX_RINGS   = 6      // max concentric rings drawn
 const HOP_RADIUS  = 40     // px per hop ring
 const MIN_RADIUS  = 40     // minimum outermost radius
 const DOT_RADIUS  = 3.5    // px, traveling dot size
 
-const TYPE_COLORS: Record<number, string> = {
-  4: '#22c55e', 5: '#3b82f6', 2: '#f59e0b', 3: '#94a3b8',
-  9: '#ec4899', 8: '#14b8a6', 0: '#a855f7', 1: '#6366f1',
-}
 const roleColors: Record<string, string> = {
   repeater: '#818cf8', companion: '#34d399', room: '#22c55e', sensor: '#fbbf24',
 }
@@ -250,7 +246,7 @@ export default function LiveMap() {
     if (!origin) return
 
     const hopCount = Math.max(pkt.maxHops ?? 0, 1)
-    const color    = TYPE_COLORS[pkt.payloadType] ?? '#94a3b8'
+    const color    = PAYLOAD_COLORS[pkt.payloadType] ?? '#94a3b8'
 
     // Build full path: origin → intermediate hops → observer
     // addPoint deduplication handles the case where origin IS one of the hops
@@ -462,19 +458,18 @@ export default function LiveMap() {
           const snakeAlpha = (ageMs: number) =>
             Math.max(0, 1 - ageMs / SNAKE_MS) * tailFade
 
-          // ── Snake trail: draw each completed segment with gradient fade ─────
-          // Each segment fades independently based on how long ago it was traversed.
-          // Older end of segment = dimmer, newer end = brighter.
+          // ── Snake trail: each segment fades based on how long ago the dot left it ──
+          // Tail end (older) fades to transparent, head end (newer) stays bright.
           const drawSeg = (p0: {x:number;y:number}, p1: {x:number;y:number}, a0: number, a1: number) => {
             if (a0 <= 0 && a1 <= 0) return
             const grad = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y)
-            grad.addColorStop(0, hexAlpha(trace.color, a0 * 0.65))
-            grad.addColorStop(1, hexAlpha(trace.color, a1 * 0.65))
+            grad.addColorStop(0, hexAlpha(trace.color, a0 * 0.75))
+            grad.addColorStop(1, hexAlpha(trace.color, a1 * 0.75))
             ctx.save()
-            ctx.strokeStyle = grad; ctx.shadowColor = trace.color; ctx.shadowBlur = 8
-            ctx.lineWidth = 2.5; ctx.setLineDash([7, 4])
+            ctx.strokeStyle = grad; ctx.shadowColor = trace.color; ctx.shadowBlur = 10
+            ctx.lineWidth = 3
             ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y)
-            ctx.stroke(); ctx.setLineDash([]); ctx.restore()
+            ctx.stroke(); ctx.restore()
           }
 
           for (let i = 0; i < segIdx; i++) {
@@ -614,9 +609,9 @@ export default function LiveMap() {
         display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 140,
       }}>
         {/* Legend */}
-        {[4, 5, 2, 9, 8].filter(pt => TYPE_COLORS[pt]).map(pt => (
+        {[4, 5, 2, 9, 8].filter(pt => PAYLOAD_COLORS[pt]).map(pt => (
           <Box key={pt} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_COLORS[pt], boxShadow: `0 0 6px ${TYPE_COLORS[pt]}` }} />
+            <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: PAYLOAD_COLORS[pt], boxShadow: `0 0 6px ${PAYLOAD_COLORS[pt]}` }} />
             <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10 }}>
               {PAYLOAD_NAMES[pt]}
             </Typography>
@@ -652,7 +647,7 @@ export default function LiveMap() {
           )}
           {liveFeed.map(pkt => {
             const dec   = pkt.decoded
-            const color = TYPE_COLORS[pkt.payloadType] ?? md3.outline
+            const color = PAYLOAD_COLORS[pkt.payloadType] ?? md3.outline
             const name  = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
             const hops  = pkt.maxHops ?? 0
             return (

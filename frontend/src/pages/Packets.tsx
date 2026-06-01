@@ -28,7 +28,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Packet, PacketDetail } from '../types'
-import { PAYLOAD_NAMES, ROUTE_NAMES } from '../types'
+import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
 import PacketDetailPanel from '../components/PacketDetailPanel'
 
 const PAGE = 100
@@ -68,13 +68,7 @@ export default function Packets() {
   const [sortCol, setSortCol]         = useState<SortCol>('firstSeen')
   const [sortDir, setSortDir]         = useState<'asc' | 'desc'>('desc')
 
-  const typeColor = (pt: number) => {
-    const map: Record<number, string> = {
-      4: md3.primary, 5: md3.tertiary, 2: '#f59e0b', 3: '#22c55e',
-      9: md3.tertiary, 8: '#14b8a6',
-    }
-    return map[pt] ?? md3.outline
-  }
+  const typeColor = (pt: number) => PAYLOAD_COLORS[pt] ?? md3.outline
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

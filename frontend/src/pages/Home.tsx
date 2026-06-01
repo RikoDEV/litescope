@@ -23,18 +23,10 @@ import { AreaChart, Area, Tooltip as RTooltip, ResponsiveContainer } from 'recha
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, Observer, OverviewStats, Packet } from '../types'
-import { PAYLOAD_NAMES } from '../types'
+import { PAYLOAD_NAMES, PAYLOAD_COLORS, PAYLOAD_ICONS } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 
-// ── colour helpers ─────────────────────────────────────────────────────────────
-const TYPE_COLOR: Record<number, string> = {
-  4: '#22c55e', 5: '#3b82f6', 2: '#f59e0b', 3: '#6b7280',
-  9: '#ec4899', 8: '#14b8a6', 0: '#a855f7', 1: '#06b6d4',
-}
-const TYPE_ICON: Record<number, string> = {
-  4: '📡', 5: '💬', 2: '✉️', 3: '✓', 9: '🔍', 8: '🛤️', 0: '❓', 1: '📨',
-}
 const ROLE_COLOR: Record<string, string> = {
   repeater: '#7c3aed', companion: '#0ea5e9', room: '#22c55e', sensor: '#f59e0b',
 }
@@ -308,8 +300,8 @@ export default function Home() {
               )}
               {recent.map((p, i) => {
                 const dec   = p.decoded
-                const color = TYPE_COLOR[p.payloadType] ?? md3.outline
-                const icon  = TYPE_ICON[p.payloadType] ?? '·'
+                const color = PAYLOAD_COLORS[p.payloadType] ?? md3.outline
+                const icon  = PAYLOAD_ICONS[p.payloadType] ?? '·'
                 const label = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
                 return (
                   <Box key={p.id} onClick={() => navigate(`/packets?hash=${p.hash}`)} sx={{
