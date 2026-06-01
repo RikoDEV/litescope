@@ -293,7 +293,9 @@ export default function MapView() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const animatePacket = useCallback((lat: number, lon: number, color: string) => {
-    const map = mapInstance.current; const layer = animLayer.current; if (!map || !layer) return
+    const map = mapInstance.current; const layer = animLayer.current
+    console.debug('[anim] animatePacket', lat, lon, 'map=', !!map, 'layer=', !!layer)
+    if (!map || !layer) return
     const dot = L.circleMarker([lat, lon], { radius: 6, color, fillColor: color, fillOpacity: 0.8, weight: 1.5, opacity: 1 }).addTo(layer)
     let r = 6, op = 0.85
     const step = () => {
@@ -328,7 +330,9 @@ export default function MapView() {
     pubKeys: (string | null)[],
     color: string,
   ) => {
-    const layer = animLayer.current; if (!layer || path.length < 1) return
+    const layer = animLayer.current
+    console.debug('[anim] animateFlow called, layer=', !!layer, 'path=', path.length)
+    if (!layer || path.length < 1) return
     const HOP_MS = 380
 
     // Source node fires immediately
@@ -384,6 +388,7 @@ export default function MapView() {
     const dec = pkt.decoded; if (!dec) return
     const color  = TYPE_COLORS[pkt.payloadType] ?? md3.outline
     const pubKey = (dec.pubKey ?? '') as string
+    console.debug('[anim] pkt', pkt.payloadType, 'pk=', pubKey, 'locCacheSize=', nodeLocRef.current.size, 'map=', !!mapInstance.current, 'layer=', !!animLayer.current)
     setLiveFeed(prev => [pkt, ...prev.slice(0, 19)])
 
     if (pkt.payloadType === 4 && pubKey) {
@@ -393,6 +398,7 @@ export default function MapView() {
       const name = dec.name as string | undefined
       if (lat != null && lon != null && !(lat === 0 && lon === 0)) {
         nodeLocRef.current.set(pubKey, [lat, lon])
+        console.debug('[anim] cached loc', pubKey, lat, lon)
       }
       setNodes(prev => {
         const idx   = prev.findIndex(n => n.pubKey === pubKey)
@@ -414,6 +420,7 @@ export default function MapView() {
     // Build ordered path: sender + resolved hops, then run flow animation
     if (pubKey) {
       const senderLoc = nodeLocRef.current.get(pubKey)
+      console.debug('[anim] senderLoc=', senderLoc, 'for pk=', pubKey)
       if (senderLoc) {
         const locs: [number, number][] = [senderLoc]
         const pks: (string | null)[]   = [pubKey]
@@ -421,6 +428,7 @@ export default function MapView() {
           const r = resolveHop(prefix)
           if (r) { locs.push(r.loc); pks.push(r.pk) }
         }
+        console.debug('[anim] animateFlow path len=', locs.length)
         animateFlow(locs, pks, color)
       }
     }

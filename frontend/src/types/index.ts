@@ -25,6 +25,7 @@ export interface Packet {
   hopSize?: number
   bestScope?: string
   bestPath?: string[]
+  bestObserver?: string
   byteSize: number
   channelHash?: string
   decoded?: DecodedPayload
