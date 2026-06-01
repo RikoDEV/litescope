@@ -23,9 +23,10 @@ import { formatDistanceToNow } from 'date-fns'
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const SPEEDS      = [0.25, 0.5, 1, 2, 4, 8]
-const HOP_MS      = 600    // ms per path segment
-const BURST_MS    = 700    // burst/ring duration at each node on arrival
-const TAIL_MS     = 1400   // fade-out after last node
+const HOP_MS      = 900    // ms per path segment
+const BURST_MS    = 600    // burst/ring duration at each node on arrival
+const TAIL_MS     = 900    // fade-out after last node
+const SNAKE_MS    = 1800   // how far back (in ms) the snake body is visible
 const SINGLE_LIFE = 7000   // lifetime for single-point (ring) traces
 const MAX_RINGS   = 6      // max concentric rings drawn
 const HOP_RADIUS  = 40     // px per hop ring
@@ -65,6 +66,11 @@ function matchHop(hopHex: string, nodes: Node[]): Node | undefined {
   const h = hopHex.toUpperCase()
   if (h.length < 2) return undefined
   return nodes.find(n => n.lat != null && !(n.lat === 0 && n.lon === 0) && n.pubKey.toUpperCase().startsWith(h))
+}
+
+/** Append an 8-bit alpha suffix to a #rrggbb hex color string. */
+function hexAlpha(hex: string, a: number): string {
+  return hex + Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0')
 }
 
 /** Draw a glowing rounded arc on canvas. */
@@ -213,41 +219,47 @@ export default function LiveMap() {
       )
     }
 
-    // Resolve observer node (used both as path endpoint and as fallback origin)
     const obsNode = pkt.bestObserver ? findNode(pkt.bestObserver) : undefined
     const obsLoc  = validLoc(obsNode?.lat, obsNode?.lon)
 
-    // Resolve sender position: decoded lat/lon → node lookup → observer fallback
-    const senderPk  = (dec?.pubKey ?? '') as string
+    const addPoint = (la: number | null | undefined, lo: number | null | undefined, pts: TracePoint[]) => {
+      const loc = validLoc(la, lo)
+      if (loc && !pts.find(p => p.lat === loc[0] && p.lon === loc[1])) {
+        pts.push({ lat: loc[0], lon: loc[1] })
+      }
+    }
+
+    // Resolution chain for origin:
+    // 1. GPS directly in decoded payload (adverts)
+    // 2. Sender's last known location from nodesRef
+    // 3. First resolvable intermediate hop (relay node)
+    // 4. Observer location (at least show "packet arrived here")
+    const senderPk = (dec?.pubKey ?? '') as string
     let origin: [number, number] | null =
       validLoc(dec?.lat as number | undefined, dec?.lon as number | undefined) ??
-      (senderPk ? validLoc(findNode(senderPk)?.lat, findNode(senderPk)?.lon) : null) ??
-      obsLoc  // last resort: animate at the observer so every received packet is shown
+      (senderPk ? validLoc(findNode(senderPk)?.lat, findNode(senderPk)?.lon) : null)
 
+    if (!origin) {
+      for (const hop of (pkt.bestPath ?? [])) {
+        const loc = validLoc(matchHop(hop, nodesRef.current)?.lat, matchHop(hop, nodesRef.current)?.lon)
+        if (loc) { origin = loc; break }
+      }
+    }
+
+    if (!origin) origin = obsLoc
     if (!origin) return
 
     const hopCount = Math.max(pkt.maxHops ?? 0, 1)
     const color    = TYPE_COLORS[pkt.payloadType] ?? '#94a3b8'
 
-    // Build multi-point path: sender → intermediate hops → observer
+    // Build full path: origin → intermediate hops → observer
+    // addPoint deduplication handles the case where origin IS one of the hops
     const points: TracePoint[] = [{ lat: origin[0], lon: origin[1] }]
-
-    const addPoint = (la: number | null | undefined, lo: number | null | undefined) => {
-      const loc = validLoc(la, lo)
-      if (loc && !points.find(p => p.lat === loc[0] && p.lon === loc[1])) {
-        points.push({ lat: loc[0], lon: loc[1] })
-      }
-    }
-
-    // Only build the full path when we have a real sender (not the observer fallback)
-    const hasSender = origin !== obsLoc || senderPk === (obsNode?.pubKey ?? '')
-    if (hasSender) {
-      ;(pkt.bestPath ?? []).forEach(hop => {
-        const matched = matchHop(hop, nodesRef.current)
-        if (matched) addPoint(matched.lat, matched.lon)
-      })
-      addPoint(obsLoc?.[0], obsLoc?.[1])
-    }
+    ;(pkt.bestPath ?? []).forEach(hop => {
+      const matched = matchHop(hop, nodesRef.current)
+      addPoint(matched?.lat, matched?.lon, points)
+    })
+    addPoint(obsLoc?.[0], obsLoc?.[1], points)
 
     const numSegs = Math.max(1, points.length - 1)
     const lifetime = points.length > 1 ? numSegs * HOP_MS + TAIL_MS : SINGLE_LIFE
@@ -446,20 +458,37 @@ export default function LiveMap() {
           // Tail fade after travel completes
           const tailFade = travelling ? 1 : Math.max(0, 1 - (elapsed - travelMs) / TAIL_MS)
 
-          // Draw the TRAIL: only from start up to the dot's current position.
-          // This means: all completed segments + partial current segment (never ahead of dot).
-          ctx.save()
-          ctx.globalAlpha = 0.5 * tailFade
-          ctx.strokeStyle = trace.color; ctx.shadowColor = trace.color; ctx.shadowBlur = 8
-          ctx.lineWidth = 2; ctx.setLineDash([6, 4])
-          ctx.beginPath()
-          ctx.moveTo(canvasPts[0].x, canvasPts[0].y)
-          for (let i = 1; i <= segIdx; i++) {
-            ctx.lineTo(canvasPts[i].x, canvasPts[i].y)
+          // Helper: opacity for a point that was "current" at time t_ms ago
+          const snakeAlpha = (ageMs: number) =>
+            Math.max(0, 1 - ageMs / SNAKE_MS) * tailFade
+
+          // ── Snake trail: draw each completed segment with gradient fade ─────
+          // Each segment fades independently based on how long ago it was traversed.
+          // Older end of segment = dimmer, newer end = brighter.
+          const drawSeg = (p0: {x:number;y:number}, p1: {x:number;y:number}, a0: number, a1: number) => {
+            if (a0 <= 0 && a1 <= 0) return
+            const grad = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y)
+            grad.addColorStop(0, hexAlpha(trace.color, a0 * 0.65))
+            grad.addColorStop(1, hexAlpha(trace.color, a1 * 0.65))
+            ctx.save()
+            ctx.strokeStyle = grad; ctx.shadowColor = trace.color; ctx.shadowBlur = 8
+            ctx.lineWidth = 2.5; ctx.setLineDash([7, 4])
+            ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y)
+            ctx.stroke(); ctx.setLineDash([]); ctx.restore()
           }
-          ctx.lineTo(dotX, dotY)
-          ctx.stroke()
-          ctx.setLineDash([]); ctx.restore()
+
+          for (let i = 0; i < segIdx; i++) {
+            const a0 = snakeAlpha(elapsed - i * HOP_MS)        // age at segment start
+            const a1 = snakeAlpha(elapsed - (i + 1) * HOP_MS)  // age at segment end
+            drawSeg(canvasPts[i], canvasPts[i + 1], a0, a1)
+          }
+
+          // Active segment: from `from` to current dot position
+          if (travelling) {
+            const a0 = snakeAlpha(elapsed - segIdx * HOP_MS)          // age at segment start
+            const a1 = snakeAlpha(0)                                    // dot is always "now"
+            drawSeg(from, { x: dotX, y: dotY }, a0, a1)
+          }
 
           // Traveling dot
           if (travelling) {
