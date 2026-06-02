@@ -121,8 +121,9 @@ export default function LiveMap() {
   const tlCanvas    = useRef<HTMLCanvasElement>(null)
 
   // Leaflet refs
-  const mapRef    = useRef<L.Map | null>(null)
-  const nodesLayer = useRef<L.LayerGroup | null>(null)
+  const mapRef      = useRef<L.Map | null>(null)
+  const nodesLayer  = useRef<L.LayerGroup | null>(null)
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
 
   // Animation refs
   const rafId      = useRef<number>(0)
@@ -156,11 +157,7 @@ export default function LiveMap() {
     if (!mapDiv.current || mapRef.current) return
     const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: true })
 
-    // Dark tile layer for trace contrast
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO',
-      subdomains: 'abcd', maxZoom: 19,
-    }).addTo(map)
+    // Tile layer added by the theme-aware effect below
 
     nodesLayer.current = L.layerGroup().addTo(map)
     mapRef.current = map
@@ -180,6 +177,19 @@ export default function LiveMap() {
     }
   }, [])
 
+  // ── Tile layer (theme-aware) ─────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return
+    if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
+    const isDark = theme.palette.mode === 'dark'
+    tileLayerRef.current = L.tileLayer(
+      isDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: isDark ? '© OpenStreetMap © CARTO' : '© OpenStreetMap', subdomains: isDark ? 'abcd' : 'abc', maxZoom: 19 }
+    ).addTo(map)
+  }, [theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Node markers ────────────────────────────────────────────────────────────
   useEffect(() => {
     const layer = nodesLayer.current; const map = mapRef.current; if (!layer) return
@@ -190,7 +200,7 @@ export default function LiveMap() {
       const color = roleColors[n.role] ?? '#64748b'
       const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
       const marker = L.circleMarker([n.lat, n.lon], {
-        radius: 5, color: '#0f172a', weight: 1.5,
+        radius: 3.5, color: '#0f172a', weight: 1,
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
       }).bindTooltip(n.name || n.pubKey.slice(0, 12), { permanent: false, direction: 'top', offset: [0, -8] })
       layer.addLayer(marker)

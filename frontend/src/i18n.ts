@@ -67,6 +67,8 @@ const en = {
     longestPath: 'Longest path — {{count}} hops', observer: 'Observer', hops: 'Hops',
     obsChip: '{{count}} obs', observersChip: '{{count}} observers',
     hopsCount: '{{count}} hops', linkCopied: 'Link copied to clipboard',
+    fieldTable: 'Field Breakdown',
+    col: { offset: 'Offset', field: 'Field', value: 'Value', description: 'Description' },
     hex: {
       header: 'Header', transport: 'Transport', pathLen: 'Path Length', path: 'Path',
       pubKey: 'PubKey', timestamp: 'Timestamp', signature: 'Signature', flags: 'Flags',
@@ -196,6 +198,8 @@ const pl: typeof en = {
     longestPath: 'Najdłuższa trasa — {{count}} skoków', observer: 'Obserwator', hops: 'Skoki',
     obsChip: '{{count}} obs', observersChip: '{{count}} obserwatorów',
     hopsCount: '{{count}} skoków', linkCopied: 'Link skopiowany do schowka',
+    fieldTable: 'Struktura pól',
+    col: { offset: 'Offset', field: 'Pole', value: 'Wartość', description: 'Opis' },
     hex: {
       header: 'Nagłówek', transport: 'Transport', pathLen: 'Długość ścieżki', path: 'Ścieżka',
       pubKey: 'PubKey', timestamp: 'Znacznik czasu', signature: 'Podpis', flags: 'Flagi',
@@ -325,6 +329,8 @@ const de: typeof en = {
     longestPath: 'Längster Pfad — {{count}} Sprünge', observer: 'Beobachter', hops: 'Sprünge',
     obsChip: '{{count}} Obs', observersChip: '{{count}} Beobachter',
     hopsCount: '{{count}} Sprünge', linkCopied: 'Link in Zwischenablage kopiert',
+    fieldTable: 'Feldaufschlüsselung',
+    col: { offset: 'Offset', field: 'Feld', value: 'Wert', description: 'Beschreibung' },
     hex: {
       header: 'Kopfzeile', transport: 'Transport', pathLen: 'Pfadlänge', path: 'Pfad',
       pubKey: 'PubKey', timestamp: 'Zeitstempel', signature: 'Signatur', flags: 'Flags',

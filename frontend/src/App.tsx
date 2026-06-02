@@ -27,6 +27,7 @@ export default function App() {
           <Route path="channels/:hash" element={<Channels />} />
           <Route path="observers" element={<Observers />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="analytics/:tab" element={<Analytics />} />
           <Route path="decode" element={<Decoder />} />
           <Route path="*" element={<NotFound />} />
         </Route>

@@ -104,6 +104,9 @@ export default function MapView() {
 
   const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
 
+  // Shared ref so the markercluster iconCreateFunction (a static closure) can read live theme values
+  const clusterCtxRef = useRef({ mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface })
+
   // Count active/stale per role
   const typeCounts = useMemo(() => {
     const now = Date.now()
@@ -119,8 +122,11 @@ export default function MapView() {
     const stroke = theme.palette.mode === 'dark' ? '#111827' : '#ffffff'
     const fn     = roleShapes[role] ?? roleShapes.companion
     const svg    = fn(color, active ? 1 : 0.35, stroke)
+    const isDark = theme.palette.mode === 'dark'
+    const labelBg     = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)'
+    const labelBorder = isDark ? '' : `border:1px solid ${color}44;`
     const html  = label
-      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:rgba(0,0,0,0.55);padding:0 3px;border-radius:2px">${label}</span></div>`
+      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${label}</span></div>`
       : svg
     return L.divIcon({ html, className: '', iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -13] })
   }
@@ -134,7 +140,27 @@ export default function MapView() {
     // Guard against React StrictMode double-invoke leaving a stale leaflet container
     if ((el as unknown as Record<string, unknown>)._leaflet_id) return
     const map = L.map(el, { center: [20, 0], zoom: 2, zoomControl: false, maxZoom: 19 })
-    const cluster = L.markerClusterGroup({ disableClusteringAtZoom: 12, maxClusterRadius: 60 })
+    const cluster = L.markerClusterGroup({
+      disableClusteringAtZoom: 11,
+      maxClusterRadius: 60,
+      iconCreateFunction: (c) => {
+        const ctx = clusterCtxRef.current
+        const isDark = ctx.mode === 'dark'
+        const children = c.getAllChildMarkers()
+        const counts: Record<string, number> = {}
+        children.forEach(m => { const r = (m as any)._nodeRole ?? 'companion'; counts[r] = (counts[r] ?? 0) + 1 })
+        const total = children.length
+        const roles: Array<'repeater' | 'companion' | 'room' | 'sensor'> = ['repeater', 'companion', 'room', 'sensor']
+        const parts = roles.filter(r => (counts[r] ?? 0) > 0)
+          .map(r => `<span style="color:${ctx.colors[r]}">${ROLE_SHAPES[r]}${counts[r]}</span>`).join(' ')
+        const bg     = isDark ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.96)'
+        const border = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.13)'
+        const fg     = isDark ? '#f1f5f9' : '#0f172a'
+        const sub    = isDark ? '#94a3b8' : '#475569'
+        const html = `<div style="position:absolute;transform:translate(-50%,-50%);background:${bg};border:1.5px solid ${border};border-radius:8px;padding:4px 8px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.22);font-family:system-ui,sans-serif;line-height:1;white-space:nowrap"><div style="font-size:13px;font-weight:700;color:${fg};margin-bottom:2px">${total}</div>${parts ? `<div style="font-size:8px;color:${sub};letter-spacing:0.02em">${parts}</div>` : ''}</div>`
+        return L.divIcon({ html, className: '', iconSize: [0, 0], iconAnchor: [0, 0] })
+      },
+    })
     cluster.addTo(map)
     clusterGroup.current = cluster
     mapInstance.current = map
@@ -156,11 +182,20 @@ export default function MapView() {
         maxZoom: 19,
       }
     ).addTo(map)
+    // Refresh cluster icons so they pick up the new theme colours
+    clusterCtxRef.current = { mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface }
+    clusterGroup.current?.refreshClusters()
   }, [theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load nodes + seed VCR buffer
+  // Load nodes + seed byte-size map from recent packet history
   useEffect(() => {
-    api.nodes().then(res => setNodes(res.nodes ?? []))
+    Promise.all([api.nodes(), api.packets(500, 0)]).then(([nodesRes, pktsRes]) => {
+      for (const p of pktsRes.packets ?? []) {
+        if (p.payloadType === 4 && p.hopSize && p.hopSize > 0 && p.decoded?.pubKey)
+          nodeByteSizeRef.current.set(p.decoded.pubKey as string, p.hopSize!)
+      }
+      setNodes(nodesRes.nodes ?? [])
+    })
   }, [])
 
   // Sync markers with current filters
@@ -201,8 +236,9 @@ export default function MapView() {
       const label  = showLabels ? (n.name || n.pubKey.slice(0, 8)) : undefined
       const icon   = makeIcon(n.role, active, label)
       const exist  = markersRef.current.get(n.pubKey)
-      if (exist) { exist.setIcon(icon); return }
-      const m = L.marker([n.lat!, n.lon!], { icon }).bindPopup(makePopup(n))
+      if (exist) { exist.setIcon(icon); (exist as any)._nodeRole = n.role; return }
+      const m = L.marker([n.lat!, n.lon!], { icon }).bindPopup(makePopup(n));
+      (m as any)._nodeRole = n.role
       m.on('click', () => selectNode(n))
       markersRef.current.set(n.pubKey, m)
       toAdd.push(m)
@@ -229,7 +265,7 @@ export default function MapView() {
     const dec = pkt.decoded; if (!dec) return
     if (pkt.payloadType === 4 && dec.pubKey) {
       const pubKey = dec.pubKey as string
-      if (pkt.byteSize > 0) nodeByteSizeRef.current.set(pubKey, pkt.byteSize)
+      if (pkt.hopSize && pkt.hopSize > 0) nodeByteSizeRef.current.set(pubKey, pkt.hopSize)
       const lat  = dec.lat as number | undefined
       const lon  = dec.lon as number | undefined
       const name = dec.name as string | undefined

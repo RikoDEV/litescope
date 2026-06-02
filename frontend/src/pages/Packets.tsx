@@ -464,6 +464,7 @@ export default function Packets() {
         <PacketDetailPanel
           selected={selected}
           selectedObserverId={selectedObserverId ?? undefined}
+          onObserverSelect={id => setSelectedObserverId(id)}
           onClose={() => { setSelected(null); setSelectedObserverId(null); setSearchParams({}, { replace: true }) }}
         />
       )}

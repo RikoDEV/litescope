@@ -28,7 +28,7 @@ import WifiIcon from '@mui/icons-material/Wifi'
 import { api } from '../services/api'
 import type { Observer } from '../types'
 import { formatDistanceToNow } from 'date-fns'
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 
 const DAYS_OPTIONS = [{ l: '24 h', d: 1 }, { l: '3 d', d: 3 }, { l: '7 d', d: 7 }, { l: '30 d', d: 30 }]
 const COLORS = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6']
@@ -77,7 +77,7 @@ export default function Observers() {
   const snrBuckets  = analytics?.snr?.length ? bucketize(analytics.snr, -25, 15, 10) : []
   const typePie     = analytics?.packetTypes ? Object.entries(analytics.packetTypes).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value })) : []
   const labelStep   = days <= 1 ? 4 : days <= 3 ? 12 : 24
-  const chartLine   = (analytics?.timeline ?? []).map((b, i) => ({ ...b, displayLabel: i % labelStep === 0 ? b.label : '' }))
+  const chartLine   = analytics?.timeline ?? []
 
   return (
     <Box sx={{ display: 'flex', height: '100%', background: md3.background }}>
@@ -171,11 +171,11 @@ export default function Observers() {
                   <>
                     <Typography variant="overline" sx={{ color: md3.outline }}>{t('observers.packetsOverTime')}</Typography>
                     <ResponsiveContainer width="100%" height={120} style={{ marginTop: 4 }}>
-                      <BarChart data={chartLine} barSize={3}>
+                      <BarChart data={chartLine} barSize={3} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
-                        <XAxis dataKey="displayLabel" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} interval={0} />
-                        <YAxis tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
-                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} interval={labelStep - 1} />
+                        <YAxis width={28} tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
                         <Bar dataKey="count" fill={md3.primary} radius={[2, 2, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -202,14 +202,15 @@ export default function Observers() {
                 {typePie.length > 0 && (
                   <>
                     <Typography variant="overline" sx={{ color: md3.outline }}>{t('observers.packetTypes')}</Typography>
-                    <ResponsiveContainer width="100%" height={150} style={{ marginTop: 4 }}>
-                      <PieChart>
-                        <Pie data={typePie} dataKey="value" cx="50%" cy="50%" outerRadius={60}
-                          label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
+                    <ResponsiveContainer width="100%" height={typePie.length * 22 + 8} style={{ marginTop: 4 }}>
+                      <BarChart data={typePie} layout="vertical" barSize={10} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                        <XAxis type="number" hide />
+                        <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} cursor={{ fill: 'transparent' }} />
+                        <Bar dataKey="value" radius={[0, 3, 3, 0]}>
                           {typePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
-                      </PieChart>
+                        </Bar>
+                      </BarChart>
                     </ResponsiveContainer>
                   </>
                 )}

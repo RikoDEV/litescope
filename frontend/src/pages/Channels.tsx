@@ -32,6 +32,7 @@ import LockIcon from '@mui/icons-material/Lock'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
+import { deduplicateObs } from '../components/PacketDetailPanel'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 
@@ -112,9 +113,10 @@ export default function Channels() {
     api.nodes().then(res => setNodes((res.nodes ?? []).map(n => ({ pubKey: n.pubKey, name: n.name }))))
   }, [])
 
-  // Auto-select channel from URL path param
+  // Sync selected channel with URL path param
   useEffect(() => {
-    if (!urlHash || !channels.length) return
+    if (!urlHash) { setSelected(null); return }
+    if (!channels.length) return
     const ch = channels.find(c => c.hash === urlHash)
     if (ch && ch.hash !== selected?.hash) selectChannelData(ch)
   }, [urlHash, channels]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -385,8 +387,8 @@ function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: strin
   }
   const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current) }
 
-  // Group by observation, each with its parsed hops
-  const obsHops = (detail?.observations ?? []).map(o => ({
+  // Group by observation (deduplicated), each with its parsed hops
+  const obsHops = deduplicateObs(detail?.observations ?? []).map(o => ({
     name: o.observerName || o.observerId.slice(0, 12),
     iata: o.observerIata,
     hops: (() => { try { return JSON.parse(o.pathJson) as string[] } catch { return [] } })(),

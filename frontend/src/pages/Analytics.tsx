@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
@@ -56,11 +57,17 @@ export default function Analytics() {
   const theme = useTheme()
   const md3   = theme.palette.md3
   const { t } = useTranslation()
-  const [tab, setTab] = useState<TabId>('overview')
+  const { tab: tabParam } = useParams<{ tab?: string }>()
+  const navigate = useNavigate()
+  const tab = (TABS.some(t => t.id === tabParam) ? tabParam : 'overview') as TabId
+
+  useEffect(() => {
+    if (tabParam === 'overview') navigate('/analytics', { replace: true })
+  }, [tabParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: md3.background }}>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto"
+      <Tabs value={tab} onChange={(_, v) => navigate(v === 'overview' ? '/analytics' : `/analytics/${v}`, { replace: true })} variant="scrollable" scrollButtons="auto"
         sx={{ px: 2, background: md3.surfaceContainerLow, flexShrink: 0 }}>
         {TABS.map(({ id, Icon, tk }) => (
           <Tab key={id} value={id} iconPosition="start" icon={<Icon sx={{ fontSize: 18 }} />} label={t(tk as Parameters<typeof t>[0])} sx={{ minHeight: 48 }} />
@@ -94,6 +101,8 @@ function OverviewTab() {
   }, [])
 
   const typeData = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))
+  const typeTotal = typeData.reduce((s, d) => s + d.value, 0)
+  const typeShareData = typeData.map(d => ({ name: d.name, pct: typeTotal > 0 ? +((d.value / typeTotal) * 100).toFixed(1) : 0 }))
 
   const statCards = [
     { label: t('home.totalPackets'), value: stats?.totalPackets.toLocaleString() ?? '—',          color: md3.primary },
@@ -121,26 +130,27 @@ function OverviewTab() {
       {typeData.length > 0 && (
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
           <ChartCard title={t('analytics.packetTypeDistribution')} Icon={BarChartIcon}>
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={typeData.length * 22 + 16}>
               <BarChart data={typeData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} />
                 <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
-                <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11, fill: md3.onSurface }} />
+                <YAxis type="category" dataKey="name" width={90} interval={0} tick={{ fontSize: 11, fill: md3.onSurface }} />
                 <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
                 <Bar dataKey="value" fill={md3.primary} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
-          <ChartCard title={t('analytics.payloadTypeShare')} Icon={PieChartIcon}>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={typeData} dataKey="value" cx="50%" cy="50%" outerRadius={80}
-                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
-                  {typeData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12, color: md3.onSurfaceVariant }} />
-              </PieChart>
+          <ChartCard title={t('analytics.payloadTypeShare')} Icon={BarChartIcon}>
+            <ResponsiveContainer width="100%" height={typeShareData.length * 22 + 16}>
+              <BarChart data={typeShareData} layout="vertical" margin={{ top: 4, right: 36, left: 0, bottom: 4 }}>
+                <XAxis type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} tickCount={5} />
+                <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                  formatter={(v) => [`${v}%`, t('analytics.share')]} />
+                <Bar dataKey="pct" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => Number(v) > 0 ? `${v}%` : '' }}>
+                  {typeShareData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
         </Box>
@@ -249,13 +259,13 @@ function RFTab() {
         ))}
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mb: 2 }}>
         <ChartCard title={t('analytics.snrDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={snrB}>
+            <BarChart data={snrB} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
+              <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
               <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                 {snrB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
@@ -265,10 +275,10 @@ function RFTab() {
         </ChartCard>
         <ChartCard title={t('analytics.rssiDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={rssiB}>
+            <BarChart data={rssiB} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
+              <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
               <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                 {rssiB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > -80 ? '#22c55e' : parseFloat(b.label) > -100 ? '#f59e0b' : md3.error} />)}
@@ -355,14 +365,15 @@ function NodesTab() {
           </ResponsiveContainer>
         </ChartCard>
         <ChartCard title={t('analytics.roleDistribution')} Icon={DonutLargeIcon}>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={rolePie} dataKey="value" cx="50%" cy="50%" outerRadius={75}
-                label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
-                {rolePie.map((e, i) => <Cell key={i} fill={roleColor(e.name)} />)}
-              </Pie>
+          <ResponsiveContainer width="100%" height={rolePie.length * 28 + 16}>
+            <BarChart data={rolePie} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+              <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={80} interval={0} tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
-            </PieChart>
+              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                {rolePie.map((e, i) => <Cell key={i} fill={roleColor(e.name)} />)}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       </Box>
@@ -451,7 +462,7 @@ function ChannelsTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [channels, setChannels] = useState<Array<{ hash: string; name: string; messageCount: number }>>([])
-  useEffect(() => { api.channels().then(d => setChannels([...(d ?? [])].sort((a, b) => b.messageCount - a.messageCount))) }, [])
+  useEffect(() => { api.channels().then(d => setChannels([...(d ?? [])].filter(c => c.name && c.name !== c.hash).sort((a, b) => b.messageCount - a.messageCount))) }, [])
 
   const total = channels.reduce((s, c) => s + c.messageCount, 0)
 
