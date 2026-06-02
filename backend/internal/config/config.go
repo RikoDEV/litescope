@@ -13,7 +13,7 @@ type Config struct {
 	MQTTSources    []MQTTSource      `json:"mqttSources"`
 	ChannelKeys    map[string]string `json:"channelKeys"`
 	HashChannels   []string          `json:"hashChannels"`
-	ScopeAllowlist []string          `json:"scopeAllowlist"`
+	ScopeList []string          `json:"scopeList"`
 }
 
 type MQTTSource struct {
@@ -42,6 +42,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.ChannelKeys == nil {
 		cfg.ChannelKeys = make(map[string]string)
+	}
+	if cfg.ScopeList == nil {
+		cfg.ScopeList = []string{}
 	}
 	// Built-in public channel key from MeshCore firmware defaults
 	if _, ok := cfg.ChannelKeys["Public"]; !ok {

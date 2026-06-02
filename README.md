@@ -8,15 +8,18 @@ A lightweight, self-hosted dashboard for monitoring [MeshCore](https://meshcore.
 
 ## Features
 
-- **Live packet feed** — filter by type, route, channel, or minimum observer count; live pause/resume
+- **Live packet feed** — filter by type, route, channel, or minimum observer count; live pause/resume; expandable per-observation sub-rows with per-observer hex and path data
+- **Packet detail sidebar** — colored hex dump with byte offsets and section hover highlighting, field breakdown table, improved decoded payload with field-specific rendering; click any observation row to switch to that observer's perspective
 - **Node explorer** — per-node RF analytics (RSSI / SNR distributions), last-heard filters, role tabs
-- **Channel decryption** — add AES-128 keys (or derive them via SHA-256 from a passphrase); view decrypted message history
-- **Observer dashboard** — per-observer packet timelines, SNR charts, packet-type breakdown
-- **Network analytics** — overview cards, activity heatmap, RF stats, top nodes/observers, packet-type distribution
-- **Map** — live Leaflet map of recent observations
+- **Channel decryption** — add AES-128 keys (or derive them via SHA-256 from a passphrase); view decrypted message history; deep-linked channel URLs with working browser back navigation
+- **Observer dashboard** — per-observer packet timelines, SNR charts, packet-type breakdown (horizontal bar)
+- **Network analytics** — overview cards, activity heatmap, RF stats, top nodes/observers, packet-type distribution; tabs are deep-linked (`/analytics/rf`, `/analytics/channels`, …)
+- **Map** — Leaflet node map with role-colored SVG markers, marker clusters with type breakdown (repeaters / companions / rooms / sensors), byte-size filter, hash-prefix labels; theme-aware tiles (OSM light / CARTO dark)
+- **Live map** — animated packet trace playback with VCR controls (pause, replay, speed, timeline); theme-aware tiles; responsive VCR bar
 - **Decoder** — paste raw hex packets for one-off decoding
-- **Light / dark theme** — Material 3 Expressive design, persisted per-browser
+- **Light / dark theme** — Material 3 Expressive design, persisted per-browser; all maps and charts respect the theme
 - **i18n** — English, Polish, German (auto-detected from browser, persisted)
+- **Fully responsive** — works on mobile and desktop; charts, maps, and panels adapt to screen size
 
 ---
 
@@ -36,8 +39,8 @@ A lightweight, self-hosted dashboard for monitoring [MeshCore](https://meshcore.
                                                     └───────────────┘
 ```
 
-- **ingestor** — subscribes to MQTT topics, decodes MeshCore packets, writes to SQLite
-- **server** — serves the REST API (`/api/*`) and WebSocket (`/ws`) for live updates
+- **ingestor** — subscribes to MQTT topics, decodes MeshCore packets, writes to SQLite; stores raw hex per observation so each observer's received bytes are preserved
+- **server** — serves the REST API (`/api/*`) and WebSocket (`/ws`) for live updates; observation count reflects unique observers
 - **frontend** — React 19 SPA, served as static files (Caddy in Docker, or Cloudflare Pages)
 - **Mosquitto** — local MQTT broker (optional; any external broker works too)
 - **Caddy** — TLS termination + reverse proxy in the Docker Compose stack
@@ -106,6 +109,8 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
     {
       "name": "local",                      // display name
       "broker": "mqtt://mosquitto:1883",    // broker URL
+      "username": "litescope",             // MQTT username
+      "password": "change_me_please",      // MQTT password
       "topics": ["meshcore/#"],             // topics to subscribe to
       "region": ""                          // optional region tag shown in UI
     }
@@ -116,8 +121,11 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
     "Public": "8b3387e9c5cdea6ac9e5edbaa115cd72"
   },
 
-  // Channel names that use # (hashtag) addressing
-  "hashChannels": []
+  // Channel names that use # (hashtag) addressing — key derived via SHA-256(name)[:16]
+  "hashChannels": [],
+
+  // Transport scope names for TRANSPORT_FLOOD packets (e.g. ["#waw", "#local"])
+  "scopeList": []
 }
 ```
 
@@ -314,26 +322,41 @@ All endpoints are prefixed with `/api`. The WebSocket is at `/ws`.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/packets` | List packets (query: `limit`, `offset`, `type`, `route`, `channel`, `minObs`) |
-| `GET` | `/api/packets/:hash` | Get packet detail with observations |
-| `GET` | `/api/nodes` | List nodes |
+| `GET` | `/api/packets` | List packets (query: `limit`, `offset`) |
+| `GET` | `/api/packets/:hash` | Packet detail with deduplicated observations; each observation includes `rawHex` |
+| `GET` | `/api/nodes` | List nodes (query: `iata`, `status`, `lastHeard`) |
 | `GET` | `/api/nodes/:pubkey` | Node detail |
+| `GET` | `/api/nodes/:pubkey/overview` | Node overview with recent packets and observer stats |
 | `GET` | `/api/nodes/:pubkey/packets` | Packets seen by node |
 | `GET` | `/api/nodes/:pubkey/rf` | RF stats (RSSI/SNR history) |
 | `GET` | `/api/observers` | List observers |
 | `GET` | `/api/observers/:id` | Observer detail |
 | `GET` | `/api/observers/:id/analytics` | Observer timeline + SNR + packet types (query: `days`) |
-| `GET` | `/api/channels` | List channels |
+| `GET` | `/api/channels` | List channels with decoded names (encrypted channels have `name === hash`) |
 | `GET` | `/api/channels/:hash/messages` | Channel message history |
-| `GET` | `/api/iatas` | List IATA codes |
+| `GET` | `/api/iatas` | List IATA region codes |
 | `GET` | `/api/analytics/overview` | Network overview counts |
 | `GET` | `/api/analytics/packets-by-type` | Packet type distribution |
 | `GET` | `/api/analytics/rf` | Network-wide RF stats |
-| `GET` | `/api/analytics/activity` | Activity heatmap data |
+| `GET` | `/api/analytics/activity` | Activity timeline data (query: `hours`) |
 | `GET` | `/api/analytics/nodes-top` | Top nodes by packet count |
 | `GET` | `/api/analytics/observers-top` | Top observers by packet count |
-| `POST` | `/api/decode` | Decode a raw hex packet (body: `{"hex":"..."}`) |
+| `GET` | `/api/analytics/snr-by-type` | Average SNR per payload type |
+| `GET` | `/api/analytics/hashes` | Hash size distribution and multi-byte adopters |
+| `POST` | `/api/decode` | Decode a raw hex packet (body: `{"hex":"...","channelKeys":{…}}`) |
 | `WS` | `/ws` | Live push of new packets and observer updates |
+
+---
+
+## Database Schema
+
+liteScope uses a single SQLite file. Notable fields:
+
+- `transmissions.observation_count` — number of **unique** observers that received the packet (not raw row count)
+- `observations.raw_hex` — the raw packet bytes as received by that specific observer (routing header differs per hop count)
+- `observations.flood_scope` — resolved scope name for `TRANSPORT_FLOOD` packets, matched against `scopeList`
+
+Migrations run automatically on startup; existing databases are upgraded in place.
 
 ---
 
@@ -350,8 +373,8 @@ All endpoints are prefixed with `/api`. The WebSocket is at `/ws`.
 | Build tool | Vite 6 |
 | UI library | MUI v9 (Material 3 Expressive) |
 | Charts | Recharts |
-| Map | Leaflet 1.9 |
-| i18n | i18next + react-i18next |
+| Map | Leaflet 1.9 + leaflet.markercluster |
+| i18n | i18next + react-i18next (EN / PL / DE) |
 | Reverse proxy | Caddy 2 |
 | MQTT broker | Eclipse Mosquitto 2 |
 | Container runtime | Docker Compose |

@@ -147,7 +147,7 @@ export default function LiveMap() {
   const [pktRate,   setPktRate]   = useState(0)
   const [totalTraces, setTotalTraces] = useState(0)
   const [showFeed,   setShowFeed]   = useState(true)
-  const [showLegend, setShowLegend] = useState(true)
+  const [showLegend, setShowLegend] = useState(() => localStorage.getItem('livemap-legend') !== 'false')
 
   // Keep nodesRef in sync
   useEffect(() => { nodesRef.current = nodes }, [nodes])
@@ -155,7 +155,7 @@ export default function LiveMap() {
   // ── Map init ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapDiv.current || mapRef.current) return
-    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: true })
+    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: false })
 
     // Tile layer added by the theme-aware effect below
 
@@ -563,55 +563,69 @@ export default function LiveMap() {
 
       {/* ── VCR bar ─────────────────────────────────────────────────────────── */}
       <Paper elevation={3} sx={{
-        display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75,
         borderRadius: 0, flexShrink: 0,
         borderTop: `1px solid ${md3.outlineVariant}`,
         background: md3.surfaceContainerHigh,
       }}>
-        <Chip label={mode} size="small" sx={{
-          background: mode === 'LIVE' ? alpha('#22c55e', 0.2) : mode === 'PAUSED' ? alpha('#f59e0b', 0.2) : alpha(md3.primary, 0.2),
-          color:      mode === 'LIVE' ? '#22c55e'             : mode === 'PAUSED' ? '#f59e0b'             : md3.primary,
-          fontWeight: 700, fontSize: 11,
-        }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+          <Chip label={mode} size="small" sx={{
+            background: mode === 'LIVE' ? alpha('#22c55e', 0.2) : mode === 'PAUSED' ? alpha('#f59e0b', 0.2) : alpha(md3.primary, 0.2),
+            color:      mode === 'LIVE' ? '#22c55e'             : mode === 'PAUSED' ? '#f59e0b'             : md3.primary,
+            fontWeight: 700, fontSize: 11,
+          }} />
 
-        {mode === 'LIVE' && (
-          <IconButton size="small" onClick={pause} sx={{ color: md3.onSurfaceVariant }}>
-            <PauseIcon fontSize="small" />
-          </IconButton>
-        )}
-        {mode === 'PAUSED' && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Typography variant="caption" sx={{ color: '#f59e0b' }}>+{missed} missed</Typography>
-            <Button size="small" variant="outlined" startIcon={<PlayArrowIcon />}
-              onClick={() => startReplay(Math.max(0, vcrBuffer.current.length - missed - 1))}>
-              Replay
-            </Button>
-            <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
-          </Box>
-        )}
-        {mode === 'REPLAY' && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-            <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
-            <Typography variant="caption" sx={{ color: md3.primary }}>
-              {vcrPlayhead.current + 1} / {vcrBuffer.current.length}
-            </Typography>
-          </Box>
-        )}
+          {mode === 'LIVE' && (
+            <IconButton size="small" onClick={pause} sx={{ color: md3.onSurfaceVariant }}>
+              <PauseIcon fontSize="small" />
+            </IconButton>
+          )}
+          {mode === 'PAUSED' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Typography variant="caption" sx={{ color: '#f59e0b' }}>+{missed}</Typography>
+              <Button size="small" variant="outlined" startIcon={<PlayArrowIcon />}
+                onClick={() => startReplay(Math.max(0, vcrBuffer.current.length - missed - 1))}>
+                Replay
+              </Button>
+              <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
+            </Box>
+          )}
+          {mode === 'REPLAY' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
+              <Typography variant="caption" sx={{ color: md3.primary }}>
+                {vcrPlayhead.current + 1} / {vcrBuffer.current.length}
+              </Typography>
+            </Box>
+          )}
 
-        <ToggleButtonGroup exclusive value={speed} onChange={(_, s) => s && changeSpeed(s)} size="small" sx={{ ml: 1 }}>
-          {SPEEDS.map(s => (
-            <ToggleButton key={s} value={s} sx={{ fontSize: 10, px: 1, py: 0.25 }}>{s}×</ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+          <ToggleButtonGroup exclusive value={speed} onChange={(_, s) => s && changeSpeed(s)} size="small">
+            {SPEEDS.map(s => (
+              <ToggleButton key={s} value={s} sx={{ fontSize: 10, px: { xs: 0.75, sm: 1 }, py: 0.25 }}>{s}×</ToggleButton>
+            ))}
+          </ToggleButtonGroup>
 
-        <canvas ref={tlCanvas} width={360} height={28} onClick={onTimelineClick}
-          style={{ cursor: 'crosshair', borderRadius: 8, border: `1px solid ${md3.outlineVariant}`, flexShrink: 1, minWidth: 60, maxWidth: 360 }} />
+          {/* Canvas: desktop — inline between speed and stats; mobile — wraps to its own full-width row */}
+          <Box component="canvas" ref={tlCanvas} width={360} height={28} onClick={onTimelineClick}
+            sx={{
+              order: { xs: 999, sm: 0 },
+              flexBasis: { xs: '100%', sm: 'auto' },
+              flexShrink: { xs: 0, sm: 1 },
+              minWidth: { xs: 'unset', sm: 60 },
+              maxWidth: { xs: 'none', sm: 360 },
+              mt: { xs: 0.25, sm: 0 },
+              cursor: 'crosshair', borderRadius: 2, border: `1px solid ${md3.outlineVariant}`, display: 'block',
+            }}
+          />
 
-        <Typography variant="caption" sx={{ ml: 'auto', color: md3.onSurfaceVariant, whiteSpace: 'nowrap' }}>
-          <Box component="span" sx={{ color: '#22c55e' }}>{nodes.filter(n => n.lat != null).length}</Box> nodes ·{' '}
-          <Box component="span" sx={{ color: '#f59e0b' }}>{pktRate}</Box>/min ·{' '}
-          <Box component="span" sx={{ color: md3.primary }}>{totalTraces}</Box> traces
-        </Typography>
+          <Typography variant="caption" sx={{ ml: 'auto', color: md3.onSurfaceVariant, whiteSpace: 'nowrap', fontSize: { xs: 10, sm: 11 } }}>
+            <Box component="span" sx={{ color: '#22c55e' }}>{nodes.filter(n => n.lat != null).length}</Box>
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}> nodes · </Box>
+            <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}> · </Box>
+            <Box component="span" sx={{ color: '#f59e0b' }}>{pktRate}</Box>/min{' · '}
+            <Box component="span" sx={{ color: md3.primary }}>{totalTraces}</Box>
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}> traces</Box>
+          </Typography>
+        </Box>
       </Paper>
 
       {/* ── Legend (top-right, collapsible) ─────────────────────────────────── */}
@@ -621,7 +635,7 @@ export default function LiveMap() {
         overflow: 'hidden',
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.75, cursor: 'pointer' }}
-          onClick={() => setShowLegend(v => !v)}>
+          onClick={() => setShowLegend(v => { const next = !v; localStorage.setItem('livemap-legend', String(next)); return next })}>
           <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, fontSize: 9, lineHeight: 1 }}>Legend</Typography>
           <IconButton size="small" sx={{ color: md3.outline, p: 0, ml: 1 }}>
             {showLegend ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}

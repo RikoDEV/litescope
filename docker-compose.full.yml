@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/rikodev/litescope-backend:latest
+    image: ghcr.io/rikodev/litescope-backend:dev
     container_name: litescope-backend
     depends_on:
       - mosquitto
@@ -43,7 +43,7 @@ services:
       - "3000"
 
   frontend:
-    image: ghcr.io/rikodev/litescope-frontend:latest
+    image: ghcr.io/rikodev/litescope-frontend:dev
     container_name: litescope-frontend
     env_file: .env
     restart: unless-stopped

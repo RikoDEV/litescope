@@ -80,7 +80,7 @@ func main() {
 		})
 		capSrc := src
 		opts.SetDefaultPublishHandler(func(_ mqtt.Client, m mqtt.Message) {
-			handleMsg(database, tag, capSrc, m, channelKeys, cfg.ScopeAllowlist)
+			handleMsg(database, tag, capSrc, m, channelKeys, cfg.ScopeList)
 		})
 		c := mqtt.NewClient(opts)
 		if !c.Connect().WaitTimeout(30 * time.Second) {
@@ -125,7 +125,7 @@ func buildOpts(src config.MQTTSource) *mqtt.ClientOptions {
 	return opts
 }
 
-func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Message, channelKeys map[string]string, scopeAllowlist []string) {
+func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Message, channelKeys map[string]string, scopeList []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[%s] panic: %v", tag, r)
@@ -204,7 +204,7 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 		ObserverIATA: region,
 		Direction:    strField(msg, "direction", "Direction"),
 		PathJSON:     pathJSON,
-		FloodScope:   dec.ResolveFloodScope(scopeAllowlist),
+		FloodScope:   dec.ResolveFloodScope(scopeList),
 		Timestamp:    now,
 		RawHex:       rawHex,
 	}
