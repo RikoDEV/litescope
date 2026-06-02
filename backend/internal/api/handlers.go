@@ -456,6 +456,7 @@ type obsDetail struct {
 	PathJSON     string   `json:"pathJson"`
 	FloodScope   string   `json:"floodScope,omitempty"`
 	Timestamp    string   `json:"timestamp"`
+	RawHex       string   `json:"rawHex,omitempty"`
 }
 
 type nodeSummary struct {
@@ -491,7 +492,9 @@ func summarizeTx(tx *store.Tx) packetSummary {
 	bestScope := ""
 	var bestPath []string
 	bestObserver := ""
+	uniqueObs := make(map[string]struct{})
 	for _, o := range tx.Observations {
+		uniqueObs[o.ObserverID] = struct{}{}
 		if bestObserver == "" {
 			bestObserver = o.ObserverID
 		}
@@ -508,10 +511,14 @@ func summarizeTx(tx *store.Tx) packetSummary {
 			bestScope = o.FloodScope
 		}
 	}
+	obsCount := len(uniqueObs)
+	if obsCount == 0 {
+		obsCount = tx.ObsCount // fallback for packets with no loaded observations
+	}
 	return packetSummary{
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
-		ObsCount: tx.ObsCount, MaxHops: maxHops, HopSize: hopSize, BestScope: bestScope,
+		ObsCount: obsCount, MaxHops: maxHops, HopSize: hopSize, BestScope: bestScope,
 		BestPath: bestPath, BestObserver: bestObserver,
 		ByteSize: len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
@@ -528,6 +535,7 @@ func txDetail(tx *store.Tx) packetDetail {
 			ID: o.ID, ObserverID: o.ObserverID, ObserverName: o.ObserverName,
 			ObserverIATA: o.ObserverIATA, RSSI: o.RSSI, SNR: o.SNR,
 			Direction: o.Direction, PathJSON: o.PathJSON, FloodScope: o.FloodScope, Timestamp: o.Timestamp,
+			RawHex: o.RawHex,
 		})
 	}
 	return d

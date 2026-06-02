@@ -61,6 +61,7 @@ type Obs struct {
 	PathJSON     string
 	FloodScope   string
 	Timestamp    string
+	RawHex       string
 }
 
 // Node holds an in-memory node record.
@@ -793,6 +794,7 @@ func obsFromRow(r *db.ObsRow) *Obs {
 		ID: r.ID, TxID: r.TxID, ObserverID: r.ObserverID, ObserverName: r.ObserverName,
 		ObserverIATA: r.ObserverIATA, RSSI: r.RSSI, SNR: r.SNR, Score: r.Score,
 		Direction: r.Direction, PathJSON: r.PathJSON, FloodScope: r.FloodScope, Timestamp: r.Timestamp,
+		RawHex: r.RawHex,
 	}
 }
 

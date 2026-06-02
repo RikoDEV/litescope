@@ -46,6 +46,7 @@ export interface Observation {
   direction: string
   pathJson: string
   timestamp: string
+  rawHex?: string
 }
 
 export interface Node {

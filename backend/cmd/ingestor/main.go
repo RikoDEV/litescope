@@ -206,6 +206,7 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 		PathJSON:     pathJSON,
 		FloodScope:   dec.ResolveFloodScope(scopeAllowlist),
 		Timestamp:    now,
+		RawHex:       rawHex,
 	}
 	if v, ok := toFloat64(msg["SNR"]); ok {
 		obsRow.SNR = &v

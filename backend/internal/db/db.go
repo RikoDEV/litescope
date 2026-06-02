@@ -36,6 +36,7 @@ type ObsRow struct {
 	PathJSON     string
 	FloodScope   string
 	Timestamp    string
+	RawHex       string
 }
 
 type NodeRow struct {
@@ -160,6 +161,9 @@ func (d *DB) applySchema() error {
 	}
 	// Migrations for existing databases
 	d.db.Exec(`ALTER TABLE observations ADD COLUMN flood_scope TEXT`)
+	d.db.Exec(`ALTER TABLE observations ADD COLUMN raw_hex TEXT`)
+	// Recalculate observation_count to reflect unique observers (not raw row count)
+	d.db.Exec(`UPDATE transmissions SET observation_count = (SELECT COUNT(DISTINCT observer_id) FROM observations WHERE tx_id = transmissions.id)`)
 	return nil
 }
 
@@ -198,18 +202,22 @@ func (d *DB) InsertTransmission(tx *TxRow, obs *ObsRow) (int64, bool, error) {
 
 	// Insert observation
 	_, err = d.db.Exec(
-		`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, flood_scope, timestamp)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, flood_scope, timestamp, raw_hex)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		txID, obs.ObserverID, obs.ObserverName, obs.ObserverIATA,
-		obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, nilIfEmpty(obs.FloodScope), obs.Timestamp,
+		obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, nilIfEmpty(obs.FloodScope), obs.Timestamp, nilIfEmpty(obs.RawHex),
 	)
 	if err != nil {
 		return txID, isNew, fmt.Errorf("insert obs: %w", err)
 	}
 
-	// Update observation_count
+	// Update observation_count: only count the first observation per unique observer
 	if !isNew {
-		d.db.Exec(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`, txID)
+		var countFromObserver int
+		d.db.QueryRow(`SELECT COUNT(*) FROM observations WHERE tx_id = ? AND observer_id = ?`, txID, obs.ObserverID).Scan(&countFromObserver)
+		if countFromObserver == 1 { // the row just inserted is the only one from this observer
+			d.db.Exec(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`, txID)
+		}
 	}
 
 	return txID, isNew, nil
@@ -277,7 +285,7 @@ func (d *DB) LoadAll() ([]*TxRow, []*ObsRow, []*NodeRow, []*ObserverRow, error) 
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	obss, err := d.loadObs(`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp FROM observations ORDER BY id ASC`)
+	obss, err := d.loadObs(`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, COALESCE(raw_hex,'') FROM observations ORDER BY id ASC`)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -302,7 +310,7 @@ func (d *DB) LoadSince(afterTxID, afterObsID int64) ([]*TxRow, []*ObsRow, error)
 		return nil, nil, err
 	}
 	obss, err := d.loadObs(fmt.Sprintf(
-		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp FROM observations WHERE id > %d ORDER BY id ASC`,
+		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, COALESCE(raw_hex,'') FROM observations WHERE id > %d ORDER BY id ASC`,
 		afterObsID,
 	))
 	if err != nil {
@@ -337,7 +345,7 @@ func (d *DB) loadObs(query string) ([]*ObsRow, error) {
 	var out []*ObsRow
 	for rows.Next() {
 		var r ObsRow
-		if err := rows.Scan(&r.ID, &r.TxID, &r.ObserverID, &r.ObserverName, &r.ObserverIATA, &r.RSSI, &r.SNR, &r.Score, &r.Direction, &r.PathJSON, &r.FloodScope, &r.Timestamp); err != nil {
+		if err := rows.Scan(&r.ID, &r.TxID, &r.ObserverID, &r.ObserverName, &r.ObserverIATA, &r.RSSI, &r.SNR, &r.Score, &r.Direction, &r.PathJSON, &r.FloodScope, &r.Timestamp, &r.RawHex); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)

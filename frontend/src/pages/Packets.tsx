@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -29,7 +29,7 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Packet, PacketDetail } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
-import PacketDetailPanel from '../components/PacketDetailPanel'
+import PacketDetailPanel, { parseHops, relativeTime, deduplicateObs } from '../components/PacketDetailPanel'
 
 const PAGE = 100
 
@@ -59,6 +59,10 @@ export default function Packets() {
   const [loading, setLoading]   = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const offsetRef = useRef(0)
+
+  const [expandedHash, setExpandedHash]       = useState<string | null>(null)
+  const [expandedDetail, setExpandedDetail]   = useState<PacketDetail | null>(null)
+  const [selectedObserverId, setSelectedObserverId] = useState<string | null>(null)
 
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState<Set<number>>(new Set())
@@ -136,9 +140,26 @@ export default function Packets() {
   useEffect(() => { stream.setPaused(paused) }, [paused])
 
   const selectPacket = async (p: Packet) => {
+    setSelectedObserverId(null)
     if (selected?.hash === p.hash) { setSelected(null); setSearchParams({}, { replace: true }); return }
     const detail = await api.packet(p.hash)
     setSelected(detail)
+    setSearchParams({ hash: p.hash }, { replace: true })
+  }
+
+  const toggleExpand = async (e: React.MouseEvent, p: Packet) => {
+    e.stopPropagation()
+    if (expandedHash === p.hash) { setExpandedHash(null); setExpandedDetail(null); return }
+    const detail = selected?.hash === p.hash ? selected : await api.packet(p.hash)
+    setExpandedDetail(detail)
+    setExpandedHash(p.hash)
+  }
+
+  const selectObservation = async (e: React.MouseEvent, p: Packet, observerId: string) => {
+    e.stopPropagation()
+    const detail = expandedDetail?.hash === p.hash ? expandedDetail : await api.packet(p.hash)
+    setSelected(detail)
+    setSelectedObserverId(observerId)
     setSearchParams({ hash: p.hash }, { replace: true })
   }
 
@@ -307,6 +328,7 @@ export default function Packets() {
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
+                <TableCell sx={{ width: 32, p: 0 }} />
                 {([
                   { col: 'id' as SortCol, label: t('packets.id'), width: 60 },
                   { col: null, label: t('packets.hash'), width: '1fr' },
@@ -326,7 +348,7 @@ export default function Packets() {
             <TableBody>
               {filtered.length === 0 && !loading && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 5, color: md3.onSurfaceVariant }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 5, color: md3.onSurfaceVariant }}>
                     {packets.length === 0 ? t('packets.noPackets') : t('packets.noMatch')}
                   </TableCell>
                 </TableRow>
@@ -337,8 +359,17 @@ export default function Packets() {
                 const label = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
                 const msgText = dec?.text as string | undefined
                 const isSelected = selected?.hash === p.hash
-                return (
+                const isExpanded = expandedHash === p.hash
+                const subObs = isExpanded && expandedDetail?.hash === p.hash ? deduplicateObs(expandedDetail.observations ?? []) : []
+                return [
                   <TableRow key={p.id} selected={isSelected} onClick={() => selectPacket(p)}>
+                    <TableCell sx={{ p: 0, width: 32 }} onClick={p.obsCount > 1 ? e => toggleExpand(e, p) : undefined}>
+                      {p.obsCount > 1 && (
+                        <IconButton size="small" sx={{ p: 0.25, color: isExpanded ? md3.tertiary : md3.onSurfaceVariant }}>
+                          {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+                        </IconButton>
+                      )}
+                    </TableCell>
                     <TableCell sx={{ color: md3.outline, fontSize: 11 }}>{p.id}</TableCell>
                     <TableCell>
                       <Box component="span" sx={{ fontFamily: 'monospace', color: md3.primary, fontSize: 12 }}>{p.hash}</Box>
@@ -365,8 +396,58 @@ export default function Packets() {
                     <TableCell sx={{ color: md3.outline, fontSize: 11 }}>
                       {new Date(p.firstSeen).toLocaleTimeString(dateLocale.code)}
                     </TableCell>
+                  </TableRow>,
+                  <TableRow key={`${p.id}-sub`} sx={{ '& > td': { p: 0, border: 0 } }}>
+                    <TableCell colSpan={8}>
+                      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                        <Box sx={{ borderBottom: `1px solid ${md3.outlineVariant}` }}>
+                          {subObs.map(o => {
+                            const hops = parseHops(o.pathJson)
+                            const isObsSelected = isSelected && selectedObserverId === o.observerId
+                            return (
+                              <Box key={o.id} onClick={e => selectObservation(e, p, o.observerId)}
+                                sx={{
+                                  display: 'flex', alignItems: 'center', gap: 0, cursor: 'pointer',
+                                  borderTop: `1px solid ${alpha(md3.outlineVariant, 0.4)}`,
+                                  background: isObsSelected ? alpha(md3.tertiary, 0.1) : alpha(md3.surfaceContainerHighest, 0.6),
+                                  '&:hover': { background: alpha(md3.tertiary, 0.07) },
+                                  transition: 'background 0.15s',
+                                }}>
+                                {/* indent marker aligned under expand column */}
+                                <Box sx={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                                  <Box sx={{ width: 2, height: 28, background: isObsSelected ? md3.tertiary : alpha(md3.tertiary, 0.3), borderRadius: 1 }} />
+                                </Box>
+                                {/* observer name */}
+                                <Box sx={{ flex: '0 0 180px', pr: 1 }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', color: isObsSelected ? md3.tertiary : md3.onSurface, fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {o.observerName || o.observerId.slice(0, 12)}
+                                  </Typography>
+                                  {o.observerIata && <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>{o.observerIata}</Typography>}
+                                </Box>
+                                {/* hops */}
+                                <Box sx={{ flex: '0 0 70px', fontSize: 11, color: hops.length > 0 ? md3.primary : md3.outline }}>
+                                  {hops.length > 0 ? t('packets.hopsCount', { count: hops.length }) : '—'}
+                                </Box>
+                                {/* SNR */}
+                                <Box sx={{ flex: '0 0 80px', fontSize: 11, color: o.snr != null ? (o.snr >= 5 ? '#22c55e' : o.snr >= 0 ? '#f59e0b' : md3.error) : md3.outline }}>
+                                  {o.snr != null ? `${o.snr} dB` : '—'}
+                                </Box>
+                                {/* RSSI */}
+                                <Box sx={{ flex: '0 0 70px', fontSize: 11, color: o.rssi != null ? (o.rssi >= -70 ? '#22c55e' : o.rssi >= -90 ? '#f59e0b' : md3.error) : md3.outline }}>
+                                  {o.rssi != null ? `${o.rssi}` : '—'}
+                                </Box>
+                                {/* time */}
+                                <Box sx={{ flex: 1, fontSize: 10, color: md3.outline }}>
+                                  {relativeTime(o.timestamp)}
+                                </Box>
+                              </Box>
+                            )
+                          })}
+                        </Box>
+                      </Collapse>
+                    </TableCell>
                   </TableRow>
-                )
+                ]
               })}
             </TableBody>
           </Table>
@@ -380,7 +461,11 @@ export default function Packets() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <PacketDetailPanel selected={selected} onClose={() => { setSelected(null); setSearchParams({}, { replace: true }) }} />
+        <PacketDetailPanel
+          selected={selected}
+          selectedObserverId={selectedObserverId ?? undefined}
+          onClose={() => { setSelected(null); setSelectedObserverId(null); setSearchParams({}, { replace: true }) }}
+        />
       )}
     </Box>
   )

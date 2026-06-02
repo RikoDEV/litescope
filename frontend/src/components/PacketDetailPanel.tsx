@@ -30,6 +30,19 @@ function hashColor(s: string) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+export function deduplicateObs<T extends { observerId: string; snr: number | null; rssi: number | null; timestamp: string }>(obs: T[]): T[] {
+  const map = new Map<string, T>()
+  for (const o of obs) {
+    const prev = map.get(o.observerId)
+    if (!prev) { map.set(o.observerId, o); continue }
+    const snrA = o.snr ?? -Infinity, snrB = prev.snr ?? -Infinity
+    const rssiA = o.rssi ?? -Infinity, rssiB = prev.rssi ?? -Infinity
+    if (snrA > snrB || (snrA === snrB && rssiA > rssiB) || (snrA === snrB && rssiA === rssiB && o.timestamp > prev.timestamp))
+      map.set(o.observerId, o)
+  }
+  return [...map.values()]
+}
+
 export function parseHops(pathJson: string): string[] {
   try { return JSON.parse(pathJson) ?? [] } catch { return [] }
 }
@@ -53,11 +66,7 @@ function snrColor(v: number | null, errColor: string, outline: string) {
 
 type HexSection = 'header' | 'transport' | 'pathLen' | 'path' | 'pubKey' | 'timestamp' | 'signature' | 'flags' | 'latitude' | 'longitude' | 'name' | 'payload'
 
-const HEX_SECTION_LABELS: Record<HexSection, string> = {
-  header: 'Header', transport: 'Transport', pathLen: 'Path Length', path: 'Path',
-  pubKey: 'PubKey', timestamp: 'Timestamp', signature: 'Signature',
-  flags: 'Flags', latitude: 'Latitude', longitude: 'Longitude', name: 'Name', payload: 'Payload',
-}
+const HEX_SECTIONS = ['header', 'transport', 'pathLen', 'path', 'pubKey', 'timestamp', 'signature', 'flags', 'latitude', 'longitude', 'name', 'payload'] as const
 
 function parseHexSections(rawHex: string, routeType: number, payloadType: number): { section: HexSection; byte: string }[] {
   const bytes = (rawHex.match(/.{1,2}/g) ?? [])
@@ -114,11 +123,21 @@ interface PacketDetailPanelProps {
   onClose: () => void
   /** Override Paper sx — e.g. for full-page layout */
   paperSx?: SxProps<Theme>
+  /** Highlight a specific observer's perspective */
+  selectedObserverId?: string
 }
 
-export default function PacketDetailPanel({ selected, onClose, paperSx }: PacketDetailPanelProps) {
+export default function PacketDetailPanel({ selected, onClose, paperSx, selectedObserverId }: PacketDetailPanelProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const hexSectionLabels: Record<HexSection, string> = {
+    header: t('packets.hex.header'), transport: t('packets.hex.transport'),
+    pathLen: t('packets.hex.pathLen'), path: t('packets.hex.path'),
+    pubKey: t('packets.hex.pubKey'), timestamp: t('packets.hex.timestamp'),
+    signature: t('packets.hex.signature'), flags: t('packets.hex.flags'),
+    latitude: t('packets.hex.latitude'), longitude: t('packets.hex.longitude'),
+    name: t('packets.hex.name'), payload: t('packets.hex.payload'),
+  }
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const navigate = useNavigate()
   const dateLocale = useDateLocale()
@@ -127,13 +146,15 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
   useEffect(() => { api.nodes().then(r => setNodes(r.nodes ?? [])) }, [])
   const matchHop = (hex: string) => nodes.find(n => n.pubKey.toUpperCase().startsWith(hex.toUpperCase()))
 
-  const obs = selected.observations ?? []
+  const obs = deduplicateObs(selected.observations ?? [])
   const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))
   const longestObs  = obsWithHops.reduce((best, o) => o.hops.length > best.hops.length ? o : best, obsWithHops[0] ?? { hops: [] })
+  const focusedObs  = selectedObserverId ? (obsWithHops.find(o => o.observerId === selectedObserverId) ?? longestObs) : longestObs
   const uniqueObservers = new Set(obs.map(o => o.observerId)).size
   const times = obs.map(o => new Date(o.timestamp).getTime()).filter(Boolean)
   const propagationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0
-  const hexSections = parseHexSections(selected.rawHex ?? '', selected.routeType, selected.payloadType)
+  const activeRawHex = (selectedObserverId && focusedObs?.rawHex) ? focusedObs.rawHex : (selected.rawHex ?? '')
+  const hexSections = parseHexSections(activeRawHex, selected.routeType, selected.payloadType)
 
   const sectionColor: Record<HexSection, string> = {
     header: md3.primary, transport: md3.tertiary, pathLen: '#a855f7', path: '#22c55e',
@@ -158,11 +179,18 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
               sx={{ background: alpha(md3.primary, 0.15), color: md3.primary, fontWeight: 700, fontSize: 11 }} />
             <Chip label={ROUTE_NAMES[selected.routeType] ?? selected.routeType} size="small"
               sx={{ background: alpha(md3.secondary, 0.15), color: md3.secondary, fontSize: 11 }} />
-            <Chip label={`${obs.length} obs`} size="small"
+            <Chip label={t('packets.obsChip', { count: obs.length })} size="small"
               sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, fontSize: 11 }} />
             {uniqueObservers > 1 && (
-              <Chip label={`${uniqueObservers} observers`} size="small"
+              <Chip label={t('packets.observersChip', { count: uniqueObservers })} size="small"
                 sx={{ background: alpha('#22c55e', 0.15), color: '#22c55e', fontSize: 11 }} />
+            )}
+            {selectedObserverId && focusedObs && focusedObs !== longestObs && (
+              <Chip
+                label={focusedObs.observerName || focusedObs.observerId.slice(0, 10)}
+                size="small"
+                sx={{ background: alpha(md3.tertiary, 0.2), color: md3.tertiary, border: `1px solid ${alpha(md3.tertiary, 0.5)}`, fontSize: 11, fontWeight: 700 }}
+              />
             )}
           </Box>
           <Typography variant="caption" sx={{ fontFamily: 'monospace', color: md3.outline, fontSize: 11 }}>
@@ -189,7 +217,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
           {[
             { l: t('common.firstSeen'), v: relativeTime(selected.firstSeen) },
             { l: t('packets.propagation'), v: propagationMs > 0 ? `${(propagationMs / 1000).toFixed(1)}s` : '—' },
-            { l: t('packets.maxHops'), v: longestObs.hops.length > 0 ? `${longestObs.hops.length}` : '—' },
+            { l: t('packets.maxHops'), v: focusedObs.hops.length > 0 ? `${focusedObs.hops.length}` : '—' },
           ].map(({ l, v }) => (
             <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75, textAlign: 'center' }}>
               <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
@@ -201,7 +229,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
         {/* Chat message */}
         {(() => {
           if (!dec?.text) return null
-          const sender = String(dec.sender ?? 'Unknown') || 'Unknown'
+          const sender = String(dec.sender ?? t('common.unknown')) || t('common.unknown')
           const rawText = String(dec.text)
           const text = rawText.startsWith(sender + ': ') ? rawText.slice(sender.length + 2) : rawText
           const color = hashColor(sender)
@@ -224,12 +252,12 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
           )
         })()}
 
-        {/* Longest path */}
-        {longestObs.hops.length > 0 && (
+        {/* Path (focused observer or longest) */}
+        {focusedObs.hops.length > 0 && (
           <Box sx={{ mb: 2 }}>
-            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.longestPath', { count: longestObs.hops.length })}</Typography>
+            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.longestPath', { count: focusedObs.hops.length })}</Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center', mt: 0.5 }}>
-              {longestObs.hops.map((hop, i) => {
+              {focusedObs.hops.map((hop, i) => {
                 const node = matchHop(hop)
                 const label = node?.name ? `${hop.toUpperCase()} · ${node.name}` : hop.toUpperCase()
                 return (
@@ -278,7 +306,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
                 </TableHead>
                 <TableBody>
                   {obsWithHops.map(o => (
-                    <TableRow key={o.id}>
+                    <TableRow key={o.id} sx={selectedObserverId === o.observerId ? { background: alpha(md3.tertiary, 0.1) } : {}}>
                       <TableCell sx={{ fontSize: 11, maxWidth: 130 }}>
                         <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130 }}>
                           {o.observerName || o.observerId.slice(0, 12)}
@@ -307,26 +335,26 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
 
         {/* Colored hex */}
         <Box>
-          <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
-            {t('packets.rawHex')} ({(selected.rawHex?.length ?? 0) / 2} bytes)
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.75 }}>
-            {(Object.keys(HEX_SECTION_LABELS) as HexSection[]).map(s => (
-              hexSections.some(b => b.section === s) && (
-                <Box key={s} sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: sectionColor[s] }} />
-                  <Typography variant="caption" sx={{ fontSize: 10, color: md3.outline }}>{HEX_SECTION_LABELS[s]}</Typography>
+            <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10, display: 'block', mb: 0.75 }}>
+              {t('packets.rawHex')} ({activeRawHex.length / 2} bytes)
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.75 }}>
+              {(HEX_SECTIONS as readonly HexSection[]).map(s => (
+                hexSections.some(b => b.section === s) && (
+                  <Box key={s} sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: sectionColor[s] }} />
+                    <Typography variant="caption" sx={{ fontSize: 10, color: md3.outline }}>{hexSectionLabels[s]}</Typography>
+                  </Box>
+                )
+              ))}
+            </Box>
+            <Box sx={{ fontFamily: 'monospace', background: md3.surfaceContainerHighest, p: 1.25, borderRadius: 2, lineHeight: 2, wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
+              {hexSections.map((b, i) => (
+                <Box key={i} component="span" sx={{ fontSize: 11, color: sectionColor[b.section], mr: 0.4 }}>
+                  {b.byte.toUpperCase()}
                 </Box>
-              )
-            ))}
-          </Box>
-          <Box sx={{ fontFamily: 'monospace', background: md3.surfaceContainerHighest, p: 1.25, borderRadius: 2, lineHeight: 2, wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
-            {hexSections.map((b, i) => (
-              <Box key={i} component="span" sx={{ fontSize: 11, color: sectionColor[b.section], mr: 0.4 }}>
-                {b.byte.toUpperCase()}
-              </Box>
-            ))}
-          </Box>
+              ))}
+            </Box>
         </Box>
       </Box>
     </Paper>
@@ -334,7 +362,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx }: Packet
       open={copied}
       autoHideDuration={2000}
       onClose={() => setCopied(false)}
-      message="Link copied to clipboard"
+      message={t('packets.linkCopied')}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
     />
     </>
