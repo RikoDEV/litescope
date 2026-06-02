@@ -495,7 +495,7 @@ function ObsPopover({ packet }: { packet: Packet }) {
   const handleLeave = () => { closeTimer.current = setTimeout(() => setAnchor(null), 180) }
   const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current) }
 
-  const obs = detail?.observations ?? []
+  const obs = deduplicateObs(detail?.observations ?? [])
 
   return (
     <>
