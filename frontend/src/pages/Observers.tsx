@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getEnv } from '../env'
+import { IataFlag } from '../utils/flags'
 import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
@@ -108,7 +109,7 @@ export default function Observers() {
                     <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', pl: 1.5 }}>{o.id.slice(0, 22)}…</Typography>
                   </TableCell>
                   <TableCell>
-                    {o.iata && <Chip label={o.iata} size="small" sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, fontWeight: 700, fontSize: 12, height: 22 }} />}
+                    {o.iata && <Chip label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={12} />{o.iata}</Box>} size="small" sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, fontWeight: 700, fontSize: 12, height: 22 }} />}
                   </TableCell>
                   <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 12 }}>{o.model || '—'}</TableCell>
                   <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{o.packetCount.toLocaleString()}</TableCell>
@@ -130,7 +131,7 @@ export default function Observers() {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{selected.name || t('nav.observers')}</Typography>
-                {selected.iata && <Chip label={selected.iata} size="small" sx={{ background: alpha(md3.tertiary, 0.2), color: md3.tertiary, fontWeight: 700 }} />}
+                {selected.iata && <Chip label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={selected.iata} size={13} />{selected.iata}</Box>} size="small" sx={{ background: alpha(md3.tertiary, 0.2), color: md3.tertiary, fontWeight: 700 }} />}
               </Box>
               <IconButton size="small" onClick={() => { setSelected(null); setAnalytics(null) }} sx={{ alignSelf: 'flex-start', color: md3.onSurfaceVariant }}>
                 <CloseIcon fontSize="small" />

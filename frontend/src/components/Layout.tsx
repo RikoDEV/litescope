@@ -12,6 +12,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import { stream } from '../services/stream'
 import { useThemeMode } from '../ThemeModeProvider'
 import { LANGUAGES } from '../i18n'
+import { FlagByCC } from '../utils/flags'
 
 import HomeIcon from '@mui/icons-material/Home'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -113,7 +114,7 @@ export default function Layout() {
           <MenuItem key={lang.code} selected={lang.code === currentLang.code}
             onClick={() => { i18n.changeLanguage(lang.code); setLangAnchor(null) }}
             sx={{ gap: 1, minWidth: 160 }}>
-            <Box component="span" sx={{ fontSize: 16 }}>{lang.flag}</Box>
+            <FlagByCC cc={lang.cc} size={16} />
             <ListItemText primary={lang.label} />
             {lang.code === currentLang.code && <CheckIcon sx={{ fontSize: 16, color: md3.primary }} />}
           </MenuItem>
@@ -176,7 +177,7 @@ export default function Layout() {
         {settingsCluster}
 
         {/* WebSocket status */}
-        <Tooltip title={`WebSocket: ${wsStatus}`} placement="right">
+        <Tooltip title={`WebSocket: ${wsStatus === 'connected' ? t('common.live') : wsStatus === 'connecting' ? t('common.connecting') : t('common.off')}`} placement="right">
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.3, mt: 0.5 }}>
             <Box sx={{
               width: 8, height: 8, borderRadius: '50%', background: statusColor,
@@ -207,7 +208,7 @@ export default function Layout() {
           </Typography>
           <Box sx={{ flex: 1 }} />
           {/* WS dot */}
-          <Tooltip title={`WebSocket: ${wsStatus}`}>
+          <Tooltip title={`WebSocket: ${wsStatus === 'connected' ? t('common.live') : wsStatus === 'connecting' ? t('common.connecting') : t('common.off')}`}>
             <Box sx={{
               width: 8, height: 8, borderRadius: '50%', background: statusColor,
               boxShadow: wsStatus === 'connected' ? `0 0 6px ${statusColor}` : 'none', transition: 'all 0.5s',
@@ -303,7 +304,7 @@ export default function Layout() {
                   <MoreHorizIcon sx={{ fontSize: 20 }} />
                 </Box>
                 <Typography sx={{ fontSize: 10, fontWeight: moreActive ? 700 : 400, lineHeight: 1, letterSpacing: '0.2px' }}>
-                  More
+                  {t('nav.more')}
                 </Typography>
               </Box>
             )

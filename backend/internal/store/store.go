@@ -1201,3 +1201,237 @@ type ScopeHour struct {
 	Label  string         `json:"label"`
 	Counts map[string]int `json:"counts"`
 }
+
+// ── Distance / Hop Analytics ──────────────────────────────────────────────────
+
+// DistanceStats analyses hop-count "distance" across all observations.
+// "Distance" here is the number of intermediate relay hops a packet traversed.
+func (s *Store) DistanceStats() DistanceStatsData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var totalHops, pathsAnalyzed, maxHopDist int
+	var direct, singleRelay, multiRelay int
+	hopDistMap := make(map[int]int) // hopCount → frequency (all obs)
+
+	const windowHours = 24
+	now      := time.Now().UTC()
+	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
+	type actAcc struct{ hopSum, count int }
+	actBuckets := make(map[int64]*actAcc)
+
+	// Collect per-observation entries for top-N sorting
+	type hopObsEntry struct {
+		hash, firstSeen        string
+		hopCount               int
+		hops                   []string
+		observerName, observerIATA string
+		routeType, payloadType int
+	}
+	var allObsEntries []hopObsEntry
+
+	// Per-packet best-hop tracking for top paths
+	type txBest struct {
+		hash, firstSeen        string
+		maxHops                int
+		bestPath               []string
+		routeType, payloadType int
+		obsCount               int
+	}
+	txBestMap := make(map[int64]*txBest)
+
+	for _, list := range s.byObserver {
+		for _, o := range list {
+			var rawHops []string
+			if json.Unmarshal([]byte(o.PathJSON), &rawHops) != nil {
+				rawHops = nil
+			}
+			var hops []string
+			for _, h := range rawHops {
+				if isHexHop(h) {
+					hops = append(hops, h)
+				}
+			}
+			hopCount := len(hops)
+
+			// Link type (all observations)
+			switch {
+			case hopCount == 0:
+				direct++
+			case hopCount == 1:
+				singleRelay++
+			default:
+				multiRelay++
+			}
+			hopDistMap[hopCount]++
+
+			// Metrics for non-empty paths only
+			if hopCount > 0 {
+				pathsAnalyzed++
+				totalHops += hopCount
+				if hopCount > maxHopDist {
+					maxHopDist = hopCount
+				}
+			}
+
+			// Hourly activity (all observations, avg includes 0-hop)
+			if t := parseTimeToTime(o.Timestamp); !t.IsZero() && !t.Before(actStart) {
+				bucket := t.Truncate(time.Hour).Unix()
+				if actBuckets[bucket] == nil {
+					actBuckets[bucket] = &actAcc{}
+				}
+				actBuckets[bucket].hopSum += hopCount
+				actBuckets[bucket].count++
+			}
+
+			tx := s.byTxID[o.TxID]
+			if tx == nil {
+				continue
+			}
+
+			allObsEntries = append(allObsEntries, hopObsEntry{
+				hash: tx.Hash, firstSeen: tx.FirstSeen,
+				hopCount: hopCount, hops: hops,
+				observerName: o.ObserverName, observerIATA: o.ObserverIATA,
+				routeType: tx.RouteType, payloadType: tx.PayloadType,
+			})
+
+			if e, ok := txBestMap[tx.ID]; ok {
+				e.obsCount++
+				if hopCount > e.maxHops {
+					e.maxHops = hopCount
+					e.bestPath = hops
+				}
+			} else {
+				txBestMap[tx.ID] = &txBest{
+					hash: tx.Hash, firstSeen: tx.FirstSeen,
+					maxHops: hopCount, bestPath: hops,
+					routeType: tx.RouteType, payloadType: tx.PayloadType,
+					obsCount: 1,
+				}
+			}
+		}
+	}
+
+	avgHopDist := 0.0
+	if pathsAnalyzed > 0 {
+		avgHopDist = float64(totalHops) / float64(pathsAnalyzed)
+	}
+
+	// Hop distribution buckets (0-hop up to maxHopDist)
+	maxBucket := 0
+	for k := range hopDistMap {
+		if k > maxBucket { maxBucket = k }
+	}
+	hopDist := make([]HopDistBucket, maxBucket+1)
+	for i := 0; i <= maxBucket; i++ {
+		hopDist[i] = HopDistBucket{Hops: i, Count: hopDistMap[i]}
+	}
+
+	// Hourly activity
+	actHours := make([]HopActivity, windowHours)
+	for i := 0; i < windowHours; i++ {
+		h := actStart.Add(time.Duration(i) * time.Hour)
+		a := HopActivity{Hour: h.Format(time.RFC3339), Label: h.Format("15:04")}
+		if bkt := actBuckets[h.Unix()]; bkt != nil && bkt.count > 0 {
+			a.AvgHops = float64(bkt.hopSum) / float64(bkt.count)
+			a.Count = bkt.count
+		}
+		actHours[i] = a
+	}
+
+	// Top 20 longest hops (per observation, descending)
+	sort.Slice(allObsEntries, func(i, j int) bool { return allObsEntries[i].hopCount > allObsEntries[j].hopCount })
+	if len(allObsEntries) > 20 { allObsEntries = allObsEntries[:20] }
+	top20 := make([]LongHop, len(allObsEntries))
+	for i, e := range allObsEntries {
+		top20[i] = LongHop{
+			Hash: e.hash, FirstSeen: e.firstSeen,
+			HopCount: e.hopCount, Hops: e.hops,
+			ObserverName: e.observerName, ObserverIATA: e.observerIATA,
+			RouteType: e.routeType, PayloadType: e.payloadType,
+		}
+	}
+
+	// Top 10 multi-hop paths (per unique packet, ≥2 hops preferred then ≥1)
+	pathList := make([]txBest, 0, len(txBestMap))
+	for _, e := range txBestMap {
+		if e.maxHops >= 2 {
+			pathList = append(pathList, *e)
+		}
+	}
+	sort.Slice(pathList, func(i, j int) bool { return pathList[i].maxHops > pathList[j].maxHops })
+	if len(pathList) > 10 { pathList = pathList[:10] }
+	top10 := make([]LongPath, len(pathList))
+	for i, e := range pathList {
+		top10[i] = LongPath{
+			Hash: e.hash, FirstSeen: e.firstSeen,
+			MaxHops: e.maxHops, BestPath: e.bestPath,
+			RouteType: e.routeType, PayloadType: e.payloadType,
+			ObsCount: e.obsCount,
+		}
+	}
+
+	return DistanceStatsData{
+		TotalHops:       totalHops,
+		PathsAnalyzed:   pathsAnalyzed,
+		AvgHopDist:      avgHopDist,
+		MaxHopDist:      maxHopDist,
+		ByLinkType:      DistLinkTypes{Direct: direct, SingleRelay: singleRelay, MultiRelay: multiRelay},
+		HopDistribution: hopDist,
+		ActivityByHour:  actHours,
+		Top20Hops:       top20,
+		Top10MultiHop:   top10,
+	}
+}
+
+type DistanceStatsData struct {
+	TotalHops       int             `json:"totalHops"`
+	PathsAnalyzed   int             `json:"pathsAnalyzed"`
+	AvgHopDist      float64         `json:"avgHopDist"`
+	MaxHopDist      int             `json:"maxHopDist"`
+	ByLinkType      DistLinkTypes   `json:"byLinkType"`
+	HopDistribution []HopDistBucket `json:"hopDistribution"`
+	ActivityByHour  []HopActivity   `json:"activityByHour"`
+	Top20Hops       []LongHop       `json:"top20Hops"`
+	Top10MultiHop   []LongPath      `json:"top10MultiHop"`
+}
+
+type DistLinkTypes struct {
+	Direct      int `json:"direct"`
+	SingleRelay int `json:"singleRelay"`
+	MultiRelay  int `json:"multiRelay"`
+}
+
+type HopDistBucket struct {
+	Hops  int `json:"hops"`
+	Count int `json:"count"`
+}
+
+type HopActivity struct {
+	Hour    string  `json:"hour"`
+	Label   string  `json:"label"`
+	AvgHops float64 `json:"avgHops"`
+	Count   int     `json:"count"`
+}
+
+type LongHop struct {
+	Hash         string   `json:"hash"`
+	FirstSeen    string   `json:"firstSeen"`
+	HopCount     int      `json:"hopCount"`
+	Hops         []string `json:"hops"`
+	ObserverName string   `json:"observerName"`
+	ObserverIATA string   `json:"observerIata"`
+	RouteType    int      `json:"routeType"`
+	PayloadType  int      `json:"payloadType"`
+}
+
+type LongPath struct {
+	Hash        string   `json:"hash"`
+	FirstSeen   string   `json:"firstSeen"`
+	MaxHops     int      `json:"maxHops"`
+	BestPath    []string `json:"bestPath"`
+	RouteType   int      `json:"routeType"`
+	PayloadType int      `json:"payloadType"`
+	ObsCount    int      `json:"obsCount"`
+}

@@ -26,6 +26,7 @@ import type { Node, Observer, OverviewStats, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, PAYLOAD_ICONS } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
+import { IataFlag } from '../utils/flags'
 
 const ROLE_COLOR: Record<string, string> = {
   repeater: '#7c3aed', companion: '#0ea5e9', room: '#22c55e', sensor: '#f59e0b',
@@ -72,7 +73,7 @@ export default function Home() {
     api.analyticsActivity(24).then(d => setActivity(d ?? []))
     api.analyticsNodesTop(6).then(d => setTopNodes(d ?? []))
     api.observers().then(r => setObservers(r.observers ?? []))
-    api.packets(12, 0).then(r => setRecent(r.packets ?? []))
+    api.packets(6, 0).then(r => setRecent(r.packets ?? []))
     api.analyticsRF().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
 
@@ -81,7 +82,7 @@ export default function Home() {
     return stream.subscribe(msg => {
       if (msg.type !== 'packet') return
       rateWindow.current.push(Date.now())
-      setRecent(prev => [msg.data, ...prev.slice(0, 11)])
+      setRecent(prev => [msg.data, ...prev.slice(0, 5)])
       setStats(s => s ? { ...s, totalPackets: s.totalPackets + 1 } : s)
     })
   }, [])
@@ -152,9 +153,9 @@ export default function Home() {
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 280px' }, gap: 2.5 }}>
 
           {/* 24h Activity */}
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+          <Card sx={{ display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5, flexShrink: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <SectionIcon Icon={ShowChartIcon} color={md3.primary} />
                   <Box>
@@ -171,7 +172,8 @@ export default function Home() {
                   </Typography>
                 </Box>
               </Box>
-              <ResponsiveContainer width="100%" height={120}>
+              <Box sx={{ flex: 1, minHeight: 80 }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={activity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="homeActGrad" x1="0" y1="0" x2="0" y2="1">
@@ -186,6 +188,7 @@ export default function Home() {
                   <Area type="monotone" dataKey="count" stroke={md3.primary} strokeWidth={2} fill="url(#homeActGrad)" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
+              </Box>
             </CardContent>
           </Card>
 
@@ -229,7 +232,7 @@ export default function Home() {
                 {observers.slice(0, 6).map(o => {
                   const on = Date.now() - new Date(o.lastSeen).getTime() < 5 * 60_000
                   return (
-                    <Tooltip key={o.id} title={`${o.iata ?? '—'} · ${on ? t('common.online') : t('common.offline')}`}>
+                    <Tooltip key={o.id} title={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={12} />{o.iata ?? '—'} · {on ? t('common.online') : t('common.offline')}</Box>}>
                       <Chip
                         label={o.name || o.id.slice(0, 8)}
                         size="small"
@@ -332,7 +335,7 @@ export default function Home() {
                 const color  = roleColor(n.role, md3.primary)
                 const active = isActive(n)
                 return (
-                  <Box key={n.pubKey} onClick={() => navigate(`/nodes?pubkey=${n.pubKey}`)} sx={{
+                  <Box key={n.pubKey} onClick={() => navigate(`/nodes/${n.pubKey}`)} sx={{
                     display: 'flex', alignItems: 'center', gap: 1.25, py: 0.5, cursor: 'pointer',
                     borderBottom: i < topNodes.length - 1 ? `1px solid ${alpha(md3.outlineVariant, 0.4)}` : 'none',
                     '&:hover': { background: alpha(md3.primary, 0.04), mx: -2, px: 2, borderRadius: 1 },

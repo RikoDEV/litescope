@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { IataFlag } from '../utils/flags'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import TextField from '@mui/material/TextField'
@@ -69,6 +70,10 @@ export default function Nodes() {
   const [sortCol, setSortCol]   = useState<SortCol>('lastSeen')
   const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('desc')
 
+  const PAGE = 60
+  const [visibleCount, setVisibleCount] = useState(PAGE)
+  const sentinelRef = useRef<HTMLTableRowElement>(null)
+
   useEffect(() => { api.iatas().then(c => setIATAs((c ?? []).sort())) }, [])
 
   useEffect(() => {
@@ -90,17 +95,40 @@ export default function Nodes() {
     })
   }, [allNodes, roleTab, search, sortCol, sortDir])
 
-  // Consume URL params on first node load
+  // Reset window on filter/sort change; expand it if the selected row is beyond the window
   useEffect(() => {
-    if (!allNodes.length) return
-    const pk  = searchParams.get('pubkey')
-    const srch = searchParams.get('search')
-    if (pk) {
-      const n = allNodes.find(x => x.pubKey === pk)
-      if (n) selectNode(n)
+    const selectedIdx = selected ? filtered.findIndex(n => n.pubKey === selected.pubKey) : -1
+    setVisibleCount(selectedIdx >= 0 ? Math.max(PAGE, selectedIdx + 1) : PAGE)
+  }, [filtered]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // IntersectionObserver: load next page when sentinel scrolls into view
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) setVisibleCount(v => v + PAGE)
+    }, { threshold: 0 })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [filtered]) // re-attach when filtered changes (sentinel may re-mount)
+
+  // Derived value so the effect re-fires whenever the pubkey param changes
+  const pubkeyParam = searchParams.get('pubkey')
+
+  // Sync URL → selection: runs when allNodes loads OR when pubkeyParam changes
+  useEffect(() => {
+    if (!pubkeyParam || !allNodes.length) return
+    const n = allNodes.find(x => x.pubKey === pubkeyParam)
+    if (n) selectNode(n)
+  }, [allNodes, pubkeyParam]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedRowRef = useRef<HTMLTableRowElement>(null)
+
+  useEffect(() => {
+    if (selected && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-    if (pk || srch) setSearchParams({}, { replace: true })
-  }, [allNodes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected?.pubKey])
 
   const selectNode = async (n: Node) => {
     if (selected?.pubKey === n.pubKey) { setSelected(null); setOverview(null); setRF(null); return }
@@ -155,7 +183,7 @@ export default function Nodes() {
               <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('common.region')}</Typography>
               <Chip label={t('common.all')} size="small" clickable onClick={() => setIata('')} sx={{ background: !iata ? alpha(md3.secondary, 0.2) : 'transparent', color: !iata ? md3.secondary : md3.outline, border: `1px solid ${!iata ? md3.secondary : md3.outlineVariant}` }} />
               {iatas.map(code => (
-                <Chip key={code} label={code} size="small" clickable onClick={() => setIata(i => i === code ? '' : code)}
+                <Chip key={code} label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={code} size={12} />{code}</Box>} size="small" clickable onClick={() => setIata(i => i === code ? '' : code)}
                   sx={{ background: iata === code ? alpha(md3.secondary, 0.2) : 'transparent', color: iata === code ? md3.secondary : md3.outline, border: `1px solid ${iata === code ? md3.secondary : md3.outlineVariant}` }} />
               ))}
               <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
@@ -205,11 +233,11 @@ export default function Nodes() {
               {filtered.length === 0 && (
                 <TableRow><TableCell colSpan={6} align="center" sx={{ py: 5, color: md3.onSurfaceVariant }}>{t('nodes.noMatch')}</TableCell></TableRow>
               )}
-              {filtered.map(n => {
+              {filtered.slice(0, visibleCount).map(n => {
                 const active = isActive(n)
                 const color  = roleColor(n.role)
                 return (
-                  <TableRow key={n.pubKey} selected={selected?.pubKey === n.pubKey} onClick={() => selectNode(n)}>
+                  <TableRow key={n.pubKey} ref={selected?.pubKey === n.pubKey ? selectedRowRef : null} selected={selected?.pubKey === n.pubKey} onClick={() => selectNode(n)}>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: md3.onSurface }}>{n.name || '—'}</Typography>
                       <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace' }}>{n.pubKey.slice(0, 20)}…</Typography>
@@ -232,6 +260,15 @@ export default function Nodes() {
                   </TableRow>
                 )
               })}
+              {visibleCount < filtered.length && (
+                <TableRow ref={sentinelRef}>
+                  <TableCell colSpan={6} sx={{ py: 1.5, textAlign: 'center' }}>
+                    <Typography variant="caption" sx={{ color: md3.outline }}>
+                      {filtered.length - visibleCount} more…
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </Box>

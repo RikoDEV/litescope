@@ -72,6 +72,19 @@ export const api = {
   analyticsSnrByType: () =>
     get<Record<string, { avg: number; count: number }>>('/api/analytics/snr-by-type'),
 
+  analyticsDistance: () =>
+    get<{
+      totalHops: number
+      pathsAnalyzed: number
+      avgHopDist: number
+      maxHopDist: number
+      byLinkType: { direct: number; singleRelay: number; multiRelay: number }
+      hopDistribution: Array<{ hops: number; count: number }>
+      activityByHour: Array<{ hour: string; label: string; avgHops: number; count: number }>
+      top20Hops: Array<{ hash: string; firstSeen: string; hopCount: number; hops: string[]; observerName: string; observerIata: string; routeType: number; payloadType: number }>
+      top10MultiHop: Array<{ hash: string; firstSeen: string; maxHops: number; bestPath: string[]; routeType: number; payloadType: number; obsCount: number }>
+    }>('/api/analytics/distance'),
+
   analyticsScope: () =>
     get<{
       distribution: Array<{ scope: string; pktCount: number; obsCount: number }>

@@ -5,7 +5,7 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 const en = {
   nav: {
     home: 'Home', packets: 'Packets', map: 'Map', live: 'Live', nodes: 'Nodes',
-    channels: 'Channels', observers: 'Observers', analytics: 'Analytics', decoder: 'Decoder',
+    channels: 'Channels', observers: 'Observers', analytics: 'Analytics', decoder: 'Decoder', more: 'More',
   },
   common: {
     live: 'Live', off: 'Off', connecting: '...', search: 'Search',
@@ -59,6 +59,13 @@ const en = {
     scopeActivity: 'Scope Activity (24h)', topObserversByScope: 'Top Observers by Scope',
     totalScopes: 'Total Scopes', scopedPackets: 'Scoped Packets', unscopedPackets: 'Unscoped Packets',
     noScopeData: 'No scope data yet. Configure scope allowlist on the server.',
+    distance: 'Distance', totalHopsAnalyzed: 'Total Hops Analyzed', pathsAnalyzed: 'Paths Analyzed',
+    avgHopDist: 'Avg Hop Distance', maxHopDist: 'Max Hop Distance',
+    byLinkType: 'Distance by Link Type', nodeToNode: 'Node → Node', rptToNode: 'Rpt → Node', rptToRpt: 'Rpt → Rpt',
+    hopDistribution: 'Hop Distance Distribution', avgDistOverTime: 'Average Distance Over Time',
+    top20Hops: 'Top 20 Longest Hops', top10Paths: 'Top 10 Longest Multi-Hop Paths',
+    hopsLabel: 'hops', noDistData: 'No path data available yet.',
+    observer: 'Observer', path: 'Path', maxHops: 'Max Hops', type: 'Type',
   },
   packets: {
     count: '{{count}} packets', searchPlaceholder: 'Search hash, name, text…',
@@ -140,7 +147,7 @@ const en = {
 const pl: typeof en = {
   nav: {
     home: 'Start', packets: 'Pakiety', map: 'Mapa', live: 'Live', nodes: 'Węzły',
-    channels: 'Kanały', observers: 'Obserwatorzy', analytics: 'Analityka', decoder: 'Dekoder',
+    channels: 'Kanały', observers: 'Obserwatorzy', analytics: 'Analityka', decoder: 'Dekoder', more: 'Więcej',
   },
   common: {
     live: 'Na żywo', off: 'Wył.', connecting: '...', search: 'Szukaj',
@@ -182,10 +189,17 @@ const pl: typeof en = {
     hopIdentifier: 'Identyfikator skoku', occurrencesInPaths: 'Wystąpienia w trasach', maxSize: 'Maks. rozmiar',
     oneBytePkts: 'Pakiety 1-bajtowe', multiByte: 'Wielobajtowe', adopters: 'Użytkownicy',
     repeaterOneByte: 'Przekaźnik 1-bajtowy',
-    scope: 'Region', scopeDistribution: 'Rozkład regionów', rfByScope: 'Jakość RF wg regionu',
+    scope: 'Regiony', scopeDistribution: 'Rozkład regionów', rfByScope: 'Jakość RF wg regionu',
     scopeActivity: 'Aktywność regionów (24h)', topObserversByScope: 'Czołowi obserwatorzy wg regionu',
     totalScopes: 'Łącznie regionów', scopedPackets: 'Pakiety z regionem', unscopedPackets: 'Pakiety bez regionu',
     noScopeData: 'Brak danych regionu. Skonfiguruj listę regionów na serwerze.',
+    distance: 'Odległość', totalHopsAnalyzed: 'Łącznie przeskoków', pathsAnalyzed: 'Analizowane ścieżki',
+    avgHopDist: 'Śr. odległość', maxHopDist: 'Maks. odległość',
+    byLinkType: 'Odległość wg typu łącza', nodeToNode: 'Węzeł → Węzeł', rptToNode: 'Przekaźnik → Węzeł', rptToRpt: 'Przekaźnik → Przekaźnik',
+    hopDistribution: 'Rozkład odległości', avgDistOverTime: 'Śr. odległość w czasie',
+    top20Hops: 'Top 20 najdłuższych tras', top10Paths: 'Top 10 wieloprzeskokowych ścieżek',
+    hopsLabel: 'przeskoków', noDistData: 'Brak danych ścieżek.',
+    observer: 'Obserwator', path: 'Ścieżka', maxHops: 'Maks. przeskoki', type: 'Typ',
     timeWindow: 'Okno czasowe', peakHour: 'Szczyt/h', avgHour: 'Śr./h',
     packetTypeDistribution: 'Rozkład typów pakietów', payloadTypeShare: 'Udział typów ładunku',
     packetsPerHourWindow: 'Pakiety na godzinę — ostatnie {{hours}}h',
@@ -275,7 +289,7 @@ const pl: typeof en = {
 const de: typeof en = {
   nav: {
     home: 'Start', packets: 'Pakete', map: 'Karte', live: 'Live', nodes: 'Knoten',
-    channels: 'Kanäle', observers: 'Beobachter', analytics: 'Analyse', decoder: 'Dekoder',
+    channels: 'Kanäle', observers: 'Beobachter', analytics: 'Analyse', decoder: 'Dekoder', more: 'Mehr',
   },
   common: {
     live: 'Live', off: 'Aus', connecting: '...', search: 'Suchen',
@@ -321,6 +335,13 @@ const de: typeof en = {
     scopeActivity: 'Scope-Aktivität (24h)', topObserversByScope: 'Top-Beobachter nach Scope',
     totalScopes: 'Scopes gesamt', scopedPackets: 'Pakete mit Scope', unscopedPackets: 'Pakete ohne Scope',
     noScopeData: 'Keine Scope-Daten. Bitte Scope-Allowlist auf dem Server konfigurieren.',
+    distance: 'Distanz', totalHopsAnalyzed: 'Hops gesamt', pathsAnalyzed: 'Analysierte Pfade',
+    avgHopDist: 'Ø Hop-Distanz', maxHopDist: 'Max. Distanz',
+    byLinkType: 'Distanz nach Verbindungstyp', nodeToNode: 'Knoten → Knoten', rptToNode: 'Repeater → Knoten', rptToRpt: 'Repeater → Repeater',
+    hopDistribution: 'Hop-Distanz-Verteilung', avgDistOverTime: 'Ø Distanz über Zeit',
+    top20Hops: 'Top 20 längste Hops', top10Paths: 'Top 10 Multi-Hop-Pfade',
+    hopsLabel: 'Hops', noDistData: 'Keine Pfaddaten vorhanden.',
+    observer: 'Beobachter', path: 'Pfad', maxHops: 'Max. Hops', type: 'Typ',
     timeWindow: 'Zeitfenster', peakHour: 'Spitze/h', avgHour: 'Ø/h',
     packetTypeDistribution: 'Pakettyp-Verteilung', payloadTypeShare: 'Nutzlasttyp-Anteil',
     packetsPerHourWindow: 'Pakete pro Stunde — letzte {{hours}}h',
@@ -408,9 +429,9 @@ const de: typeof en = {
 }
 
 export const LANGUAGES = [
-  { code: 'en', label: 'English',  flag: '🇬🇧' },
-  { code: 'pl', label: 'Polski',   flag: '🇵🇱' },
-  { code: 'de', label: 'Deutsch',  flag: '🇩🇪' },
+  { code: 'en', label: 'English', cc: 'GB' },
+  { code: 'pl', label: 'Polski',  cc: 'PL' },
+  { code: 'de', label: 'Deutsch', cc: 'DE' },
 ]
 
 i18n

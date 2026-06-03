@@ -37,9 +37,11 @@ import LeaderboardIcon from '@mui/icons-material/Leaderboard'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import TimelineIcon from '@mui/icons-material/Timeline'
 import GroupWorkIcon from '@mui/icons-material/GroupWork'
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import type { SvgIconComponent } from '@mui/icons-material'
+import { IataFlag } from '../utils/flags'
 
-type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope'
+type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope' | 'distance'
 
 const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
   { id: 'overview',  Icon: AssessmentIcon,       tk: 'analytics.overview' },
@@ -50,6 +52,7 @@ const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
   { id: 'channels',  Icon: ForumIcon,             tk: 'analytics.channels' },
   { id: 'hashes',    Icon: TagIcon,               tk: 'analytics.hashes' },
   { id: 'scope',     Icon: ScatterPlotIcon,       tk: 'analytics.scope' },
+  { id: 'distance',  Icon: AccountTreeIcon,       tk: 'analytics.distance' },
 ]
 
 const PALETTE = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6','#a855f7']
@@ -83,6 +86,7 @@ export default function Analytics() {
         {tab === 'channels'  && <ChannelsTab />}
         {tab === 'hashes'    && <HashesTab />}
         {tab === 'scope'     && <ScopeTab />}
+        {tab === 'distance'  && <DistanceTab />}
       </Box>
     </Box>
   )
@@ -443,7 +447,7 @@ function ObserversTab() {
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#22c55e' : md3.outline, display: 'inline-block', mr: 1 }} />
                     {o.name || o.id.slice(0, 14) + '…'}
                   </TableCell>
-                  <TableCell sx={{ color: md3.tertiary, fontWeight: 700 }}>{o.iata || '—'}</TableCell>
+                  <TableCell sx={{ color: md3.tertiary, fontWeight: 700 }}>{o.iata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={13} />{o.iata}</Box> : '—'}</TableCell>
                   <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{o.packetCount.toLocaleString()}</TableCell>
                   <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.model || '—'}</TableCell>
                   <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.batteryMv ? `${o.batteryMv} mV` : '—'}</TableCell>
@@ -683,6 +687,193 @@ function HashesTab() {
   )
 }
 
+// ── Distance / Hop Analytics ──────────────────────────────────────────────────
+function DistanceTab() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+
+  type DistData = {
+    totalHops: number
+    pathsAnalyzed: number
+    avgHopDist: number
+    maxHopDist: number
+    byLinkType: { direct: number; singleRelay: number; multiRelay: number }
+    hopDistribution: Array<{ hops: number; count: number }>
+    activityByHour: Array<{ hour: string; label: string; avgHops: number; count: number }>
+    top20Hops: Array<{ hash: string; firstSeen: string; hopCount: number; hops: string[]; observerName: string; observerIata: string; routeType: number; payloadType: number }>
+    top10MultiHop: Array<{ hash: string; firstSeen: string; maxHops: number; bestPath: string[]; routeType: number; payloadType: number; obsCount: number }>
+  }
+
+  const [data, setData] = useState<DistData | null>(null)
+  useEffect(() => { api.analyticsDistance().then(setData) }, [])
+
+  if (!data) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
+  if (data.pathsAnalyzed === 0 && data.byLinkType.direct === 0)
+    return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noDistData')}</Typography>
+
+  const PAYLOAD_NAMES: Record<number, string> = {
+    0: 'REQ', 1: 'RESPONSE', 2: 'TXT_MSG', 3: 'ACK', 4: 'ADVERT',
+    5: 'GRP_TXT', 6: 'GRP_DATA', 7: 'ANON_REQ', 8: 'PATH', 9: 'TRACE',
+    10: 'MULTIPART', 11: 'CONTROL', 15: 'RAW_CUSTOM',
+  }
+  const ROUTE_NAMES: Record<number, string> = { 0: 'T_FLOOD', 1: 'FLOOD', 2: 'DIRECT', 3: 'T_DIRECT' }
+
+  const linkTypeData = [
+    { name: t('analytics.nodeToNode'), value: data.byLinkType.direct,      fill: '#22c55e' },
+    { name: t('analytics.rptToNode'),  value: data.byLinkType.singleRelay, fill: '#f59e0b' },
+    { name: t('analytics.rptToRpt'),   value: data.byLinkType.multiRelay,  fill: md3.primary },
+  ]
+  const totalObs = linkTypeData.reduce((s, d) => s + d.value, 0)
+
+  const navigate = useNavigate()
+
+  return (
+    <Box>
+      {/* Stat pills */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 1.5, mb: 2 }}>
+        {[
+          { l: t('analytics.totalHopsAnalyzed'), v: data.totalHops.toLocaleString(),              c: md3.primary },
+          { l: t('analytics.pathsAnalyzed'),     v: data.pathsAnalyzed.toLocaleString(),          c: '#14b8a6' },
+          { l: t('analytics.avgHopDist'),        v: data.avgHopDist.toFixed(2) + ' ' + t('analytics.hopsLabel'), c: '#f59e0b' },
+          { l: t('analytics.maxHopDist'),        v: data.maxHopDist + ' ' + t('analytics.hopsLabel'),            c: '#ec4899' },
+        ].map(p => (
+          <Box key={p.l} sx={{ px: 1.5, py: 1, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 0.25 }}>{p.l}</Typography>
+            <Typography variant="body2" sx={{ color: p.c, fontWeight: 700 }}>{p.v}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+        {/* Distance by Link Type */}
+        <ChartCard title={t('analytics.byLinkType')} Icon={DonutLargeIcon}>
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={linkTypeData} dataKey="value" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${totalObs > 0 ? ((value / totalObs) * 100).toFixed(1) : 0}%`} labelLine={false}>
+                {linkTypeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                formatter={(v) => [Number(v).toLocaleString(), '']} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {/* Hop Distance Distribution */}
+        <ChartCard title={t('analytics.hopDistribution')} Icon={BarChartIcon}>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={data.hopDistribution} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis dataKey="hops" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} label={{ value: t('analytics.hopsLabel'), position: 'insideBottom', offset: -2, fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                labelFormatter={v => `${v} ${t('analytics.hopsLabel')}`} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {data.hopDistribution.map((d, i) => (
+                  <Cell key={i} fill={d.hops === 0 ? '#22c55e' : d.hops === 1 ? '#f59e0b' : alpha(md3.primary, Math.min(1, 0.5 + d.hops * 0.15))} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </Box>
+
+      {/* Average Distance Over Time */}
+      <ChartCard title={t('analytics.avgDistOverTime')} Icon={TimelineIcon} sx={{ mb: 2 }}>
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={data.activityByHour} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={3} />
+            <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+              formatter={(v) => [Number(v).toFixed(2) + ' ' + t('analytics.hopsLabel'), t('analytics.avgHopDist')]} />
+            <ReferenceLine y={data.avgHopDist} stroke={alpha(md3.primary, 0.4)} strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="avgHops" stroke={md3.primary} strokeWidth={2} dot={false} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {/* Top 20 Longest Hops */}
+      <ChartCard title={t('analytics.top20Hops')} Icon={LeaderboardIcon} sx={{ mb: 2 }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              {['#', t('analytics.hopsLabel'), t('analytics.path'), t('analytics.type'), t('analytics.observer'), t('common.firstSeen')].map(h => (
+                <TableCell key={h} sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.top20Hops.map((row, i) => (
+              <TableRow key={`${row.hash}-${i}`} sx={{ cursor: 'pointer', '&:hover': { background: alpha(md3.primary, 0.06) } }}
+                onClick={() => navigate(`/packets/${row.hash}`)}>
+                <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
+                <TableCell>
+                  <Chip label={`${row.hopCount} ${t('analytics.hopsLabel')}`} size="small"
+                    sx={{ fontSize: 11, height: 20, background: alpha('#ec4899', 0.15), color: '#ec4899', fontWeight: 700 }} />
+                </TableCell>
+                <TableCell sx={{ fontFamily: 'monospace', fontSize: 11, color: md3.onSurfaceVariant, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.hops.join(' → ') || '—'}
+                </TableCell>
+                <TableCell sx={{ fontSize: 11 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                    <Typography sx={{ fontSize: 10, color: md3.primary }}>{ROUTE_NAMES[row.routeType] ?? row.routeType}</Typography>
+                    <Typography sx={{ fontSize: 10, color: md3.onSurfaceVariant }}>{PAYLOAD_NAMES[row.payloadType] ?? row.payloadType}</Typography>
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ color: md3.onSurface, fontSize: 12 }}>{row.observerName ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={row.observerIata} size={12} />{row.observerName}</Box> : (row.observerIata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={row.observerIata} size={12} />{row.observerIata}</Box> : '—')}</TableCell>
+                <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11, whiteSpace: 'nowrap' }}>
+                  {row.firstSeen ? new Date(row.firstSeen).toLocaleString() : '—'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ChartCard>
+
+      {/* Top 10 Multi-Hop Paths */}
+      {data.top10MultiHop.length > 0 && (
+        <ChartCard title={t('analytics.top10Paths')} Icon={AccountTreeIcon}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                {['#', t('analytics.maxHops'), t('analytics.path'), t('analytics.type'), t('packets.obsCount'), t('common.firstSeen')].map(h => (
+                  <TableCell key={h} sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{h}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.top10MultiHop.map((row, i) => (
+                <TableRow key={row.hash} sx={{ cursor: 'pointer', '&:hover': { background: alpha(md3.primary, 0.06) } }}
+                  onClick={() => navigate(`/packets/${row.hash}`)}>
+                  <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
+                  <TableCell>
+                    <Chip label={`${row.maxHops} ${t('analytics.hopsLabel')}`} size="small"
+                      sx={{ fontSize: 11, height: 20, background: alpha(md3.primary, 0.15), color: md3.primary, fontWeight: 700 }} />
+                  </TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace', fontSize: 11, color: md3.onSurfaceVariant, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {row.bestPath.join(' → ') || '—'}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 11 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                      <Typography sx={{ fontSize: 10, color: md3.primary }}>{ROUTE_NAMES[row.routeType] ?? row.routeType}</Typography>
+                      <Typography sx={{ fontSize: 10, color: md3.onSurfaceVariant }}>{PAYLOAD_NAMES[row.payloadType] ?? row.payloadType}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ color: '#f59e0b', fontWeight: 700 }}>{row.obsCount}</TableCell>
+                  <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11, whiteSpace: 'nowrap' }}>
+                    {row.firstSeen ? new Date(row.firstSeen).toLocaleString() : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ChartCard>
+      )}
+    </Box>
+  )
+}
+
 // ── Scope Analytics ──────────────────────────────────────────────────────────
 function ScopeTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
@@ -821,7 +1012,7 @@ function ScopeTab() {
                   </TableCell>
                 ) : null}
                 <TableCell sx={{ fontWeight: idx === 0 ? 600 : 400, color: md3.onSurface }}>{o.observerName || o.observerId.slice(0, 8)}</TableCell>
-                <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.observerIata || '—'}</TableCell>
+                <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.observerIata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.observerIata} size={12} />{o.observerIata}</Box> : '—'}</TableCell>
                 <TableCell sx={{ color: '#f59e0b', fontWeight: 700 }}>{o.count.toLocaleString()}</TableCell>
               </TableRow>
             )))}

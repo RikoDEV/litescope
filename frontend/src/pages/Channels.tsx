@@ -35,6 +35,7 @@ import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
 import { deduplicateObs } from '../components/PacketDetailPanel'
 import { formatDistanceToNow } from 'date-fns'
+import { IataFlag } from '../utils/flags'
 import { useDateLocale } from '../hooks/useDateLocale'
 
 // ── unread count storage ──────────────────────────────────────────────────────
@@ -468,7 +469,7 @@ function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: strin
         {!loading && obsHops.map((o, oi) => (
           <Box key={oi} sx={{ mb: oi < obsHops.length - 1 ? 1 : 0 }}>
             <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontWeight: 600, display: 'block', mb: 0.5 }}>
-              {o.name}{o.iata ? ` · ${o.iata}` : ''}
+              {o.name}{o.iata ? <> · <IataFlag iata={o.iata} size={11} style={{ marginRight: 2 }} />{o.iata}</> : ''}
             </Typography>
             {o.hops.map((hop, hi) => {
               const byteLen = hop.length / 2
