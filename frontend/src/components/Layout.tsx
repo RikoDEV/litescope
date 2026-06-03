@@ -13,6 +13,7 @@ import { stream } from '../services/stream'
 import { useThemeMode } from '../ThemeModeProvider'
 import { LANGUAGES } from '../i18n'
 import { FlagByCC } from '../utils/flags'
+import CookieBanner from './CookieBanner'
 
 import HomeIcon from '@mui/icons-material/Home'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -132,6 +133,7 @@ export default function Layout() {
   )
 
   return (
+    <>
     <Box sx={{ display: 'flex', height: '100dvh', background: md3.background }}>
 
       {/* ── Navigation Rail — desktop only (md+) ── */}
@@ -347,5 +349,7 @@ export default function Layout() {
 
       </Box>
     </Box>
+    <CookieBanner />
+    </>
   )
 }

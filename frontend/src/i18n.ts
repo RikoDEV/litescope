@@ -142,6 +142,12 @@ const en = {
     subtitle: 'The path you followed doesn\'t exist. It may have been moved or the URL is incorrect.',
     goHome: 'Go to Home',
   },
+  cookie: {
+    title: 'We use browser storage',
+    body: 'liteScope saves your preferences (theme, language, channel keys) and minor usage data in localStorage. Nothing is sent to third parties.',
+    acceptAll: 'Accept all', acceptNecessary: 'Necessary only',
+    necessary: 'Necessary storage: theme, language, channel keys.',
+  },
 }
 
 const pl: typeof en = {
@@ -283,6 +289,12 @@ const pl: typeof en = {
     title: 'Strona nie istnieje',
     subtitle: 'Podana ścieżka nie istnieje. Mogła zostać przeniesiona lub adres URL jest nieprawidłowy.',
     goHome: 'Przejdź do strony głównej',
+  },
+  cookie: {
+    title: 'Używamy pamięci przeglądarki',
+    body: 'liteScope zapisuje Twoje preferencje (motyw, język, klucze kanałów) oraz drobne dane użytkowania w localStorage. Nic nie jest wysyłane do stron trzecich.',
+    acceptAll: 'Akceptuj wszystko', acceptNecessary: 'Tylko niezbędne',
+    necessary: 'Niezbędna pamięć: motyw, język, klucze kanałów.',
   },
 }
 
@@ -426,6 +438,12 @@ const de: typeof en = {
     subtitle: 'Der aufgerufene Pfad existiert nicht. Er wurde möglicherweise verschoben oder die URL ist falsch.',
     goHome: 'Zur Startseite',
   },
+  cookie: {
+    title: 'Wir verwenden Browser-Speicher',
+    body: 'liteScope speichert Ihre Einstellungen (Design, Sprache, Kanalschlüssel) und geringe Nutzungsdaten im localStorage. Es werden keine Daten an Dritte gesendet.',
+    acceptAll: 'Alle akzeptieren', acceptNecessary: 'Nur notwendige',
+    necessary: 'Notwendiger Speicher: Design, Sprache, Kanalschlüssel.',
+  },
 }
 
 const fr = {
@@ -567,6 +585,12 @@ const fr = {
     title: 'Page introuvable',
     subtitle: 'Le chemin suivi n\'existe pas. Il a peut-être été déplacé ou l\'URL est incorrecte.',
     goHome: 'Retour à l\'accueil',
+  },
+  cookie: {
+    title: 'Nous utilisons le stockage du navigateur',
+    body: 'liteScope enregistre vos préférences (thème, langue, clés de canal) et des données d\'utilisation mineures dans localStorage. Rien n\'est envoyé à des tiers.',
+    acceptAll: 'Tout accepter', acceptNecessary: 'Nécessaire seulement',
+    necessary: 'Stockage nécessaire : thème, langue, clés de canal.',
   },
 }
 
@@ -710,6 +734,12 @@ const uk = {
     subtitle: 'Шлях не існує. Можливо, його переміщено або URL неправильний.',
     goHome: 'На головну',
   },
+  cookie: {
+    title: 'Ми використовуємо пам\'ять браузера',
+    body: 'liteScope зберігає ваші налаштування (тема, мова, ключі каналів) та незначні дані використання в localStorage. Нічого не передається третім сторонам.',
+    acceptAll: 'Прийняти все', acceptNecessary: 'Лише необхідне',
+    necessary: 'Необхідна пам\'ять: тема, мова, ключі каналів.',
+  },
 }
 
 const ru = {
@@ -851,6 +881,12 @@ const ru = {
     title: 'Страница не найдена',
     subtitle: 'Путь не существует. Возможно, он был перемещён или URL неверный.',
     goHome: 'На главную',
+  },
+  cookie: {
+    title: 'Мы используем хранилище браузера',
+    body: 'liteScope сохраняет ваши настройки (тема, язык, ключи каналов) и незначительные данные использования в localStorage. Никакие данные не передаются третьим лицам.',
+    acceptAll: 'Принять всё', acceptNecessary: 'Только необходимое',
+    necessary: 'Необходимое хранилище: тема, язык, ключи каналов.',
   },
 }
 
@@ -994,6 +1030,12 @@ const nl = {
     subtitle: 'Het pad bestaat niet. Het is mogelijk verplaatst of de URL is onjuist.',
     goHome: 'Naar home',
   },
+  cookie: {
+    title: 'We gebruiken browseropslag',
+    body: 'liteScope slaat uw voorkeuren (thema, taal, kanaalsleutels) en kleine gebruiksgegevens op in localStorage. Er wordt niets naar derden verzonden.',
+    acceptAll: 'Alles accepteren', acceptNecessary: 'Alleen noodzakelijk',
+    necessary: 'Noodzakelijke opslag: thema, taal, kanaalsleutels.',
+  },
 }
 
 const es = {
@@ -1135,6 +1177,12 @@ const es = {
     title: 'Página no encontrada',
     subtitle: 'La ruta no existe. Puede haber sido movida o la URL es incorrecta.',
     goHome: 'Ir al inicio',
+  },
+  cookie: {
+    title: 'Usamos almacenamiento del navegador',
+    body: 'liteScope guarda sus preferencias (tema, idioma, claves de canal) y datos de uso menores en localStorage. Nada se envía a terceros.',
+    acceptAll: 'Aceptar todo', acceptNecessary: 'Solo necesario',
+    necessary: 'Almacenamiento necesario: tema, idioma, claves de canal.',
   },
 }
 
@@ -1278,6 +1326,12 @@ const cs = {
     subtitle: 'Cesta neexistuje. Mohla být přesunuta nebo je URL nesprávná.',
     goHome: 'Zpět na domovskou stránku',
   },
+  cookie: {
+    title: 'Používáme úložiště prohlížeče',
+    body: 'liteScope ukládá vaše předvolby (motiv, jazyk, klíče kanálů) a drobná data o používání do localStorage. Nic není odesíláno třetím stranám.',
+    acceptAll: 'Přijmout vše', acceptNecessary: 'Pouze nezbytné',
+    necessary: 'Nezbytné úložiště: motiv, jazyk, klíče kanálů.',
+  },
 }
 
 const sk = {
@@ -1420,6 +1474,12 @@ const sk = {
     subtitle: 'Cesta neexistuje. Mohla byť presunutá alebo URL je nesprávna.',
     goHome: 'Späť na domovskú stránku',
   },
+  cookie: {
+    title: 'Používame úložisko prehliadača',
+    body: 'liteScope ukladá vaše predvoľby (motív, jazyk, kľúče kanálov) a drobné údaje o používaní do localStorage. Nič sa neposiela tretím stranám.',
+    acceptAll: 'Prijať všetko', acceptNecessary: 'Len nevyhnutné',
+    necessary: 'Nevyhnutné úložisko: motív, jazyk, kľúče kanálov.',
+  },
 }
 
 const it = {
@@ -1561,6 +1621,12 @@ const it = {
     title: 'Pagina non trovata',
     subtitle: 'Il percorso non esiste. Potrebbe essere stato spostato o l\'URL è errato.',
     goHome: 'Torna alla home',
+  },
+  cookie: {
+    title: 'Usiamo lo storage del browser',
+    body: 'liteScope salva le tue preferenze (tema, lingua, chiavi canale) e dati di utilizzo minori in localStorage. Nulla viene inviato a terze parti.',
+    acceptAll: 'Accetta tutto', acceptNecessary: 'Solo necessario',
+    necessary: 'Storage necessario: tema, lingua, chiavi canale.',
   },
 }
 
