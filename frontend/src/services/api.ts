@@ -72,6 +72,15 @@ export const api = {
   analyticsSnrByType: () =>
     get<Record<string, { avg: number; count: number }>>('/api/analytics/snr-by-type'),
 
+  analyticsScope: () =>
+    get<{
+      distribution: Array<{ scope: string; pktCount: number; obsCount: number }>
+      rfByScope: Array<{ scope: string; avgSnr: number; avgRssi: number; obsCount: number }>
+      topObservers: Array<{ scope: string; observerId: string; observerName: string; observerIata: string; count: number }>
+      activityScopes: string[]
+      activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
+    }>('/api/analytics/scope'),
+
   analyticsHashes: () =>
     get<{
       sizeDistribution: Record<string, number>

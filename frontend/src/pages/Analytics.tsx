@@ -39,7 +39,7 @@ import TimelineIcon from '@mui/icons-material/Timeline'
 import GroupWorkIcon from '@mui/icons-material/GroupWork'
 import type { SvgIconComponent } from '@mui/icons-material'
 
-type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes'
+type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope'
 
 const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
   { id: 'overview',  Icon: AssessmentIcon,       tk: 'analytics.overview' },
@@ -49,6 +49,7 @@ const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
   { id: 'observers', Icon: WifiIcon,              tk: 'analytics.observers' },
   { id: 'channels',  Icon: ForumIcon,             tk: 'analytics.channels' },
   { id: 'hashes',    Icon: TagIcon,               tk: 'analytics.hashes' },
+  { id: 'scope',     Icon: ScatterPlotIcon,       tk: 'analytics.scope' },
 ]
 
 const PALETTE = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6','#a855f7']
@@ -81,6 +82,7 @@ export default function Analytics() {
         {tab === 'observers' && <ObserversTab />}
         {tab === 'channels'  && <ChannelsTab />}
         {tab === 'hashes'    && <HashesTab />}
+        {tab === 'scope'     && <ScopeTab />}
       </Box>
     </Box>
   )
@@ -677,6 +679,155 @@ function HashesTab() {
           </Table>
         </ChartCard>
       )}
+    </Box>
+  )
+}
+
+// ── Scope Analytics ──────────────────────────────────────────────────────────
+function ScopeTab() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+
+  type ScopeData = {
+    distribution: Array<{ scope: string; pktCount: number; obsCount: number }>
+    rfByScope: Array<{ scope: string; avgSnr: number; avgRssi: number; obsCount: number }>
+    topObservers: Array<{ scope: string; observerId: string; observerName: string; observerIata: string; count: number }>
+    activityScopes: string[]
+    activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
+  }
+
+  const [data, setData] = useState<ScopeData | null>(null)
+  useEffect(() => { api.analyticsScope().then(setData) }, [])
+
+  if (!data) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
+
+  const knownScopes = data.distribution.filter(d => d.scope !== 'unknown')
+  const unknownBucket = data.distribution.find(d => d.scope === 'unknown')
+  const totalScoped = knownScopes.reduce((s, d) => s + d.pktCount, 0)
+  const totalUnscoped = unknownBucket?.pktCount ?? 0
+
+  if (data.distribution.length === 0) {
+    return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noScopeData')}</Typography>
+  }
+
+  const SCOPE_COLORS = ['#D0BCFF', '#22c55e', '#f59e0b', '#14b8a6', '#ec4899', '#a855f7', '#0ea5e9']
+  const scopeColor = (scope: string, idx: number) =>
+    scope === 'unknown' ? md3.outline : SCOPE_COLORS[idx % SCOPE_COLORS.length]
+
+  // Build activity chart data: each row gets one key per scope
+  const activityChartData = data.activity.map(h => {
+    const row: Record<string, string | number> = { label: h.label }
+    for (const sc of data.activityScopes) row[sc] = h.counts[sc] ?? 0
+    return row
+  })
+
+  // Group topObservers by scope for the table
+  const scopeGroups = data.distribution.map(d => ({
+    scope: d.scope,
+    pktCount: d.pktCount,
+    obsCount: d.obsCount,
+    observers: data.topObservers.filter(o => o.scope === d.scope),
+  }))
+
+  return (
+    <Box>
+      {/* Stat pills */}
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+        {[
+          { l: t('analytics.totalScopes'),    v: knownScopes.length.toString(),         c: md3.primary },
+          { l: t('analytics.scopedPackets'),   v: totalScoped.toLocaleString(),          c: '#22c55e' },
+          { l: t('analytics.unscopedPackets'), v: totalUnscoped.toLocaleString(),        c: md3.outline },
+        ].map(p => (
+          <Box key={p.l} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{p.l}{'  '}</Typography>
+            <Typography variant="body2" sx={{ color: p.c, fontWeight: 700, display: 'inline' }}>{p.v}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+        {/* Scope distribution */}
+        <ChartCard title={t('analytics.scopeDistribution')} Icon={BarChartIcon}>
+          <ResponsiveContainer width="100%" height={Math.max(160, data.distribution.length * 36)}>
+            <BarChart data={data.distribution} layout="vertical" margin={{ left: 8, right: 16 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <YAxis type="category" dataKey="scope" tick={{ fontSize: 11, fill: md3.onSurface }} width={72} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                formatter={(v, name) => [Number(v).toLocaleString(), name === 'pktCount' ? t('common.packets') : t('home.observations')]} />
+              <Bar dataKey="pktCount" name="pktCount" radius={[0, 4, 4, 0]}>
+                {data.distribution.map((d, i) => <Cell key={d.scope} fill={scopeColor(d.scope, i)} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {/* RF quality by scope */}
+        <ChartCard title={t('analytics.rfByScope')} Icon={SignalCellularAltIcon}>
+          <ResponsiveContainer width="100%" height={Math.max(160, data.rfByScope.length * 36)}>
+            <BarChart data={data.rfByScope} layout="vertical" margin={{ left: 8, right: 16 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <YAxis type="category" dataKey="scope" tick={{ fontSize: 11, fill: md3.onSurface }} width={72} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                formatter={(v, name) => [`${Number(v).toFixed(1)}${name === 'avgSnr' ? ' dB' : ' dBm'}`, name === 'avgSnr' ? t('home.avgSnr') : t('home.avgRssi')]} />
+              <Legend wrapperStyle={{ fontSize: 11 }} formatter={n => n === 'avgSnr' ? t('home.avgSnr') : t('home.avgRssi')} />
+              <Bar dataKey="avgSnr"  name="avgSnr"  fill="#14b8a6" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="avgRssi" name="avgRssi" fill="#ec4899" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </Box>
+
+      {/* 24h activity */}
+      {data.activityScopes.length > 0 && (
+        <ChartCard title={t('analytics.scopeActivity')} Icon={ShowChartIcon} sx={{ mb: 2 }}>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={activityChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={3} />
+              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {data.activityScopes.map((sc, i) => (
+                <Area key={sc} type="monotone" dataKey={sc} stackId="1"
+                  stroke={scopeColor(sc, i)} fill={alpha(scopeColor(sc, i), 0.5)} strokeWidth={1.5} dot={false} />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
+
+      {/* Top observers per scope */}
+      <ChartCard title={t('analytics.topObserversByScope')} Icon={LeaderboardIcon}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              {[t('analytics.scope'), t('common.name'), t('common.location'), t('common.packets')].map(h => (
+                <TableCell key={h} sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {scopeGroups.map(g => g.observers.length === 0 ? null : g.observers.map((o, idx) => (
+              <TableRow key={`${g.scope}-${o.observerId}`}>
+                {idx === 0 ? (
+                  <TableCell rowSpan={g.observers.length} sx={{ verticalAlign: 'top', pt: 1.5 }}>
+                    <Chip label={g.scope} size="small"
+                      sx={{ fontSize: 11, height: 20,
+                        background: alpha(scopeColor(g.scope, data.distribution.findIndex(d => d.scope === g.scope)), 0.15),
+                        color: scopeColor(g.scope, data.distribution.findIndex(d => d.scope === g.scope)),
+                        fontWeight: 700 }} />
+                  </TableCell>
+                ) : null}
+                <TableCell sx={{ fontWeight: idx === 0 ? 600 : 400, color: md3.onSurface }}>{o.observerName || o.observerId.slice(0, 8)}</TableCell>
+                <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.observerIata || '—'}</TableCell>
+                <TableCell sx={{ color: '#f59e0b', fontWeight: 700 }}>{o.count.toLocaleString()}</TableCell>
+              </TableRow>
+            )))}
+          </TableBody>
+        </Table>
+      </ChartCard>
     </Box>
   )
 }

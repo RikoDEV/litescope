@@ -116,32 +116,6 @@ export default function Home() {
           </Box>
         </Box>
 
-        {/* Live status row — separate line so it never overflows on mobile */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 2, flexWrap: 'wrap' }}>
-          <Box sx={{
-            display: 'flex', alignItems: 'center', gap: 0.6,
-            px: 1.25, py: 0.35, borderRadius: 50,
-            background: alpha('#22c55e', 0.12),
-            border: `1px solid ${alpha('#22c55e', 0.3)}`,
-          }}>
-            <Box sx={{
-              width: 7, height: 7, borderRadius: '50%', background: '#22c55e',
-              animation: 'pulse 2s infinite',
-              '@keyframes pulse': {
-                '0%':   { boxShadow: `0 0 0 0 ${alpha('#22c55e', 0.5)}` },
-                '70%':  { boxShadow: `0 0 0 7px ${alpha('#22c55e', 0)}` },
-                '100%': { boxShadow: `0 0 0 0 ${alpha('#22c55e', 0)}` },
-              },
-            }} />
-            <Typography variant="caption" sx={{ color: '#22c55e', fontWeight: 700, fontSize: 11, letterSpacing: '0.4px' }}>
-              {t('common.live').toUpperCase()}
-            </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ color: md3.onSurfaceVariant, fontSize: 13 }}>
-            <Box component="span" sx={{ color: '#f59e0b', fontWeight: 700 }}>{pktRate}</Box>
-            {' '}{t('home.pktMin')}
-          </Typography>
-        </Box>
 
         {/* Stat cards — compact */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 1 }}>

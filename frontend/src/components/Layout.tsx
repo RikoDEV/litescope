@@ -57,8 +57,8 @@ export default function Layout() {
 
   useEffect(() => {
     stream.connect()
-    const id = setInterval(() => setWsStatus(stream.status), 1500)
-    return () => clearInterval(id)
+    setWsStatus(stream.status)
+    return stream.onStatus(setWsStatus)
   }, [])
 
   // Dynamic page title
@@ -88,8 +88,8 @@ export default function Layout() {
   }, [loc.pathname, t])
 
   const statusColor =
-    wsStatus === 'connected'  ? md3.tertiary :
-    wsStatus === 'connecting' ? md3.tertiary + '88' :
+    wsStatus === 'connected'  ? '#4caf50' :
+    wsStatus === 'connecting' ? '#4caf5088' :
                                  md3.error
 
   const currentLang = LANGUAGES.find(l => i18n.language?.startsWith(l.code)) ?? LANGUAGES[0]

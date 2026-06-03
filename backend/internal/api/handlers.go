@@ -59,6 +59,7 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/analytics/observers-top", s.getAnalyticsObserversTop).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/snr-by-type", s.getAnalyticsSNRByType).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/hashes", s.getAnalyticsHashes).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/scope", s.getAnalyticsScope).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}/analytics", s.getObserverAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/decode", s.decodePacket).Methods("POST", "OPTIONS")
 
@@ -365,6 +366,10 @@ func (s *Server) getAnalyticsSNRByType(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAnalyticsHashes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.Store.HashStats())
+}
+
+func (s *Server) getAnalyticsScope(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.Store.ScopeStats())
 }
 
 func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,7 @@ import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Avatar from '@mui/material/Avatar'
 import Chip from '@mui/material/Chip'
+import Badge from '@mui/material/Badge'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
@@ -35,6 +36,11 @@ import type { Channel, Packet, PacketDetail } from '../types'
 import { deduplicateObs } from '../components/PacketDetailPanel'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
+
+// ── unread count storage ──────────────────────────────────────────────────────
+const LS_SEEN_KEY = 'litescope-channel-seen'
+function loadSeen(): Record<string, number> { try { return JSON.parse(localStorage.getItem(LS_SEEN_KEY) ?? '{}') } catch { return {} } }
+function saveSeen(s: Record<string, number>) { localStorage.setItem(LS_SEEN_KEY, JSON.stringify(s)) }
 
 // ── channel key storage ───────────────────────────────────────────────────────
 const LS_KEY = 'litescope-channel-keys'
@@ -104,6 +110,7 @@ export default function Channels() {
   const [showKeyMgr, setShowKeyMgr] = useState(false)
   const [decrypted, setDecrypted]   = useState<Record<number, { sender: string; text: string }>>({})
   const [storedKeys, setStoredKeys] = useState<StoredKey[]>(loadKeys)
+  const [seenCounts, setSeenCounts] = useState<Record<string, number>>(loadSeen)
   const [nodes, setNodes]           = useState<{ pubKey: string; name: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -130,6 +137,11 @@ export default function Channels() {
     document.title = `${ch.name} — liteScope`
     const msgs = await api.channelMessages(ch.hash); setMessages(msgs)
     decryptBatch(msgs, storedKeys)
+    setSeenCounts(prev => {
+      const updated = { ...prev, [ch.hash]: ch.messageCount }
+      saveSeen(updated)
+      return updated
+    })
   }
 
   const clickSender = (senderName: string) => {
@@ -168,6 +180,20 @@ export default function Channels() {
   }
 
   useEffect(() => {
+    let hiddenAt: number | null = null
+    const onVisibility = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return }
+      const hiddenMs = hiddenAt ? Date.now() - hiddenAt : 0
+      hiddenAt = null
+      if (hiddenMs < 5000) return
+      api.channels().then(setChannels)
+      if (selected) selectChannelData(selected)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     const unsub = stream.subscribe(async msg => {
       if (msg.type !== 'packet') return
       const d = msg.data.decoded
@@ -203,7 +229,7 @@ export default function Channels() {
               </IconButton>
             </Tooltip>
           </Box>
-          <ChannelList channels={channels} selected={selected} onSelect={selectChannel} />
+          <ChannelList channels={channels} selected={selected} onSelect={selectChannel} seenCounts={seenCounts} />
         </Paper>
       )}
 
@@ -561,10 +587,11 @@ function ObsPopover({ packet }: { packet: Packet }) {
 }
 
 // ── Channel list with Known / Encrypted sections ─────────────────────────────
-function ChannelList({ channels, selected, onSelect }: {
+function ChannelList({ channels, selected, onSelect, seenCounts }: {
   channels: Channel[]
   selected: Channel | null
   onSelect: (ch: Channel) => void
+  seenCounts: Record<string, number>
 }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
@@ -576,18 +603,30 @@ function ChannelList({ channels, selected, onSelect }: {
   const known     = channels.filter(isKnown).sort(byCount)
   const encrypted = channels.filter(c => !isKnown(c)).sort(byCount)
 
-  const renderItem = (ch: Channel) => (
-    <ListItemButton key={ch.hash} selected={selected?.hash === ch.hash} onClick={() => onSelect(ch)}
-      sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, gap: 0.25 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
-        <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: hashColor(ch.name), flexShrink: 0 }} />
-        <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-          {ch.name}
-        </Typography>
-      </Box>
-      <Typography variant="caption" sx={{ color: md3.outline, pl: 2 }}>#{ch.hash} · {ch.messageCount}</Typography>
-    </ListItemButton>
-  )
+  const getUnread = (ch: Channel) => {
+    if (selected?.hash === ch.hash) return 0
+    return Math.max(0, ch.messageCount - (seenCounts[ch.hash] ?? 0))
+  }
+
+  const renderItem = (ch: Channel) => {
+    const unread = getUnread(ch)
+    return (
+      <ListItemButton key={ch.hash} selected={selected?.hash === ch.hash} onClick={() => onSelect(ch)}
+        sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, gap: 0.25 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: hashColor(ch.name), flexShrink: 0 }} />
+          <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+            {ch.name}
+          </Typography>
+          {unread > 0 && (
+            <Badge badgeContent={unread > 99 ? '99+' : unread} color="primary"
+              sx={{ '& .MuiBadge-badge': { position: 'static', transform: 'none', fontSize: 10, minWidth: 18, height: 18, borderRadius: 9 } }} />
+          )}
+        </Box>
+        <Typography variant="caption" sx={{ color: md3.outline, pl: 2 }}>#{ch.hash} · {ch.messageCount}</Typography>
+      </ListItemButton>
+    )
+  }
 
   if (channels.length === 0) {
     return (

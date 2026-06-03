@@ -1026,3 +1026,178 @@ type HashAdopter struct {
 	Count   int    `json:"count"`
 	MaxSize int    `json:"maxSize"`
 }
+
+// ── Scope Analytics ───────────────────────────────────────────────────────────
+
+// ScopeStats computes per-scope packet counts, RF quality, top observers, and
+// hourly activity for the last 24 hours, derived from the flood_scope field on
+// observations.
+func (s *Store) ScopeStats() ScopeStatsData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	const unknownScope = "unknown"
+
+	// scope → set of txIDs (for deduped packet count)
+	pktByScope := make(map[string]map[int64]bool)
+	// scope → observation count
+	obsCntByScope := make(map[string]int)
+	// scope → RF accumulators
+	type rfAcc struct{ snrSum, rssiSum float64; snrN, rssiN int }
+	rfAccByScope := make(map[string]*rfAcc)
+	// (scope, observerID) → count
+	type obsKey struct{ scope, id string }
+	obsByKey  := make(map[obsKey]int)
+	obsInfoOf := make(map[string][2]string) // observerID → [name, iata]
+	// 24h hourly activity: bucket unix → scope → count
+	const windowHours = 24
+	now      := time.Now().UTC()
+	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
+	activity := make(map[int64]map[string]int)
+
+	for _, list := range s.byObserver {
+		for _, o := range list {
+			sc := o.FloodScope
+			if sc == "" {
+				sc = unknownScope
+			}
+
+			if pktByScope[sc] == nil {
+				pktByScope[sc] = make(map[int64]bool)
+			}
+			pktByScope[sc][o.TxID] = true
+			obsCntByScope[sc]++
+
+			if rfAccByScope[sc] == nil {
+				rfAccByScope[sc] = &rfAcc{}
+			}
+			a := rfAccByScope[sc]
+			if o.SNR != nil  { a.snrSum  += *o.SNR;  a.snrN++ }
+			if o.RSSI != nil { a.rssiSum += *o.RSSI; a.rssiN++ }
+
+			k := obsKey{sc, o.ObserverID}
+			obsByKey[k]++
+			obsInfoOf[o.ObserverID] = [2]string{o.ObserverName, o.ObserverIATA}
+
+			if t := parseTimeToTime(o.Timestamp); !t.IsZero() && !t.Before(actStart) {
+				bucket := t.Truncate(time.Hour).Unix()
+				if activity[bucket] == nil {
+					activity[bucket] = make(map[string]int)
+				}
+				activity[bucket][sc]++
+			}
+		}
+	}
+
+	// Distribution
+	dist := make([]ScopeBucket, 0, len(pktByScope))
+	for sc, txSet := range pktByScope {
+		dist = append(dist, ScopeBucket{
+			Scope:    sc,
+			PktCount: len(txSet),
+			ObsCount: obsCntByScope[sc],
+		})
+	}
+	sort.Slice(dist, func(i, j int) bool { return dist[i].PktCount > dist[j].PktCount })
+
+	// RF by scope
+	rfList := make([]ScopeRF, 0, len(rfAccByScope))
+	for sc, a := range rfAccByScope {
+		r := ScopeRF{Scope: sc, ObsCount: obsCntByScope[sc]}
+		if a.snrN > 0  { r.AvgSNR  = a.snrSum  / float64(a.snrN)  }
+		if a.rssiN > 0 { r.AvgRSSI = a.rssiSum / float64(a.rssiN) }
+		rfList = append(rfList, r)
+	}
+	sort.Slice(rfList, func(i, j int) bool { return rfList[i].ObsCount > rfList[j].ObsCount })
+
+	// Top observers per scope (top 5 each)
+	byScope := make(map[string][]ScopeObserver)
+	for k, cnt := range obsByKey {
+		info := obsInfoOf[k.id]
+		byScope[k.scope] = append(byScope[k.scope], ScopeObserver{
+			Scope: k.scope, ObserverID: k.id, ObserverName: info[0], ObserverIATA: info[1], Count: cnt,
+		})
+	}
+	var topObs []ScopeObserver
+	for _, list := range byScope {
+		sort.Slice(list, func(i, j int) bool { return list[i].Count > list[j].Count })
+		if len(list) > 5 {
+			list = list[:5]
+		}
+		topObs = append(topObs, list...)
+	}
+	sort.Slice(topObs, func(i, j int) bool {
+		if topObs[i].Scope != topObs[j].Scope {
+			return topObs[i].Scope < topObs[j].Scope
+		}
+		return topObs[i].Count > topObs[j].Count
+	})
+
+	// Collect scope names present in activity for the legend
+	actScopeSet := make(map[string]bool)
+	for _, bkt := range activity {
+		for sc := range bkt {
+			actScopeSet[sc] = true
+		}
+	}
+	actScopes := make([]string, 0, len(actScopeSet))
+	for sc := range actScopeSet {
+		actScopes = append(actScopes, sc)
+	}
+	sort.Strings(actScopes)
+
+	hours := make([]ScopeHour, windowHours)
+	for i := 0; i < windowHours; i++ {
+		h := actStart.Add(time.Duration(i) * time.Hour)
+		counts := make(map[string]int)
+		if bkt := activity[h.Unix()]; bkt != nil {
+			for sc, c := range bkt {
+				counts[sc] = c
+			}
+		}
+		hours[i] = ScopeHour{Hour: h.Format(time.RFC3339), Label: h.Format("15:04"), Counts: counts}
+	}
+
+	return ScopeStatsData{
+		Distribution:   dist,
+		RFByScope:      rfList,
+		TopObservers:   topObs,
+		ActivityScopes: actScopes,
+		Activity:       hours,
+	}
+}
+
+type ScopeStatsData struct {
+	Distribution   []ScopeBucket   `json:"distribution"`
+	RFByScope      []ScopeRF       `json:"rfByScope"`
+	TopObservers   []ScopeObserver `json:"topObservers"`
+	ActivityScopes []string        `json:"activityScopes"`
+	Activity       []ScopeHour     `json:"activity"`
+}
+
+type ScopeBucket struct {
+	Scope    string `json:"scope"`
+	PktCount int    `json:"pktCount"`
+	ObsCount int    `json:"obsCount"`
+}
+
+type ScopeRF struct {
+	Scope    string  `json:"scope"`
+	AvgSNR   float64 `json:"avgSnr"`
+	AvgRSSI  float64 `json:"avgRssi"`
+	ObsCount int     `json:"obsCount"`
+}
+
+type ScopeObserver struct {
+	Scope        string `json:"scope"`
+	ObserverID   string `json:"observerId"`
+	ObserverName string `json:"observerName"`
+	ObserverIATA string `json:"observerIata"`
+	Count        int    `json:"count"`
+}
+
+type ScopeHour struct {
+	Hour   string         `json:"hour"`
+	Label  string         `json:"label"`
+	Counts map[string]int `json:"counts"`
+}
