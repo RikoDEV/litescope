@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import L from 'leaflet'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
@@ -114,6 +115,8 @@ function drawDot(
 export default function LiveMap() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const location = useLocation()
+  const [replayBanner, setReplayBanner] = useState<string | null>(null)
 
   // DOM refs
   const mapDiv      = useRef<HTMLDivElement>(null)
@@ -131,8 +134,9 @@ export default function LiveMap() {
   const nodesRef   = useRef<Node[]>([])  // always-current copy for rAF closure
 
   // VCR refs
-  const vcrBuffer   = useRef<Packet[]>([])
-  const vcrMode     = useRef<'LIVE' | 'PAUSED' | 'REPLAY'>('LIVE')
+  const vcrBuffer      = useRef<Packet[]>([])
+  const vcrMode        = useRef<'LIVE' | 'PAUSED' | 'REPLAY'>('LIVE')
+  const pendingReplayPkt = useRef<Packet | null>(null)  // packet-trace replay
   const vcrPlayhead = useRef(-1)
   const vcrSpeed    = useRef(1)
   const replayTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -333,6 +337,105 @@ export default function LiveMap() {
       drawTimeline()
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Replay a single packet trace (used by trace page + VCR Replay button) ──
+  const replayPacketTrace = useCallback((pkt: Packet) => {
+    const validLoc = (la: number | null | undefined, lo: number | null | undefined): [number, number] | null => {
+      if (la == null || lo == null || (la === 0 && lo === 0)) return null
+      return [la, lo]
+    }
+
+    // Collect all resolvable points: origin (payload/sender) + hops + observer
+    const points: [number, number][] = []
+    const involvedKeys = new Set<string>()
+    const dec = pkt.decoded
+
+    const fromPayload = validLoc(dec?.lat as number | undefined, dec?.lon as number | undefined)
+    if (fromPayload) points.push(fromPayload)
+    const senderPk = (dec?.pubKey ?? '') as string
+    if (senderPk) {
+      const senderNode = nodesRef.current.find(n => n.pubKey === senderPk)
+      if (senderNode) {
+        involvedKeys.add(senderNode.pubKey)
+        const loc = validLoc(senderNode.lat, senderNode.lon)
+        if (loc && !fromPayload) points.push(loc)
+      }
+    }
+    for (const hop of (pkt.bestPath ?? [])) {
+      const n = matchHop(hop, nodesRef.current)
+      if (n) {
+        involvedKeys.add(n.pubKey)
+        const loc = validLoc(n.lat, n.lon)
+        if (loc) points.push(loc)
+      }
+    }
+    if (pkt.bestObserver) {
+      const obs = nodesRef.current.find(n =>
+        n.pubKey.toUpperCase() === pkt.bestObserver!.toUpperCase() ||
+        n.pubKey.toUpperCase().startsWith(pkt.bestObserver!.toUpperCase())
+      )
+      if (obs) {
+        involvedKeys.add(obs.pubKey)
+        const loc = validLoc(obs.lat, obs.lon)
+        if (loc) points.push(loc)
+      }
+    }
+
+    // Trigger the animation
+    processPacket(pkt)
+    setReplayBanner((dec?.name as string | undefined) || pkt.hash.slice(0, 12))
+
+    // Zoom to fit all involved points
+    if (mapRef.current && points.length > 0) {
+      if (points.length === 1) {
+        mapRef.current.flyTo(points[0], Math.max(mapRef.current.getZoom(), 11), { duration: 1.2 })
+      } else {
+        mapRef.current.flyToBounds(L.latLngBounds(points), { padding: [80, 80], maxZoom: 13, duration: 1.2 })
+      }
+    }
+
+    // Hide all node markers, then show only involved ones with accent styling
+    if (nodesLayer.current && mapRef.current) {
+      mapRef.current.removeLayer(nodesLayer.current)
+    }
+    let replayMarkers: L.LayerGroup | null = null
+    if (mapRef.current) {
+      replayMarkers = L.layerGroup().addTo(mapRef.current)
+      for (const node of nodesRef.current) {
+        if (!involvedKeys.has(node.pubKey)) continue
+        if (node.lat == null || node.lon == null || (node.lat === 0 && node.lon === 0)) continue
+        const color = roleColors[node.role] ?? '#64748b'
+        L.circleMarker([node.lat, node.lon], {
+          radius: 8, color: '#fff', weight: 2.5, fillColor: color, fillOpacity: 1,
+        })
+          .bindTooltip(node.name || node.pubKey.slice(0, 12), { permanent: true, direction: 'top', offset: [0, -12] })
+          .addTo(replayMarkers)
+      }
+    }
+
+    // Estimate animation lifetime using the same formula as createTrace
+    const numSegs  = Math.max(1, points.length - 1)
+    const animLife = points.length > 1 ? numSegs * HOP_MS + TAIL_MS : SINGLE_LIFE
+    const cleanup  = animLife + 500
+
+    setTimeout(() => {
+      setReplayBanner(null)
+      replayMarkers && mapRef.current?.removeLayer(replayMarkers)
+      if (nodesLayer.current && mapRef.current) {
+        nodesLayer.current.addTo(mapRef.current)
+      }
+      pause()
+    }, cleanup)
+  }, [processPacket]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Replay a specific packet from router state ───────────────────────────
+  useEffect(() => {
+    const pkt = (location.state as { replayPacket?: Packet } | undefined)?.replayPacket
+    if (!pkt) return
+    pendingReplayPkt.current = pkt
+    const id = setTimeout(() => replayPacketTrace(pkt), 600)
+    return () => clearTimeout(id)
+  }, [replayPacketTrace]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Rate counter ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -561,6 +664,25 @@ export default function LiveMap() {
       {/* Map — canvas overlay is appended imperatively in map init so it sits above Leaflet's DOM */}
       <Box ref={mapDiv} sx={{ flex: 1, position: 'relative' }} />
 
+      {/* Replay banner */}
+      {replayBanner && (
+        <Box sx={{
+          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 1000, px: 2, py: 0.75, borderRadius: 50,
+          background: alpha('#0f172a', 0.85), border: `1px solid ${alpha('#22c55e', 0.5)}`,
+          backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: 0.75,
+          pointerEvents: 'none',
+        }}>
+          <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e',
+            animation: 'pulse 1s infinite',
+            '@keyframes pulse': { '0%': { opacity: 1 }, '50%': { opacity: 0.3 }, '100%': { opacity: 1 } },
+          }} />
+          <Typography sx={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+            Replaying · {replayBanner}
+          </Typography>
+        </Box>
+      )}
+
       {/* ── VCR bar ─────────────────────────────────────────────────────────── */}
       <Paper elevation={3} sx={{
         borderRadius: 0, flexShrink: 0,
@@ -583,7 +705,10 @@ export default function LiveMap() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <Typography variant="caption" sx={{ color: '#f59e0b' }}>+{missed}</Typography>
               <Button size="small" variant="outlined" startIcon={<PlayArrowIcon />}
-                onClick={() => startReplay(Math.max(0, vcrBuffer.current.length - missed - 1))}>
+                onClick={() => {
+                  if (pendingReplayPkt.current) replayPacketTrace(pendingReplayPkt.current)
+                  else startReplay(Math.max(0, vcrBuffer.current.length - missed - 1))
+                }}>
                 Replay
               </Button>
               <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>

@@ -15,8 +15,11 @@ import TableCell from '@mui/material/TableCell'
 import { alpha, useTheme, type SxProps, type Theme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTranslation } from 'react-i18next'
+import Tooltip from '@mui/material/Tooltip'
 import CloseIcon from '@mui/icons-material/Close'
 import ShareIcon from '@mui/icons-material/Share'
+import TimelineIcon from '@mui/icons-material/Timeline'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import type { Node, PacketDetail } from '../types'
 import { PAYLOAD_NAMES, ROUTE_NAMES } from '../types'
 import { formatDistanceToNow } from 'date-fns'
@@ -536,6 +539,16 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, flexShrink: 0 }}>
+          <Tooltip title="Packet trace">
+            <IconButton size="small" onClick={() => navigate(`/packets/${selected.hash}/trace`)} sx={{ color: md3.onSurfaceVariant }}>
+              <TimelineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Replay on Live Map">
+            <IconButton size="small" onClick={() => navigate('/live', { state: { replayPacket: selected } })} sx={{ color: md3.onSurfaceVariant }}>
+              <PlayArrowIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <IconButton size="small" onClick={() => {
             const url = `${window.location.origin}/packets?hash=${selected.hash}`
             navigator.clipboard?.writeText(url)

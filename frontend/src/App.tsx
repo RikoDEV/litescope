@@ -11,6 +11,7 @@ import Observers from './pages/Observers'
 import Analytics from './pages/Analytics'
 import Decoder from './pages/Decoder'
 import NotFound from './pages/NotFound'
+import PacketTrace from './pages/PacketTrace'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="packets" element={<Packets />} />
+          <Route path="packets/:hash/trace" element={<PacketTrace />} />
           <Route path="map" element={<MapView />} />
           <Route path="live" element={<LiveMap />} />
           <Route path="nodes" element={<Nodes />} />

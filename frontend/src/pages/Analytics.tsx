@@ -753,16 +753,18 @@ function DistanceTab() {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
         {/* Distance by Link Type */}
-        <ChartCard title={t('analytics.byLinkType')} Icon={DonutLargeIcon}>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={linkTypeData} dataKey="value" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${totalObs > 0 ? ((value / totalObs) * 100).toFixed(1) : 0}%`} labelLine={false}>
-                {linkTypeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-              </Pie>
+        <ChartCard title={t('analytics.byLinkType')} Icon={BarChartIcon}>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={linkTypeData} layout="vertical" margin={{ left: 8, right: 48, top: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: md3.onSurface }} width={90} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
-                formatter={(v) => [Number(v).toLocaleString(), '']} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </PieChart>
+                formatter={(v) => [`${Number(v).toLocaleString()} (${totalObs > 0 ? ((Number(v) / totalObs) * 100).toFixed(1) : 0}%)`, '']} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => totalObs > 0 ? `${((Number(v) / totalObs) * 100).toFixed(0)}%` : '' }}>
+                {linkTypeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
@@ -813,7 +815,7 @@ function DistanceTab() {
           <TableBody>
             {data.top20Hops.map((row, i) => (
               <TableRow key={`${row.hash}-${i}`} sx={{ cursor: 'pointer', '&:hover': { background: alpha(md3.primary, 0.06) } }}
-                onClick={() => navigate(`/packets/${row.hash}`)}>
+                onClick={() => navigate(`/packets?hash=${row.hash}`)}>
                 <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
                 <TableCell>
                   <Chip label={`${row.hopCount} ${t('analytics.hopsLabel')}`} size="small"
@@ -852,7 +854,7 @@ function DistanceTab() {
             <TableBody>
               {data.top10MultiHop.map((row, i) => (
                 <TableRow key={row.hash} sx={{ cursor: 'pointer', '&:hover': { background: alpha(md3.primary, 0.06) } }}
-                  onClick={() => navigate(`/packets/${row.hash}`)}>
+                  onClick={() => navigate(`/packets?hash=${row.hash}`)}>
                   <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
                   <TableCell>
                     <Chip label={`${row.maxHops} ${t('analytics.hopsLabel')}`} size="small"
