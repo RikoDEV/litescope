@@ -30,6 +30,8 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import PaletteIcon from '@mui/icons-material/Palette'
 import Popover from '@mui/material/Popover'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { ACCENTS } from '../theme'
 import TranslateIcon from '@mui/icons-material/Translate'
 import CheckIcon from '@mui/icons-material/Check'
@@ -53,7 +55,7 @@ export default function Layout() {
   const md3   = theme.palette.md3
   const loc   = useLocation()
   const { t, i18n } = useTranslation()
-  const { mode, toggleMode, accent, setAccent } = useThemeMode()
+  const { mode, setMode, accent, setAccent } = useThemeMode()
 
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected')
   const [langAnchor, setLangAnchor] = useState<null | HTMLElement>(null)
@@ -138,25 +140,27 @@ export default function Layout() {
       <Popover anchorEl={themeAnchor} open={Boolean(themeAnchor)} onClose={() => setThemeAnchor(null)}
         anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
         transformOrigin={{ vertical: 'center', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { p: 1.5, borderRadius: 3, minWidth: 220 } } }}>
+        slotProps={{ paper: { sx: { p: 1.5, borderRadius: 1.5, minWidth: 220 } } }}>
         {/* Mode toggle */}
         <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontWeight: 600, display: 'block', mb: 0.75 }}>
           {t('settings.mode')}
         </Typography>
-        <Box
-          onClick={toggleMode}
-          sx={{
-            display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, borderRadius: 2, cursor: 'pointer',
-            background: alpha(md3.primary, 0.08), '&:hover': { background: alpha(md3.primary, 0.14) },
-          }}>
-          {mode === 'dark' ? <DarkModeIcon sx={{ fontSize: 18, color: md3.primary }} /> : <LightModeIcon sx={{ fontSize: 18, color: md3.primary }} />}
-          <Typography variant="body2" sx={{ flex: 1 }}>
-            {mode === 'dark' ? t('settings.darkMode') : t('settings.lightMode')}
-          </Typography>
-          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
-            {mode === 'dark' ? t('settings.lightMode') : t('settings.darkMode')} →
-          </Typography>
-        </Box>
+        <ToggleButtonGroup
+          value={mode}
+          exclusive
+          fullWidth
+          size="small"
+          onChange={(_, v) => { if (v) setMode(v) }}
+          sx={{ mb: 1.5 }}>
+          <ToggleButton value="light">
+            <LightModeIcon sx={{ fontSize: 18, mr: 0.75 }} />
+            {t('settings.lightMode')}
+          </ToggleButton>
+          <ToggleButton value="dark">
+            <DarkModeIcon sx={{ fontSize: 18, mr: 0.75 }} />
+            {t('settings.darkMode')}
+          </ToggleButton>
+        </ToggleButtonGroup>
 
         {/* Accent swatches */}
         <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontWeight: 600, display: 'block', mb: 0.75 }}>
