@@ -15,6 +15,7 @@ import (
 	"github.com/litescope/backend/internal/config"
 	"github.com/litescope/backend/internal/db"
 	"github.com/litescope/backend/internal/store"
+	"github.com/litescope/backend/internal/version"
 )
 
 func main() {
@@ -135,7 +136,7 @@ func main() {
 func init() {
 	for _, arg := range os.Args[1:] {
 		if arg == "--version" || arg == "-version" {
-			fmt.Println("litescope-server dev")
+			fmt.Println("litescope-server " + version.Version)
 			os.Exit(0)
 		}
 	}

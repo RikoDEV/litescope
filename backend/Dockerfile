@@ -5,8 +5,11 @@ RUN go mod download -x
 COPY . .
 # tidy runs after source is present so it can resolve imports and write go.sum
 RUN go mod tidy
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/ingestor ./cmd/ingestor
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/server  ./cmd/server
+# Build version is injected from a single source; defaults to "dev".
+ARG VERSION=dev
+ENV VERSION=${VERSION}
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/litescope/backend/internal/version.Version=${VERSION}" -o /bin/ingestor ./cmd/ingestor
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/litescope/backend/internal/version.Version=${VERSION}" -o /bin/server  ./cmd/server
 
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata supervisor

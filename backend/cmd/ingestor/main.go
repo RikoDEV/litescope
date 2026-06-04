@@ -18,6 +18,7 @@ import (
 	"github.com/litescope/backend/internal/config"
 	"github.com/litescope/backend/internal/db"
 	"github.com/litescope/backend/internal/decoder"
+	"github.com/litescope/backend/internal/version"
 )
 
 func main() {
@@ -412,7 +413,7 @@ func init() {
 	}
 	for _, arg := range os.Args[1:] {
 		if arg == "--version" || arg == "-version" {
-			fmt.Println("litescope-ingestor dev")
+			fmt.Println("litescope-ingestor " + version.Version)
 			os.Exit(0)
 		}
 	}

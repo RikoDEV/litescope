@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package.json pnpm.yaml ./
 RUN pnpm install --no-frozen-lockfile --dangerously-allow-all-builds
 COPY . .
+# Override the package.json version at release time (e.g. from a git tag).
+ARG VERSION
+ENV APP_VERSION=${VERSION}
 RUN pnpm run build
 
 FROM nginx:alpine
