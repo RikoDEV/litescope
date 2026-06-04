@@ -125,7 +125,11 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   "hashChannels": [],
 
   // Transport scope names for TRANSPORT_FLOOD packets (e.g. ["#waw", "#local"])
-  "scopeList": []
+  "scopeList": [],
+
+  // Allowed CORS / WebSocket origins. ["*"] (or empty/omitted) allows any origin;
+  // otherwise only the listed origins, e.g. ["https://litescope.example.com"]
+  "allowedOrigins": ["*"]
 }
 ```
 
