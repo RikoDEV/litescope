@@ -83,6 +83,14 @@ export const api = {
       activityByHour: Array<{ hour: string; label: string; avgHops: number; count: number }>
       top20Hops: Array<{ hash: string; firstSeen: string; hopCount: number; hops: string[]; observerName: string; observerIata: string; routeType: number; payloadType: number }>
       top10MultiHop: Array<{ hash: string; firstSeen: string; maxHops: number; bestPath: string[]; routeType: number; payloadType: number; obsCount: number }>
+      geo: {
+        nodesWithPos: number
+        totalPairs: number
+        maxDistKm: number
+        avgDistKm: number
+        distribution: Array<{ label: string; count: number }>
+        topPairs: Array<{ nodeAName: string; nodeAPubKey: string; nodeBName: string; nodeBPubKey: string; distKm: number }>
+      }
     }>('/api/analytics/distance'),
 
   analyticsScope: () =>

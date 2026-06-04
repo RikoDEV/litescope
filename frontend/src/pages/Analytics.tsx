@@ -702,8 +702,17 @@ function DistanceTab() {
     activityByHour: Array<{ hour: string; label: string; avgHops: number; count: number }>
     top20Hops: Array<{ hash: string; firstSeen: string; hopCount: number; hops: string[]; observerName: string; observerIata: string; routeType: number; payloadType: number }>
     top10MultiHop: Array<{ hash: string; firstSeen: string; maxHops: number; bestPath: string[]; routeType: number; payloadType: number; obsCount: number }>
+    geo: {
+      nodesWithPos: number
+      totalPairs: number
+      maxDistKm: number
+      avgDistKm: number
+      distribution: Array<{ label: string; count: number }>
+      topPairs: Array<{ nodeAName: string; nodeAPubKey: string; nodeBName: string; nodeBPubKey: string; distKm: number }>
+    }
   }
 
+  const navigate = useNavigate()
   const [data, setData] = useState<DistData | null>(null)
   useEffect(() => { api.analyticsDistance().then(setData) }, [])
 
@@ -724,8 +733,6 @@ function DistanceTab() {
     { name: t('analytics.rptToRpt'),   value: data.byLinkType.multiRelay,  fill: md3.primary },
   ]
   const totalObs = linkTypeData.reduce((s, d) => s + d.value, 0)
-
-  const navigate = useNavigate()
 
   return (
     <Box>
@@ -869,6 +876,81 @@ function DistanceTab() {
             </TableBody>
           </Table>
         </ChartCard>
+      )}
+
+      {/* ── Geographic Coverage ── */}
+      {(!data.geo || data.geo.nodesWithPos < 2) ? (
+        <ChartCard title={t('analytics.geoTitle')} Icon={ScatterPlotIcon} sx={{ mt: 2 }}>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.noGeoData')}</Typography>
+        </ChartCard>
+      ) : (
+        <Box sx={{ mt: 2 }}>
+          {/* Geo stat pills */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 1.5, mb: 2 }}>
+            {[
+              { l: t('analytics.nodesWithPos'), v: (data.geo?.nodesWithPos ?? 0).toString(),                c: '#14b8a6' },
+              { l: t('analytics.totalPairs'),   v: (data.geo?.totalPairs ?? 0).toLocaleString(),            c: md3.primary },
+              { l: t('analytics.maxDistKm'),    v: (data.geo?.maxDistKm ?? 0).toLocaleString() + ' km',    c: '#ec4899' },
+              { l: t('analytics.avgDistKm'),    v: (data.geo?.avgDistKm ?? 0).toLocaleString() + ' km',    c: '#f59e0b' },
+            ].map(p => (
+              <Box key={p.l} sx={{ px: 1.5, py: 1, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
+                <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 0.25 }}>{p.l}</Typography>
+                <Typography variant="body2" sx={{ color: p.c, fontWeight: 700 }}>{p.v}</Typography>
+              </Box>
+            ))}
+          </Box>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+            {/* Distance distribution */}
+            <ChartCard title={t('analytics.geoDistribution')} Icon={BarChartIcon}>
+              <ResponsiveContainer width="100%" height={Math.max(160, (data.geo?.distribution?.length ?? 0) * 32)}>
+                <BarChart data={data.geo?.distribution ?? []} layout="vertical" margin={{ left: 8, right: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+                  <YAxis type="category" dataKey="label" tick={{ fontSize: 11, fill: md3.onSurface }} width={80} />
+                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                    {(data.geo?.distribution ?? []).map((_, i) => (
+                      <Cell key={i} fill={alpha(md3.primary, 0.4 + (i / (data.geo?.distribution?.length || 1)) * 0.6)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            {/* Top links table */}
+            <ChartCard title={t('analytics.topLinks')} Icon={LeaderboardIcon}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {['#', t('analytics.nodeA'), t('analytics.nodeB'), t('analytics.distKm')].map(h => (
+                      <TableCell key={h} sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{h}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(data.geo?.topPairs ?? []).map((p, i) => (
+                    <TableRow key={`${p.nodeAPubKey}-${p.nodeBPubKey}`}>
+                      <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
+                      <TableCell>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: md3.onSurface, display: 'block' }}>{p.nodeAName || '—'}</Typography>
+                        <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10 }}>{p.nodeAPubKey.slice(0, 12)}…</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: md3.onSurface, display: 'block' }}>{p.nodeBName || '—'}</Typography>
+                        <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10 }}>{p.nodeBPubKey.slice(0, 12)}…</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={`${p.distKm.toLocaleString()} km`} size="small"
+                          sx={{ fontSize: 11, height: 20, background: alpha('#ec4899', 0.15), color: '#ec4899', fontWeight: 700 }} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ChartCard>
+          </Box>
+        </Box>
       )}
     </Box>
   )

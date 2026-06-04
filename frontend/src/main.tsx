@@ -4,6 +4,7 @@ import { ThemeModeProvider } from './ThemeModeProvider'
 import './i18n'
 import i18n from './i18n'
 import App from './App'
+import ErrorBoundary from './components/ErrorBoundary'
 import { getEnv } from './env'
 
 // Keep <html lang> in sync with the active i18n language
@@ -23,8 +24,10 @@ if (umamiUrl && umamiId) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeModeProvider>
-      <App />
-    </ThemeModeProvider>
+    <ErrorBoundary level="app">
+      <ThemeModeProvider>
+        <App />
+      </ThemeModeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

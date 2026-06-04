@@ -3,6 +3,7 @@ package store
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
 	"strconv"
 	"sync"
@@ -1382,7 +1383,126 @@ func (s *Store) DistanceStats() DistanceStatsData {
 		ActivityByHour:  actHours,
 		Top20Hops:       top20,
 		Top10MultiHop:   top10,
+		Geo:             s.geoDistStats(),
 	}
+}
+
+func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371.0
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLon := (lon2 - lon1) * math.Pi / 180
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*
+		math.Sin(dLon/2)*math.Sin(dLon/2)
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}
+
+// geoDistStats computes pairwise Haversine distances for all nodes with known coordinates.
+// Called under the read lock already held by DistanceStats.
+func (s *Store) geoDistStats() GeoDistData {
+	type geoNode struct {
+		pubKey, name string
+		lat, lon     float64
+	}
+	var nodes []geoNode
+	for _, n := range s.nodes {
+		if n.Lat == nil || n.Lon == nil {
+			continue
+		}
+		nodes = append(nodes, geoNode{pubKey: n.PubKey, name: n.Name, lat: *n.Lat, lon: *n.Lon})
+	}
+
+	totalNodes := len(nodes)
+	if totalNodes < 2 {
+		return GeoDistData{NodesWithPos: totalNodes}
+	}
+
+	var totalKm float64
+	var maxKm float64
+	pairCount := 0
+	distBuckets := make(map[int]int) // bucket lower bound (km) → count
+	var topPairs []GeoNodePair
+
+	for i := 0; i < len(nodes); i++ {
+		for j := i + 1; j < len(nodes); j++ {
+			d := haversineKm(nodes[i].lat, nodes[i].lon, nodes[j].lat, nodes[j].lon)
+			pairCount++
+			totalKm += d
+			if d > maxKm {
+				maxKm = d
+			}
+			// Bucket: 0-1, 1-5, 5-10, 10-25, 25-50, 50-100, 100-250, 250-500, 500+
+			var b int
+			switch {
+			case d < 1:   b = 0
+			case d < 5:   b = 1
+			case d < 10:  b = 5
+			case d < 25:  b = 10
+			case d < 50:  b = 25
+			case d < 100: b = 50
+			case d < 250: b = 100
+			case d < 500: b = 250
+			default:      b = 500
+			}
+			distBuckets[b]++
+			topPairs = append(topPairs, GeoNodePair{
+				NodeAName: nodes[i].name, NodeAPubKey: nodes[i].pubKey,
+				NodeBName: nodes[j].name, NodeBPubKey: nodes[j].pubKey,
+				DistKm: math.Round(d*100) / 100,
+			})
+		}
+	}
+
+	avgKm := totalKm / float64(pairCount)
+
+	sort.Slice(topPairs, func(i, j int) bool { return topPairs[i].DistKm > topPairs[j].DistKm })
+	if len(topPairs) > 15 {
+		topPairs = topPairs[:15]
+	}
+
+	// Build ordered distribution
+	bucketOrder := []int{0, 1, 5, 10, 25, 50, 100, 250, 500}
+	bucketLabels := map[int]string{
+		0: "< 1 km", 1: "1–5 km", 5: "5–10 km", 10: "10–25 km",
+		25: "25–50 km", 50: "50–100 km", 100: "100–250 km", 250: "250–500 km", 500: "≥ 500 km",
+	}
+	var dist []GeoDistBucket
+	for _, b := range bucketOrder {
+		if c := distBuckets[b]; c > 0 {
+			dist = append(dist, GeoDistBucket{Label: bucketLabels[b], Count: c})
+		}
+	}
+
+	return GeoDistData{
+		NodesWithPos: totalNodes,
+		TotalPairs:   pairCount,
+		MaxDistKm:    math.Round(maxKm*100) / 100,
+		AvgDistKm:    math.Round(avgKm*100) / 100,
+		Distribution: dist,
+		TopPairs:     topPairs,
+	}
+}
+
+type GeoDistData struct {
+	NodesWithPos int            `json:"nodesWithPos"`
+	TotalPairs   int            `json:"totalPairs"`
+	MaxDistKm    float64        `json:"maxDistKm"`
+	AvgDistKm    float64        `json:"avgDistKm"`
+	Distribution []GeoDistBucket `json:"distribution"`
+	TopPairs     []GeoNodePair  `json:"topPairs"`
+}
+
+type GeoDistBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type GeoNodePair struct {
+	NodeAName   string  `json:"nodeAName"`
+	NodeAPubKey string  `json:"nodeAPubKey"`
+	NodeBName   string  `json:"nodeBName"`
+	NodeBPubKey string  `json:"nodeBPubKey"`
+	DistKm      float64 `json:"distKm"`
 }
 
 type DistanceStatsData struct {
@@ -1395,6 +1515,7 @@ type DistanceStatsData struct {
 	ActivityByHour  []HopActivity   `json:"activityByHour"`
 	Top20Hops       []LongHop       `json:"top20Hops"`
 	Top10MultiHop   []LongPath      `json:"top10MultiHop"`
+	Geo             GeoDistData     `json:"geo"`
 }
 
 type DistLinkTypes struct {

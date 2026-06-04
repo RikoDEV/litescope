@@ -14,6 +14,8 @@ import { useThemeMode } from '../ThemeModeProvider'
 import { LANGUAGES } from '../i18n'
 import { FlagByCC } from '../utils/flags'
 import CookieBanner from './CookieBanner'
+import ErrorBoundary from './ErrorBoundary'
+import { buildIssueUrl } from '../utils/issueUrl'
 
 import HomeIcon from '@mui/icons-material/Home'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -221,7 +223,9 @@ export default function Layout() {
 
         {/* ── Page content ── */}
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-          <Outlet />
+          <ErrorBoundary level="page">
+            <Outlet />
+          </ErrorBoundary>
         </Box>
 
         {/* ── Footer — desktop only ── */}
@@ -242,6 +246,11 @@ export default function Layout() {
           <Box sx={{ width: 3, height: 3, borderRadius: '50%', background: md3.outline }} />
           <Typography variant="caption" sx={{ color: md3.outline }}>{t('footer.tagline')}</Typography>
           <Box sx={{ flex: 1 }} />
+          <Typography component="a" href={buildIssueUrl()} target="_blank" rel="noopener noreferrer" variant="caption"
+            sx={{ color: md3.onSurfaceVariant, textDecoration: 'none', '&:hover': { color: md3.error, textDecoration: 'underline' } }}>
+            {t('error.reportIssue')}
+          </Typography>
+          <Box sx={{ width: 3, height: 3, borderRadius: '50%', background: md3.outline }} />
           <Tooltip title="GitHub">
             <Typography component="a" href="https://github.com/RikoDEV/litescope" target="_blank" rel="noopener noreferrer" variant="caption"
               sx={{ color: md3.primary, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
