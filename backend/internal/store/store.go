@@ -481,10 +481,11 @@ type ChannelSummary struct {
 }
 
 // ChannelMessages returns decrypted messages for a channel hash.
-func (s *Store) ChannelMessages(chHash string, limit int) []*Tx {
+func (s *Store) ChannelMessages(chHash string, limit, offset int) []*Tx {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var out []*Tx
+	skipped := 0
 	for i := len(s.packets) - 1; i >= 0 && len(out) < limit; i-- {
 		tx := s.packets[i]
 		if tx.ChannelHash != chHash {
@@ -495,6 +496,10 @@ func (s *Store) ChannelMessages(chHash string, limit int) []*Tx {
 			continue
 		}
 		if status, _ := dec["decryptionStatus"].(string); status != "decrypted" {
+			continue
+		}
+		if skipped < offset {
+			skipped++
 			continue
 		}
 		out = append(out, tx)
@@ -510,13 +515,34 @@ func (s *Store) Overview() OverviewStats {
 		TotalPackets:   len(s.packets),
 		TotalNodes:     len(s.nodes),
 		TotalObservers: len(s.observers),
+		PacketRate:     s.packetRate(),
 	}
+}
+
+// packetRate counts packets seen within the last minute. Caller must hold the
+// read lock. s.packets is in arrival order (oldest first), so we scan from the
+// newest end and stop once we cross the 1-minute boundary.
+func (s *Store) packetRate() int {
+	cut := time.Now().UTC().Add(-time.Minute)
+	rate := 0
+	for i := len(s.packets) - 1; i >= 0; i-- {
+		t := parseTimeToTime(s.packets[i].FirstSeen)
+		if t.IsZero() {
+			continue
+		}
+		if t.Before(cut) {
+			break
+		}
+		rate++
+	}
+	return rate
 }
 
 type OverviewStats struct {
 	TotalPackets   int `json:"totalPackets"`
 	TotalNodes     int `json:"totalNodes"`
 	TotalObservers int `json:"totalObservers"`
+	PacketRate     int `json:"packetRate"`
 }
 
 // NodeRFStats returns RSSI/SNR arrays for a node's observations.

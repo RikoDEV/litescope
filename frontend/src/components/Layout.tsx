@@ -28,6 +28,9 @@ import BarChartIcon from '@mui/icons-material/BarChart'
 import CodeIcon from '@mui/icons-material/Code'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
+import PaletteIcon from '@mui/icons-material/Palette'
+import Popover from '@mui/material/Popover'
+import { ACCENTS } from '../theme'
 import TranslateIcon from '@mui/icons-material/Translate'
 import CheckIcon from '@mui/icons-material/Check'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
@@ -50,11 +53,12 @@ export default function Layout() {
   const md3   = theme.palette.md3
   const loc   = useLocation()
   const { t, i18n } = useTranslation()
-  const { mode, toggleMode } = useThemeMode()
+  const { mode, toggleMode, accent, setAccent } = useThemeMode()
 
   const [wsStatus, setWsStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected')
   const [langAnchor, setLangAnchor] = useState<null | HTMLElement>(null)
   const [moreAnchor, setMoreAnchor] = useState<null | HTMLElement>(null)
+  const [themeAnchor, setThemeAnchor] = useState<null | HTMLElement>(null)
 
   const PRIMARY_NAV = NAV.slice(0, 4)
   const MORE_NAV    = NAV.slice(4)
@@ -124,13 +128,63 @@ export default function Layout() {
         ))}
       </Menu>
 
-      {/* Theme toggle */}
-      <Tooltip title={mode === 'dark' ? t('settings.lightMode') : t('settings.darkMode')} placement="right">
-        <IconButton onClick={toggleMode}
+      {/* Theme picker */}
+      <Tooltip title={t('settings.theme')} placement="right">
+        <IconButton onClick={e => setThemeAnchor(e.currentTarget)}
           sx={{ color: md3.onSurfaceVariant, '&:hover': { background: alpha(md3.onSurface, 0.08) } }}>
-          {mode === 'dark' ? <LightModeIcon sx={{ fontSize: 20 }} /> : <DarkModeIcon sx={{ fontSize: 20 }} />}
+          <PaletteIcon sx={{ fontSize: 20 }} />
         </IconButton>
       </Tooltip>
+      <Popover anchorEl={themeAnchor} open={Boolean(themeAnchor)} onClose={() => setThemeAnchor(null)}
+        anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'left' }}
+        slotProps={{ paper: { sx: { p: 1.5, borderRadius: 3, minWidth: 220 } } }}>
+        {/* Mode toggle */}
+        <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontWeight: 600, display: 'block', mb: 0.75 }}>
+          {t('settings.mode')}
+        </Typography>
+        <Box
+          onClick={toggleMode}
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, p: 1, borderRadius: 2, cursor: 'pointer',
+            background: alpha(md3.primary, 0.08), '&:hover': { background: alpha(md3.primary, 0.14) },
+          }}>
+          {mode === 'dark' ? <DarkModeIcon sx={{ fontSize: 18, color: md3.primary }} /> : <LightModeIcon sx={{ fontSize: 18, color: md3.primary }} />}
+          <Typography variant="body2" sx={{ flex: 1 }}>
+            {mode === 'dark' ? t('settings.darkMode') : t('settings.lightMode')}
+          </Typography>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
+            {mode === 'dark' ? t('settings.lightMode') : t('settings.darkMode')} →
+          </Typography>
+        </Box>
+
+        {/* Accent swatches */}
+        <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontWeight: 600, display: 'block', mb: 0.75 }}>
+          {t('settings.accentColor')}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {ACCENTS.map(a => {
+            const selected = a.key === accent
+            return (
+              <Tooltip key={a.key} title={a.label}>
+                <Box
+                  onClick={() => setAccent(a.key)}
+                  sx={{
+                    width: 30, height: 30, borderRadius: '50%', cursor: 'pointer',
+                    background: a.swatch,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: `2px solid ${selected ? md3.onSurface : 'transparent'}`,
+                    boxShadow: selected ? `0 0 0 2px ${md3.surfaceContainerHigh}` : 'none',
+                    transition: 'transform 0.15s, border-color 0.15s',
+                    '&:hover': { transform: 'scale(1.1)' },
+                  }}>
+                  {selected && <CheckIcon sx={{ fontSize: 16, color: '#fff' }} />}
+                </Box>
+              </Tooltip>
+            )
+          })}
+        </Box>
+      </Popover>
     </>
   )
 

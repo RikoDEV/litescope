@@ -24,6 +24,7 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, NodeOverview, Packet, RFStats } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
+import { hasValidLocation } from '../utils/geo'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -206,7 +207,7 @@ export default function MapView() {
     const lhCut      = lastHeardFilter ? now - (LH_MS[lastHeardFilter] ?? 0) : 0
 
     const passes = (n: Node) => {
-      if (n.lat == null || n.lon == null || (n.lat === 0 && n.lon === 0)) return false
+      if (!hasValidLocation(n.lat, n.lon)) return false
       if (!roleVis[n.role as keyof typeof roleVis]) return false
       const lastTs = new Date(n.lastSeen).getTime()
       const active = lastTs > activeCut

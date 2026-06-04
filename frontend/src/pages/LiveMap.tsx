@@ -21,6 +21,7 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
+import { hasValidLocation, validLatLon } from '../utils/geo'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ function parseHops(pathJson: string): string[] {
 function matchHop(hopHex: string, nodes: Node[]): Node | undefined {
   const h = hopHex.toUpperCase()
   if (h.length < 2) return undefined
-  return nodes.find(n => n.lat != null && !(n.lat === 0 && n.lon === 0) && n.pubKey.toUpperCase().startsWith(h))
+  return nodes.find(n => hasValidLocation(n.lat, n.lon) && n.pubKey.toUpperCase().startsWith(h))
 }
 
 /** Append an 8-bit alpha suffix to a #rrggbb hex color string. */
@@ -200,15 +201,15 @@ export default function LiveMap() {
     layer.clearLayers()
     const latlngs: L.LatLngExpression[] = []
     nodes.forEach(n => {
-      if (n.lat == null || n.lon == null || (n.lat === 0 && n.lon === 0)) return
+      if (!hasValidLocation(n.lat, n.lon)) return
       const color = roleColors[n.role] ?? '#64748b'
       const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
-      const marker = L.circleMarker([n.lat, n.lon], {
+      const marker = L.circleMarker([n.lat!, n.lon!], {
         radius: 3.5, color: '#0f172a', weight: 1,
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
       }).bindTooltip(n.name || n.pubKey.slice(0, 12), { permanent: false, direction: 'top', offset: [0, -8] })
       layer.addLayer(marker)
-      latlngs.push([n.lat, n.lon])
+      latlngs.push([n.lat!, n.lon!])
     })
     if (map && latlngs.length > 0 && map.getZoom() === 2) {
       map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
@@ -219,10 +220,7 @@ export default function LiveMap() {
   const createTrace = useCallback((pkt: Packet) => {
     const dec = pkt.decoded
 
-    const validLoc = (la: number | null | undefined, lo: number | null | undefined): [number, number] | null => {
-      if (la == null || lo == null || (la === 0 && lo === 0)) return null
-      return [la, lo]
-    }
+    const validLoc = validLatLon
 
     // Case-insensitive node lookup by full pubKey or prefix
     const findNode = (id: string) => {
@@ -340,10 +338,7 @@ export default function LiveMap() {
 
   // ── Replay a single packet trace (used by trace page + VCR Replay button) ──
   const replayPacketTrace = useCallback((pkt: Packet) => {
-    const validLoc = (la: number | null | undefined, lo: number | null | undefined): [number, number] | null => {
-      if (la == null || lo == null || (la === 0 && lo === 0)) return null
-      return [la, lo]
-    }
+    const validLoc = validLatLon
 
     // Collect all resolvable points: origin (payload/sender) + hops + observer
     const points: [number, number][] = []
@@ -403,9 +398,9 @@ export default function LiveMap() {
       replayMarkers = L.layerGroup().addTo(mapRef.current)
       for (const node of nodesRef.current) {
         if (!involvedKeys.has(node.pubKey)) continue
-        if (node.lat == null || node.lon == null || (node.lat === 0 && node.lon === 0)) continue
+        if (!hasValidLocation(node.lat, node.lon)) continue
         const color = roleColors[node.role] ?? '#64748b'
-        L.circleMarker([node.lat, node.lon], {
+        L.circleMarker([node.lat!, node.lon!], {
           radius: 8, color: '#fff', weight: 2.5, fillColor: color, fillOpacity: 1,
         })
           .bindTooltip(node.name || node.pubKey.slice(0, 12), { permanent: true, direction: 'top', offset: [0, -12] })
@@ -743,7 +738,7 @@ export default function LiveMap() {
           />
 
           <Typography variant="caption" sx={{ ml: 'auto', color: md3.onSurfaceVariant, whiteSpace: 'nowrap', fontSize: { xs: 10, sm: 11 } }}>
-            <Box component="span" sx={{ color: '#22c55e' }}>{nodes.filter(n => n.lat != null).length}</Box>
+            <Box component="span" sx={{ color: '#22c55e' }}>{nodes.filter(n => hasValidLocation(n.lat, n.lon)).length}</Box>
             <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}> nodes · </Box>
             <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}> · </Box>
             <Box component="span" sx={{ color: '#f59e0b' }}>{pktRate}</Box>/min{' · '}

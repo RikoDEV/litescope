@@ -30,6 +30,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import LockIcon from '@mui/icons-material/Lock'
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
@@ -97,6 +98,25 @@ function hashColor(s: string) {
   return `hsl(${h % 360}, 65%, 55%)`
 }
 
+// First emoji in the name (full grapheme cluster), else first letter, else '?'
+const EMOJI_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u
+type Segmenter = { segment(s: string): Iterable<{ segment: string }> }
+const SegmenterCtor = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => Segmenter }).Segmenter
+const segmenter = SegmenterCtor ? new SegmenterCtor(undefined, { granularity: 'grapheme' }) : null
+function avatarGlyph(name: string): string {
+  if (!name) return '?'
+  const graphemes = segmenter
+    ? Array.from(segmenter.segment(name), s => s.segment)
+    : Array.from(name)
+  for (const g of graphemes) {
+    if (EMOJI_RE.test(g)) return g
+  }
+  return name[0]?.toUpperCase() ?? '?'
+}
+
+// ── message paging ────────────────────────────────────────────────────────────
+const PAGE_SIZE = 100
+
 // ── component ────────────────────────────────────────────────────────────────
 export default function Channels() {
   const theme = useTheme(); const md3 = theme.palette.md3
@@ -113,9 +133,22 @@ export default function Channels() {
   const [storedKeys, setStoredKeys] = useState<StoredKey[]>(loadKeys)
   const [seenCounts, setSeenCounts] = useState<Record<string, number>>(loadSeen)
   const [nodes, setNodes]           = useState<{ pubKey: string; name: string }[]>([])
+  const [hasMore, setHasMore]       = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [showScrollBottom, setShowScrollBottom] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const skipAutoScroll = useRef(false)
+  const initialLoad = useRef(false)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    if (skipAutoScroll.current) { skipAutoScroll.current = false; return }
+    // Initial channel load: jump instantly so the smooth animation doesn't pass
+    // through the top and spuriously trigger loadMore().
+    const behavior = initialLoad.current ? 'auto' : 'smooth'
+    initialLoad.current = false
+    bottomRef.current?.scrollIntoView({ behavior })
+  }, [messages])
   useEffect(() => { api.channels().then(setChannels) }, [])
   useEffect(() => {
     api.nodes().then(res => setNodes((res.nodes ?? []).map(n => ({ pubKey: n.pubKey, name: n.name }))))
@@ -136,13 +169,51 @@ export default function Channels() {
   const selectChannelData = async (ch: Channel) => {
     setSelected(ch); setDecrypted({})
     document.title = `${ch.name} — liteScope`
-    const msgs = await api.channelMessages(ch.hash); setMessages(msgs)
+    const msgs = await api.channelMessages(ch.hash, PAGE_SIZE)
+    initialLoad.current = true
+    setMessages(msgs)
+    setHasMore(msgs.length >= PAGE_SIZE)
+    setShowScrollBottom(false)
     decryptBatch(msgs, storedKeys)
     setSeenCounts(prev => {
       const updated = { ...prev, [ch.hash]: ch.messageCount }
       saveSeen(updated)
       return updated
     })
+  }
+
+  const loadMore = async () => {
+    if (!selected || loadingMore || !hasMore) return
+    setLoadingMore(true)
+    const container = scrollRef.current
+    const prevHeight = container?.scrollHeight ?? 0
+    try {
+      const older = await api.channelMessages(selected.hash, PAGE_SIZE, messages.length)
+      if (older.length > 0) {
+        skipAutoScroll.current = true
+        setMessages(prev => [...prev, ...older]) // older messages render at the top
+        decryptBatch(older, storedKeys)
+        // keep the viewport anchored on the message the user was looking at
+        requestAnimationFrame(() => {
+          if (container) container.scrollTop = container.scrollHeight - prevHeight
+        })
+      }
+      setHasMore(older.length >= PAGE_SIZE)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (el.scrollTop < 80) loadMore()
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    setShowScrollBottom(fromBottom > 240)
+  }
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setShowScrollBottom(false)
   }
 
   const clickSender = (senderName: string) => {
@@ -251,7 +322,15 @@ export default function Channels() {
               <Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'block' } }}>#{selected.hash}</Typography>
               <Typography variant="caption" sx={{ color: md3.outline, ml: 'auto' }}>{t('channels.messages', { count: messages.length })}</Typography>
             </Box>
-            <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
+            <Box ref={scrollRef} onScroll={onScroll} sx={{ position: 'absolute', inset: 0, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {hasMore && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                  <Button size="small" variant="text" onClick={loadMore} disabled={loadingMore} sx={{ color: md3.onSurfaceVariant }}>
+                    {loadingMore ? t('channels.loadingMore') : t('channels.loadMore')}
+                  </Button>
+                </Box>
+              )}
               {[...messages].reverse().map(msg => {
                 const dec    = msg.decoded
                 const cdec   = decrypted[msg.id]
@@ -265,7 +344,7 @@ export default function Channels() {
                       onClick={() => clickSender(sender)}
                       sx={{ width: 34, height: 34, background: hashColor(sender), fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
                     >
-                      {sender[0]?.toUpperCase() ?? '?'}
+                      {avatarGlyph(sender)}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       {/* Header: sender + time + encryption badge */}
@@ -317,6 +396,22 @@ export default function Channels() {
                 )
               })}
               <div ref={bottomRef} />
+            </Box>
+            {showScrollBottom && (
+              <IconButton
+                onClick={scrollToBottom}
+                size="small"
+                sx={{
+                  position: 'absolute', bottom: 16, right: 16,
+                  background: md3.surfaceContainerHigh, color: md3.onSurface,
+                  border: `1px solid ${md3.outlineVariant}`,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  '&:hover': { background: md3.surfaceContainerHighest },
+                }}
+              >
+                <KeyboardArrowDownIcon fontSize="small" />
+              </IconButton>
+            )}
             </Box>
           </>
         ) : (
@@ -599,10 +694,15 @@ function ChannelList({ channels, selected, onSelect, seenCounts }: {
   const [encOpen, setEncOpen] = useState(false)
 
   const isKnown = (ch: Channel) => !/^[0-9a-fA-F]+$/.test(ch.name)
-  const byCount = (a: Channel, b: Channel) => b.messageCount - a.messageCount
+  // Public always first, then alphabetical (case-insensitive)
+  const byName = (a: Channel, b: Channel) => {
+    const ap = a.name.toLowerCase() === 'public', bp = b.name.toLowerCase() === 'public'
+    if (ap !== bp) return ap ? -1 : 1
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  }
 
-  const known     = channels.filter(isKnown).sort(byCount)
-  const encrypted = channels.filter(c => !isKnown(c)).sort(byCount)
+  const known     = channels.filter(isKnown).sort(byName)
+  const encrypted = channels.filter(c => !isKnown(c)).sort(byName)
 
   const getUnread = (ch: Channel) => {
     if (selected?.hash === ch.hash) return 0
@@ -624,7 +724,7 @@ function ChannelList({ channels, selected, onSelect, seenCounts }: {
               sx={{ '& .MuiBadge-badge': { position: 'static', transform: 'none', fontSize: 10, minWidth: 18, height: 18, borderRadius: 9 } }} />
           )}
         </Box>
-        <Typography variant="caption" sx={{ color: md3.outline, pl: 2 }}>#{ch.hash} · {ch.messageCount}</Typography>
+        <Typography variant="caption" sx={{ color: md3.outline, pl: 2 }}>#{ch.hash} · {t('channels.messages', { count: ch.messageCount })}</Typography>
       </ListItemButton>
     )
   }

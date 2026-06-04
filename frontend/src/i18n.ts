@@ -19,7 +19,7 @@ const en = {
     location: 'Location', anyTime: 'Any time', unknown: 'Unknown',
   },
   footer: { tagline: 'MeshCore Network Analyzer' },
-  settings: { theme: 'Toggle theme', language: 'Language', lightMode: 'Light mode', darkMode: 'Dark mode' },
+  settings: { theme: 'Theme', mode: 'Mode', accentColor: 'Accent color', language: 'Language', lightMode: 'Light mode', darkMode: 'Dark mode' },
   home: {
     subtitle: 'MeshCore Network Analyzer',
     pktMin: 'pkt/min',
@@ -111,6 +111,7 @@ const en = {
     builtinPublic: 'Built-in Public channel', noKeys: 'No keys configured.', hashtag: 'hashtag',
     errName: 'Channel name required', errKey: 'Key must be 32 hex chars (16 bytes)', errExists: 'Already exists',
     derivedNote: 'Key = SHA256(#name)[:16 bytes] — same algorithm as MeshCore firmware.',
+    loadMore: 'Load older messages', loadingMore: 'Loading…',
   },
   observers: {
     count: '{{count}} observers', active: '{{count}} active',
@@ -178,7 +179,7 @@ const pl: typeof en = {
     location: 'Lokalizacja', anyTime: 'Dowolny czas', unknown: 'Nieznany',
   },
   footer: { tagline: 'Analizator sieci MeshCore' },
-  settings: { theme: 'Przełącz motyw', language: 'Język', lightMode: 'Tryb jasny', darkMode: 'Tryb ciemny' },
+  settings: { theme: 'Motyw', mode: 'Tryb', accentColor: 'Kolor akcentu', language: 'Język', lightMode: 'Tryb jasny', darkMode: 'Tryb ciemny' },
   home: {
     subtitle: 'Analizator sieci MeshCore',
     pktMin: 'pkt/min',
@@ -270,6 +271,7 @@ const pl: typeof en = {
     builtinPublic: 'Wbudowany kanał Public', noKeys: 'Brak skonfigurowanych kluczy.', hashtag: 'hashtag',
     errName: 'Wymagana nazwa kanału', errKey: 'Klucz musi mieć 32 znaki hex (16 bajtów)', errExists: 'Już istnieje',
     derivedNote: 'Klucz = SHA256(#nazwa)[:16 bajtów] — ten sam algorytm co firmware MeshCore.',
+    loadMore: 'Wczytaj starsze wiadomości', loadingMore: 'Wczytywanie…',
   },
   observers: {
     count: '{{count}} obserwatorów', active: '{{count}} aktywnych',
@@ -337,7 +339,7 @@ const de: typeof en = {
     location: 'Standort', anyTime: 'Jederzeit', unknown: 'Unbekannt',
   },
   footer: { tagline: 'MeshCore Netzwerk-Analysetool' },
-  settings: { theme: 'Design wechseln', language: 'Sprache', lightMode: 'Heller Modus', darkMode: 'Dunkler Modus' },
+  settings: { theme: 'Design', mode: 'Modus', accentColor: 'Akzentfarbe', language: 'Sprache', lightMode: 'Heller Modus', darkMode: 'Dunkler Modus' },
   home: {
     subtitle: 'MeshCore Netzwerk-Analysetool',
     pktMin: 'Pkt/min',
@@ -429,6 +431,7 @@ const de: typeof en = {
     builtinPublic: 'Integrierter Public-Kanal', noKeys: 'Keine Schlüssel konfiguriert.', hashtag: 'Hashtag',
     errName: 'Kanalname erforderlich', errKey: 'Schlüssel muss 32 Hex-Zeichen (16 Bytes) haben', errExists: 'Existiert bereits',
     derivedNote: 'Schlüssel = SHA256(#Name)[:16 Bytes] — gleicher Algorithmus wie MeshCore-Firmware.',
+    loadMore: 'Ältere Nachrichten laden', loadingMore: 'Lädt…',
   },
   observers: {
     count: '{{count}} Beobachter', active: '{{count}} aktiv',
@@ -496,7 +499,7 @@ const fr = {
     location: 'Localisation', anyTime: 'N\'importe quand', unknown: 'Inconnu',
   },
   footer: { tagline: 'Analyseur réseau MeshCore' },
-  settings: { theme: 'Changer le thème', language: 'Langue', lightMode: 'Mode clair', darkMode: 'Mode sombre' },
+  settings: { theme: 'Thème', mode: 'Mode', accentColor: 'Couleur d’accent', language: 'Langue', lightMode: 'Mode clair', darkMode: 'Mode sombre' },
   home: {
     subtitle: 'Analyseur réseau MeshCore',
     pktMin: 'pkt/min',
@@ -583,6 +586,7 @@ const fr = {
     builtinPublic: 'Canal public intégré', noKeys: 'Aucune clé configurée.', hashtag: 'hashtag',
     errName: 'Nom de canal requis', errKey: 'La clé doit faire 32 caractères hex', errExists: 'Existe déjà',
     derivedNote: 'Clé = SHA256(#nom)[:16 octets] — même algorithme que le firmware MeshCore.',
+    loadMore: 'Charger les anciens messages', loadingMore: 'Chargement…',
   },
   observers: {
     count: '{{count}} observateurs', active: '{{count}} actifs',
@@ -644,7 +648,7 @@ const uk = {
     location: 'Місцезнаходження', anyTime: 'Будь-коли', unknown: 'Невідомо',
   },
   footer: { tagline: 'Аналізатор мережі MeshCore' },
-  settings: { theme: 'Змінити тему', language: 'Мова', lightMode: 'Світла тема', darkMode: 'Темна тема' },
+  settings: { theme: 'Тема', mode: 'Режим', accentColor: 'Колір акценту', language: 'Мова', lightMode: 'Світла тема', darkMode: 'Темна тема' },
   home: {
     subtitle: 'Аналізатор мережі MeshCore',
     pktMin: 'пак/хв',
@@ -731,6 +735,7 @@ const uk = {
     builtinPublic: 'Вбудований публічний канал', noKeys: 'Ключів не налаштовано.', hashtag: 'хештег',
     errName: 'Потрібна назва каналу', errKey: 'Ключ має бути 32 hex-символи', errExists: 'Вже існує',
     derivedNote: 'Ключ = SHA256(#назва)[:16 байт] — той самий алгоритм, що у прошивці MeshCore.',
+    loadMore: 'Завантажити старіші повідомлення', loadingMore: 'Завантаження…',
   },
   observers: {
     count: '{{count}} спостерігачів', active: '{{count}} активних',
@@ -792,7 +797,7 @@ const ru = {
     location: 'Местоположение', anyTime: 'Любое время', unknown: 'Неизвестно',
   },
   footer: { tagline: 'Анализатор сети MeshCore' },
-  settings: { theme: 'Сменить тему', language: 'Язык', lightMode: 'Светлая тема', darkMode: 'Тёмная тема' },
+  settings: { theme: 'Тема', mode: 'Режим', accentColor: 'Акцентный цвет', language: 'Язык', lightMode: 'Светлая тема', darkMode: 'Тёмная тема' },
   home: {
     subtitle: 'Анализатор сети MeshCore',
     pktMin: 'пак/мин',
@@ -879,6 +884,7 @@ const ru = {
     builtinPublic: 'Встроенный публичный канал', noKeys: 'Ключи не настроены.', hashtag: 'хэштег',
     errName: 'Требуется название канала', errKey: 'Ключ должен быть 32 hex-символа', errExists: 'Уже существует',
     derivedNote: 'Ключ = SHA256(#название)[:16 байт] — тот же алгоритм, что в прошивке MeshCore.',
+    loadMore: 'Загрузить старые сообщения', loadingMore: 'Загрузка…',
   },
   observers: {
     count: '{{count}} наблюдателей', active: '{{count}} активных',
@@ -940,7 +946,7 @@ const nl = {
     location: 'Locatie', anyTime: 'Altijd', unknown: 'Onbekend',
   },
   footer: { tagline: 'MeshCore Netwerkanalyser' },
-  settings: { theme: 'Thema wisselen', language: 'Taal', lightMode: 'Lichte modus', darkMode: 'Donkere modus' },
+  settings: { theme: 'Thema', mode: 'Modus', accentColor: 'Accentkleur', language: 'Taal', lightMode: 'Lichte modus', darkMode: 'Donkere modus' },
   home: {
     subtitle: 'MeshCore Netwerkanalyser',
     pktMin: 'pkt/min',
@@ -1027,6 +1033,7 @@ const nl = {
     builtinPublic: 'Ingebouwd publiek kanaal', noKeys: 'Geen sleutels geconfigureerd.', hashtag: 'hashtag',
     errName: 'Kanaalnaam vereist', errKey: 'Sleutel moet 32 hex-tekens zijn', errExists: 'Bestaat al',
     derivedNote: 'Sleutel = SHA256(#naam)[:16 bytes] — zelfde algoritme als MeshCore-firmware.',
+    loadMore: 'Oudere berichten laden', loadingMore: 'Laden…',
   },
   observers: {
     count: '{{count}} waarnemers', active: '{{count}} actief',
@@ -1088,7 +1095,7 @@ const es = {
     location: 'Ubicación', anyTime: 'Cualquier momento', unknown: 'Desconocido',
   },
   footer: { tagline: 'Analizador de red MeshCore' },
-  settings: { theme: 'Cambiar tema', language: 'Idioma', lightMode: 'Modo claro', darkMode: 'Modo oscuro' },
+  settings: { theme: 'Tema', mode: 'Modo', accentColor: 'Color de acento', language: 'Idioma', lightMode: 'Modo claro', darkMode: 'Modo oscuro' },
   home: {
     subtitle: 'Analizador de red MeshCore',
     pktMin: 'paq/min',
@@ -1175,6 +1182,7 @@ const es = {
     builtinPublic: 'Canal público integrado', noKeys: 'Sin claves configuradas.', hashtag: 'hashtag',
     errName: 'Nombre de canal requerido', errKey: 'La clave debe tener 32 caracteres hex', errExists: 'Ya existe',
     derivedNote: 'Clave = SHA256(#nombre)[:16 bytes] — mismo algoritmo que el firmware MeshCore.',
+    loadMore: 'Cargar mensajes anteriores', loadingMore: 'Cargando…',
   },
   observers: {
     count: '{{count}} observadores', active: '{{count}} activos',
@@ -1236,7 +1244,7 @@ const cs = {
     location: 'Poloha', anyTime: 'Kdykoli', unknown: 'Neznámý',
   },
   footer: { tagline: 'Analyzátor sítě MeshCore' },
-  settings: { theme: 'Přepnout téma', language: 'Jazyk', lightMode: 'Světlý režim', darkMode: 'Tmavý režim' },
+  settings: { theme: 'Motiv', mode: 'Režim', accentColor: 'Barva zvýraznění', language: 'Jazyk', lightMode: 'Světlý režim', darkMode: 'Tmavý režim' },
   home: {
     subtitle: 'Analyzátor sítě MeshCore',
     pktMin: 'pkt/min',
@@ -1323,6 +1331,7 @@ const cs = {
     builtinPublic: 'Vestavěný veřejný kanál', noKeys: 'Žádné klíče nakonfigurovány.', hashtag: 'hashtag',
     errName: 'Název kanálu je povinný', errKey: 'Klíč musí mít 32 hex znaků', errExists: 'Již existuje',
     derivedNote: 'Klíč = SHA256(#název)[:16 bajtů] — stejný algoritmus jako firmware MeshCore.',
+    loadMore: 'Načíst starší zprávy', loadingMore: 'Načítání…',
   },
   observers: {
     count: '{{count}} pozorovatelů', active: '{{count}} aktivní',
@@ -1384,7 +1393,7 @@ const sk = {
     location: 'Poloha', anyTime: 'Kedykoľvek', unknown: 'Neznámy',
   },
   footer: { tagline: 'Analyzátor siete MeshCore' },
-  settings: { theme: 'Prepnúť tému', language: 'Jazyk', lightMode: 'Svetlý režim', darkMode: 'Tmavý režim' },
+  settings: { theme: 'Téma', mode: 'Režim', accentColor: 'Farba zvýraznenia', language: 'Jazyk', lightMode: 'Svetlý režim', darkMode: 'Tmavý režim' },
   home: {
     subtitle: 'Analyzátor siete MeshCore',
     pktMin: 'pkt/min',
@@ -1471,6 +1480,7 @@ const sk = {
     builtinPublic: 'Vstavaný verejný kanál', noKeys: 'Žiadne kľúče nakonfigurované.', hashtag: 'hashtag',
     errName: 'Názov kanála je povinný', errKey: 'Kľúč musí mať 32 hex znakov', errExists: 'Už existuje',
     derivedNote: 'Kľúč = SHA256(#názov)[:16 bajtov] — rovnaký algoritmus ako firmware MeshCore.',
+    loadMore: 'Načítať staršie správy', loadingMore: 'Načítava sa…',
   },
   observers: {
     count: '{{count}} pozorovateľov', active: '{{count}} aktívni',
@@ -1532,7 +1542,7 @@ const it = {
     location: 'Posizione', anyTime: 'Qualsiasi ora', unknown: 'Sconosciuto',
   },
   footer: { tagline: 'Analizzatore di rete MeshCore' },
-  settings: { theme: 'Cambia tema', language: 'Lingua', lightMode: 'Modalità chiara', darkMode: 'Modalità scura' },
+  settings: { theme: 'Tema', mode: 'Modalità', accentColor: 'Colore accento', language: 'Lingua', lightMode: 'Modalità chiara', darkMode: 'Modalità scura' },
   home: {
     subtitle: 'Analizzatore di rete MeshCore',
     pktMin: 'pkt/min',
@@ -1619,6 +1629,7 @@ const it = {
     builtinPublic: 'Canale pubblico integrato', noKeys: 'Nessuna chiave configurata.', hashtag: 'hashtag',
     errName: 'Nome canale richiesto', errKey: 'La chiave deve avere 32 caratteri hex', errExists: 'Già esistente',
     derivedNote: 'Chiave = SHA256(#nome)[:16 byte] — stesso algoritmo del firmware MeshCore.',
+    loadMore: 'Carica messaggi precedenti', loadingMore: 'Caricamento…',
   },
   observers: {
     count: '{{count}} osservatori', active: '{{count}} attivi',

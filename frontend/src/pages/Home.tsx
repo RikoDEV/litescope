@@ -69,7 +69,20 @@ export default function Home() {
 
   // initial data load — all in parallel
   useEffect(() => {
-    api.overview().then(setStats)
+    api.overview().then(s => {
+      setStats(s)
+      // Seed the live rate window from the backend's actual last-minute count so
+      // the figure is correct on load instead of climbing from 0. Synthetic
+      // timestamps are spread across the past minute and expire naturally as the
+      // live stream takes over.
+      if (s && rateWindow.current.length === 0 && s.packetRate > 0) {
+        const now = Date.now()
+        for (let i = 0; i < s.packetRate; i++) {
+          rateWindow.current.push(now - Math.floor((i / s.packetRate) * 60_000))
+        }
+        setPktRate(s.packetRate)
+      }
+    })
     api.analyticsActivity(24).then(d => setActivity(d ?? []))
     api.analyticsNodesTop(6).then(d => setTopNodes(d ?? []))
     api.observers().then(r => setObservers(r.observers ?? []))

@@ -48,8 +48,194 @@ declare module '@mui/material/styles' {
 
 export type ThemeMode = 'light' | 'dark'
 
-export function makeTheme(mode: ThemeMode): Theme {
-  const md3 = mode === 'dark' ? md3Dark : md3Light
+// ── Material You accent presets ───────────────────────────────────────────────
+// Each accent overrides the primary / secondary-container / tertiary roles for
+// both tone schemes while sharing the neutral surfaces and error roles defined
+// in md3Dark / md3Light above.
+
+export type AccentKey = 'purple' | 'blue' | 'green' | 'orange' | 'teal' | 'rose'
+
+type AccentRoles = Pick<Md3Palette,
+  | 'primary' | 'onPrimary' | 'primaryContainer' | 'onPrimaryContainer'
+  | 'secondaryContainer' | 'onSecondaryContainer'
+  | 'tertiary' | 'onTertiary' | 'tertiaryContainer' | 'onTertiaryContainer'
+  | 'inversePrimary'
+>
+
+interface AccentDef { key: AccentKey; label: string; swatch: string; dark: AccentRoles; light: AccentRoles }
+
+export const ACCENTS: AccentDef[] = [
+  {
+    key: 'purple', label: 'Purple', swatch: '#6750A4',
+    dark: {
+      primary: '#D0BCFF', onPrimary: '#381E72', primaryContainer: '#4F378B', onPrimaryContainer: '#EADDFF',
+      secondaryContainer: '#4A4458', onSecondaryContainer: '#E8DEF8',
+      tertiary: '#EFB8C8', onTertiary: '#492532', tertiaryContainer: '#633B48', onTertiaryContainer: '#FFD8E4',
+      inversePrimary: '#6650A4',
+    },
+    light: {
+      primary: '#6750A4', onPrimary: '#FFFFFF', primaryContainer: '#EADDFF', onPrimaryContainer: '#21005D',
+      secondaryContainer: '#E8DEF8', onSecondaryContainer: '#1D192B',
+      tertiary: '#7D5260', onTertiary: '#FFFFFF', tertiaryContainer: '#FFD8E4', onTertiaryContainer: '#31111D',
+      inversePrimary: '#D0BCFF',
+    },
+  },
+  {
+    key: 'blue', label: 'Blue', swatch: '#415F91',
+    dark: {
+      primary: '#AAC7FF', onPrimary: '#0A305F', primaryContainer: '#284777', onPrimaryContainer: '#D6E3FF',
+      secondaryContainer: '#3B4858', onSecondaryContainer: '#D7E3F8',
+      tertiary: '#76D1FF', onTertiary: '#003544', tertiaryContainer: '#004D61', onTertiaryContainer: '#BDE9FF',
+      inversePrimary: '#415F91',
+    },
+    light: {
+      primary: '#415F91', onPrimary: '#FFFFFF', primaryContainer: '#D6E3FF', onPrimaryContainer: '#001B3E',
+      secondaryContainer: '#DAE2F9', onSecondaryContainer: '#131C2B',
+      tertiary: '#00658C', onTertiary: '#FFFFFF', tertiaryContainer: '#BDE9FF', onTertiaryContainer: '#001E2C',
+      inversePrimary: '#AAC7FF',
+    },
+  },
+  {
+    key: 'green', label: 'Green', swatch: '#4C662B',
+    dark: {
+      primary: '#B1D18A', onPrimary: '#1F3701', primaryContainer: '#354E16', onPrimaryContainer: '#CDEDA3',
+      secondaryContainer: '#3A4A2F', onSecondaryContainer: '#D7E8C4',
+      tertiary: '#A0D0CB', onTertiary: '#00372F', tertiaryContainer: '#1F4E46', onTertiaryContainer: '#BCECE6',
+      inversePrimary: '#4C662B',
+    },
+    light: {
+      primary: '#4C662B', onPrimary: '#FFFFFF', primaryContainer: '#CDEDA3', onPrimaryContainer: '#0F2000',
+      secondaryContainer: '#DCE7C8', onSecondaryContainer: '#131F0D',
+      tertiary: '#386663', onTertiary: '#FFFFFF', tertiaryContainer: '#BCECE6', onTertiaryContainer: '#00201D',
+      inversePrimary: '#B1D18A',
+    },
+  },
+  {
+    key: 'orange', label: 'Orange', swatch: '#855318',
+    dark: {
+      primary: '#FFB877', onPrimary: '#4A2800', primaryContainer: '#6A3C00', onPrimaryContainer: '#FFDCBE',
+      secondaryContainer: '#523F2D', onSecondaryContainer: '#F3DEC8',
+      tertiary: '#D0C97E', onTertiary: '#353100', tertiaryContainer: '#4D4700', onTertiaryContainer: '#EDE598',
+      inversePrimary: '#855318',
+    },
+    light: {
+      primary: '#855318', onPrimary: '#FFFFFF', primaryContainer: '#FFDCBE', onPrimaryContainer: '#2B1700',
+      secondaryContainer: '#F8DEC8', onSecondaryContainer: '#271904',
+      tertiary: '#655F00', onTertiary: '#FFFFFF', tertiaryContainer: '#ECE48A', onTertiaryContainer: '#1E1C00',
+      inversePrimary: '#FFB877',
+    },
+  },
+  {
+    key: 'teal', label: 'Teal', swatch: '#00696E',
+    dark: {
+      primary: '#4FD8E4', onPrimary: '#00363B', primaryContainer: '#004F54', onPrimaryContainer: '#6FF6FF',
+      secondaryContainer: '#324B4D', onSecondaryContainer: '#CCE8E9',
+      tertiary: '#B4C5E7', onTertiary: '#1D314B', tertiaryContainer: '#344863', onTertiaryContainer: '#D5E3FF',
+      inversePrimary: '#00696E',
+    },
+    light: {
+      primary: '#00696E', onPrimary: '#FFFFFF', primaryContainer: '#6FF6FF', onPrimaryContainer: '#002022',
+      secondaryContainer: '#CCE8E9', onSecondaryContainer: '#051F21',
+      tertiary: '#4C5C7B', onTertiary: '#FFFFFF', tertiaryContainer: '#D5E3FF', onTertiaryContainer: '#05182F',
+      inversePrimary: '#4FD8E4',
+    },
+  },
+  {
+    key: 'rose', label: 'Rose', swatch: '#984061',
+    dark: {
+      primary: '#FFB1C8', onPrimary: '#5E1133', primaryContainer: '#7B2949', onPrimaryContainer: '#FFD9E2',
+      secondaryContainer: '#523440', onSecondaryContainer: '#F2DCE4',
+      tertiary: '#F5B97C', onTertiary: '#482900', tertiaryContainer: '#653E00', onTertiaryContainer: '#FFDCBC',
+      inversePrimary: '#984061',
+    },
+    light: {
+      primary: '#984061', onPrimary: '#FFFFFF', primaryContainer: '#FFD9E2', onPrimaryContainer: '#3E001D',
+      secondaryContainer: '#F8DCE4', onSecondaryContainer: '#2B151C',
+      tertiary: '#815512', onTertiary: '#FFFFFF', tertiaryContainer: '#FFDCBC', onTertiaryContainer: '#291800',
+      inversePrimary: '#FFB1C8',
+    },
+  },
+]
+
+export const DEFAULT_ACCENT: AccentKey = 'purple'
+
+// ── neutral surface bases (grayscale) ────────────────────────────────────────
+// Kept hue-free so they can be tinted toward the active accent below, the way
+// Material You derives neutral surfaces from the seed color.
+
+type NeutralRoles = Pick<Md3Palette,
+  | 'background' | 'onBackground' | 'surface' | 'onSurface'
+  | 'surfaceVariant' | 'onSurfaceVariant'
+  | 'surfaceContainerLowest' | 'surfaceContainerLow' | 'surfaceContainer'
+  | 'surfaceContainerHigh' | 'surfaceContainerHighest'
+  | 'outline' | 'outlineVariant'
+  | 'inverseSurface' | 'inverseOnSurface' | 'scrim'
+>
+
+const NEUTRAL_DARK: NeutralRoles = {
+  background: '#131313', onBackground: '#E5E2E4', surface: '#131313', onSurface: '#E5E2E4',
+  surfaceVariant: '#48474A', onSurfaceVariant: '#C9C7CC',
+  surfaceContainerLowest: '#0E0E0E', surfaceContainerLow: '#1B1B1B', surfaceContainer: '#1F1F1F',
+  surfaceContainerHigh: '#2A2A2A', surfaceContainerHighest: '#353535',
+  outline: '#928F94', outlineVariant: '#48474A',
+  inverseSurface: '#E5E2E4', inverseOnSurface: '#313031', scrim: '#000000',
+}
+
+const NEUTRAL_LIGHT: NeutralRoles = {
+  background: '#FCFCFC', onBackground: '#1B1B1C', surface: '#FCFCFC', onSurface: '#1B1B1C',
+  surfaceVariant: '#E4E1E6', onSurfaceVariant: '#48474A',
+  surfaceContainerLowest: '#FFFFFF', surfaceContainerLow: '#F5F5F6', surfaceContainer: '#F0EFF1',
+  surfaceContainerHigh: '#EAE9EB', surfaceContainerHighest: '#E4E3E5',
+  outline: '#797679', outlineVariant: '#C9C7CC',
+  inverseSurface: '#303031', inverseOnSurface: '#F3F0F2', scrim: '#000000',
+}
+
+// How strongly each neutral role is tinted toward the accent swatch.
+const TINT: Record<keyof NeutralRoles, number> = {
+  background: 0.05, surface: 0.05, onBackground: 0.04, onSurface: 0.04,
+  surfaceVariant: 0.10, onSurfaceVariant: 0.05,
+  surfaceContainerLowest: 0.04, surfaceContainerLow: 0.06, surfaceContainer: 0.07,
+  surfaceContainerHigh: 0.08, surfaceContainerHighest: 0.09,
+  outline: 0.06, outlineVariant: 0.10,
+  inverseSurface: 0.05, inverseOnSurface: 0.05, scrim: 0,
+}
+
+function hexToRgb(h: string): [number, number, number] {
+  const c = h.replace('#', '')
+  return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16)]
+}
+
+/** Blend `t` fraction of `b` into `a`. */
+function mix(a: string, b: string, t: number): string {
+  const [r1, g1, b1] = hexToRgb(a)
+  const [r2, g2, b2] = hexToRgb(b)
+  const r = Math.round(r1 + (r2 - r1) * t)
+  const g = Math.round(g1 + (g2 - g1) * t)
+  const bl = Math.round(b1 + (b2 - b1) * t)
+  return '#' + [r, g, bl].map(v => v.toString(16).padStart(2, '0')).join('')
+}
+
+function tintedNeutrals(mode: ThemeMode, accentHex: string): NeutralRoles {
+  const base = mode === 'dark' ? NEUTRAL_DARK : NEUTRAL_LIGHT
+  const out = {} as NeutralRoles
+  for (const key of Object.keys(base) as (keyof NeutralRoles)[]) {
+    out[key] = TINT[key] > 0 ? mix(base[key], accentHex, TINT[key]) : base[key]
+  }
+  return out
+}
+
+function paletteFor(mode: ThemeMode, accent: AccentKey): Md3Palette {
+  const base = mode === 'dark' ? md3Dark : md3Light
+  const def = ACCENTS.find(a => a.key === accent) ?? ACCENTS[0]
+  return {
+    ...base,
+    ...tintedNeutrals(mode, def.swatch),
+    ...(mode === 'dark' ? def.dark : def.light),
+  }
+}
+
+export function makeTheme(mode: ThemeMode, accent: AccentKey = DEFAULT_ACCENT): Theme {
+  const md3 = paletteFor(mode, accent)
 
   return createTheme({
     palette: {

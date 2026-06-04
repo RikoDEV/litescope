@@ -86,6 +86,7 @@ export interface OverviewStats {
   totalPackets: number
   totalNodes: number
   totalObservers: number
+  packetRate: number
 }
 
 export interface RFStats {
