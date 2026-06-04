@@ -47,8 +47,23 @@ func main() {
 	log.Printf("loaded %d packets, %d observations, %d nodes, %d observers",
 		len(txs), len(obss), len(nodes), len(observers))
 
-	hub := api.NewHub()
-	srv := api.NewServer(st, hub, cfg.ChannelKeys)
+	hub := api.NewHub(cfg.AllowedOrigins)
+	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
+
+	// Refresh node/observer metadata on a slower cadence — these tables are
+	// reloaded wholesale, so doing it every packet tick was wasteful.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if nodeRows, err := database.LoadNodeUpdates(); err == nil {
+				st.UpdateNodes(nodeRows)
+			}
+			if obsRows, err := database.LoadObserverUpdates(); err == nil {
+				st.UpdateObservers(obsRows)
+			}
+		}
+	}()
 
 	// Poll SQLite for new packets every second
 	go func() {
@@ -67,38 +82,9 @@ func main() {
 			tid, oid := st.LastIDs()
 			lastTxID, lastObsID = tid, oid
 
-			// Reload nodes/observers periodically
-			if len(newTxs) > 0 {
-				nodeRows, _ := database.LoadNodeUpdates("")
-				st.UpdateNodes(nodeRows)
-				obsRows, _ := database.LoadObserverUpdates("")
-				st.UpdateObservers(obsRows)
-			}
-
 			// Broadcast new packets over WebSocket
 			for _, tx := range added {
-				maxHops := 0
-				hopSize := 0
-				bestScope := ""
-				var bestPath []string
-				var bestObserver string
-				for _, o := range tx.Observations {
-					if bestObserver == "" {
-						bestObserver = o.ObserverID
-					}
-					var hops []string
-					if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
-						maxHops = len(hops)
-						bestPath = hops
-						bestObserver = o.ObserverID
-						if len(hops) > 0 {
-							hopSize = len(hops[0]) / 2
-						}
-					}
-					if bestScope == "" && o.FloodScope != "" {
-						bestScope = o.FloodScope
-					}
-				}
+				b := tx.BestObservation()
 				data := map[string]interface{}{
 					"id":          tx.ID,
 					"hash":        tx.Hash,
@@ -106,19 +92,19 @@ func main() {
 					"routeType":   tx.RouteType,
 					"payloadType": tx.PayloadType,
 					"obsCount":    tx.ObsCount,
-					"maxHops":     maxHops,
-					"hopSize":     hopSize,
+					"maxHops":     b.MaxHops,
+					"hopSize":     b.HopSize,
 					"channelHash": tx.ChannelHash,
 					"decoded":     tx.Decoded(),
 				}
-				if bestScope != "" {
-					data["bestScope"] = bestScope
+				if b.BestScope != "" {
+					data["bestScope"] = b.BestScope
 				}
-				if len(bestPath) > 0 {
-					data["bestPath"] = bestPath
+				if len(b.BestPath) > 0 {
+					data["bestPath"] = b.BestPath
 				}
-				if bestObserver != "" {
-					data["bestObserver"] = bestObserver
+				if b.BestObserver != "" {
+					data["bestObserver"] = b.BestObserver
 				}
 				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
 				hub.Broadcast(msg)

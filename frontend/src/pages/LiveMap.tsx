@@ -22,6 +22,7 @@ import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hasValidLocation, validLatLon } from '../utils/geo'
+import { parseHops } from '../utils/packets'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -56,10 +57,6 @@ interface ActiveTrace {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function parseHops(pathJson: string): string[] {
-  try { return JSON.parse(pathJson) ?? [] } catch { return [] }
-}
 
 /** Best-effort: match a hex hop identifier to a located node by pubKey prefix. */
 function matchHop(hopHex: string, nodes: Node[]): Node | undefined {

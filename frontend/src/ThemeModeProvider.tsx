@@ -3,6 +3,7 @@ import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import GlobalStyles from '@mui/material/GlobalStyles'
 import { makeTheme, ACCENTS, DEFAULT_ACCENT, type ThemeMode, type AccentKey } from './theme'
+import { LS_KEYS } from './utils/storage'
 
 interface ThemeModeCtx {
   mode: ThemeMode
@@ -19,8 +20,8 @@ const Ctx = createContext<ThemeModeCtx>({
 
 export const useThemeMode = () => useContext(Ctx)
 
-const LS_KEY = 'litescope-theme-mode'
-const LS_ACCENT_KEY = 'litescope-theme-accent'
+const LS_KEY = LS_KEYS.themeMode
+const LS_ACCENT_KEY = LS_KEYS.themeAccent
 
 function initialMode(): ThemeMode {
   const stored = localStorage.getItem(LS_KEY)

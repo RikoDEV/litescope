@@ -7,20 +7,21 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/litescope/backend/internal/db"
+	"github.com/litescope/backend/internal/decoder"
 )
 
 func nowMillis() int64 { return time.Now().UnixMilli() }
 
 func parseTimeMillis(s string) int64 {
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05.999999999Z07:00", "2006-01-02T15:04:05Z"} {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t.UnixMilli()
-		}
+	t := parseTimeToTime(s)
+	if t.IsZero() {
+		return 0
 	}
-	return 0
+	return t.UnixMilli()
 }
 
 // Tx is an in-memory transmission record.
@@ -38,14 +39,51 @@ type Tx struct {
 	DecodedPayload  map[string]interface{}
 }
 
+// Decoded returns the parsed decoded payload. The map is populated once in
+// txFromRow (under the store write lock) so this is a pure read — safe to call
+// from handlers holding only the read lock.
 func (t *Tx) Decoded() map[string]interface{} {
-	if t.DecodedPayload != nil {
-		return t.DecodedPayload
+	return t.DecodedPayload
+}
+
+// BestObs summarizes routing info derived across a Tx's observations.
+type BestObs struct {
+	MaxHops      int
+	HopSize      int
+	BestScope    string
+	BestPath     []string
+	BestObserver string
+	UniqueObs    int
+}
+
+// BestObservation walks a Tx's observations once and returns the longest decoded
+// hop path (and its byte size), the first non-empty flood scope, the observer
+// reporting the longest path (falling back to the first observer), and the count
+// of unique observers. Shared by the REST summary and the WebSocket broadcast so
+// the two cannot drift.
+func (t *Tx) BestObservation() BestObs {
+	b := BestObs{}
+	uniq := make(map[string]struct{}, len(t.Observations))
+	for _, o := range t.Observations {
+		uniq[o.ObserverID] = struct{}{}
+		if b.BestObserver == "" {
+			b.BestObserver = o.ObserverID
+		}
+		var hops []string
+		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > b.MaxHops {
+			b.MaxHops = len(hops)
+			b.BestPath = hops
+			b.BestObserver = o.ObserverID
+			if len(hops) > 0 {
+				b.HopSize = len(hops[0]) / 2 // hex chars → bytes
+			}
+		}
+		if b.BestScope == "" && o.FloodScope != "" {
+			b.BestScope = o.FloodScope
+		}
 	}
-	var m map[string]interface{}
-	json.Unmarshal([]byte(t.DecodedJSON), &m) //nolint:errcheck
-	t.DecodedPayload = m
-	return m
+	b.UniqueObs = len(uniq)
+	return b
 }
 
 // Obs is an in-memory observation record.
@@ -107,6 +145,17 @@ type Store struct {
 	observers  map[string]*Observer
 	lastTxID   int64
 	lastObsID  int64
+
+	// version bumps on every mutation; the analytics cache keys off it so a
+	// result is reused only while the underlying data is unchanged.
+	version uint64
+	cacheMu sync.Mutex
+	cache   map[string]cacheEntry
+}
+
+type cacheEntry struct {
+	version uint64
+	value   any
 }
 
 func New() *Store {
@@ -118,7 +167,29 @@ func New() *Store {
 		byNode:     make(map[string][]*Tx),
 		nodes:      make(map[string]*Node),
 		observers:  make(map[string]*Observer),
+		cache:      make(map[string]cacheEntry),
 	}
+}
+
+// bumpVersion invalidates the analytics cache. Caller must hold the write lock.
+func (s *Store) bumpVersion() { atomic.AddUint64(&s.version, 1) }
+
+// cachedAnalytics memoizes a no-arg analytics computation by store version.
+// compute() is run outside the cache lock (it takes the store read lock itself),
+// so concurrent callers never serialize on the cache and at worst recompute once.
+func cachedAnalytics[T any](s *Store, key string, compute func() T) T {
+	cur := atomic.LoadUint64(&s.version)
+	s.cacheMu.Lock()
+	e, ok := s.cache[key]
+	s.cacheMu.Unlock()
+	if ok && e.version == cur {
+		return e.value.(T)
+	}
+	val := compute()
+	s.cacheMu.Lock()
+	s.cache[key] = cacheEntry{version: cur, value: val}
+	s.cacheMu.Unlock()
+	return val
 }
 
 // Load populates the store from DB rows loaded at startup.
@@ -141,14 +212,7 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 		s.byObserver[o.ObserverID] = append(s.byObserver[o.ObserverID], o)
 		if tx, ok := s.byTxID[o.TxID]; ok {
 			tx.Observations = append(tx.Observations, o)
-			// Index by node pub_key using ADVERT packets
-			if decoded := tx.Decoded(); decoded != nil {
-				if pk, ok := decoded["pubKey"].(string); ok && pk != "" {
-					if _, seen := s.byNodeContains(pk, tx); !seen {
-						s.byNode[pk] = append(s.byNode[pk], tx)
-					}
-				}
-			}
+			s.indexByNode(tx)
 		}
 		if o.ID > s.lastObsID {
 			s.lastObsID = o.ID
@@ -199,12 +263,32 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) []*Tx {
 		s.byObserver[o.ObserverID] = append(s.byObserver[o.ObserverID], o)
 		if tx, ok := s.byTxID[o.TxID]; ok {
 			tx.Observations = append(tx.Observations, o)
+			s.indexByNode(tx)
 		}
 		if o.ID > s.lastObsID {
 			s.lastObsID = o.ID
 		}
 	}
+	if len(added) > 0 || len(obss) > 0 {
+		s.bumpVersion()
+	}
 	return added
+}
+
+// indexByNode adds tx to the per-node packet index when it carries a pubKey
+// (i.e. an ADVERT). Deduplicated per tx. Caller must hold the write lock.
+func (s *Store) indexByNode(tx *Tx) {
+	decoded := tx.Decoded()
+	if decoded == nil {
+		return
+	}
+	pk, ok := decoded["pubKey"].(string)
+	if !ok || pk == "" {
+		return
+	}
+	if _, seen := s.byNodeContains(pk, tx); !seen {
+		s.byNode[pk] = append(s.byNode[pk], tx)
+	}
 }
 
 // UpdateNodes merges new node rows into the in-memory node map.
@@ -214,6 +298,9 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) {
 	for _, r := range rows {
 		s.nodes[r.PubKey] = nodeFromRow(r)
 	}
+	if len(rows) > 0 {
+		s.bumpVersion()
+	}
 }
 
 // UpdateObservers merges new observer rows into the in-memory observer map.
@@ -222,6 +309,9 @@ func (s *Store) UpdateObservers(rows []*db.ObserverRow) {
 	defer s.mu.Unlock()
 	for _, r := range rows {
 		s.observers[r.ID] = observerFromRow(r)
+	}
+	if len(rows) > 0 {
+		s.bumpVersion()
 	}
 }
 
@@ -427,19 +517,6 @@ func (s *Store) ObserverByID(id string) *Observer {
 	return s.observers[id]
 }
 
-// ObserverPackets returns recent observations/packets for an observer.
-func (s *Store) ObserverPackets(id string, limit int) []*Obs {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	list := s.byObserver[id]
-	start := len(list) - 1
-	var out []*Obs
-	for i := start; i >= 0 && len(out) < limit; i-- {
-		out = append(out, list[i])
-	}
-	return out
-}
-
 // Channels returns all unique channel hashes seen in GRP_TXT packets.
 func (s *Store) Channels() []ChannelSummary {
 	s.mu.RLock()
@@ -545,27 +622,19 @@ type OverviewStats struct {
 	PacketRate     int `json:"packetRate"`
 }
 
-// NodeRFStats returns RSSI/SNR arrays for a node's observations.
+// NodeRFStats returns RSSI/SNR arrays for a node's observations. Uses the byNode
+// index (tx's whose decoded pubKey matches) instead of scanning every observation.
 func (s *Store) NodeRFStats(pubKey string) RFStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var rssiVals, snrVals []float64
-	for _, obs := range s.byObserver {
-		for _, o := range obs {
-			if tx, ok := s.byTxID[o.TxID]; ok {
-				dec := tx.Decoded()
-				if dec == nil {
-					continue
-				}
-				if pk, _ := dec["pubKey"].(string); pk != pubKey {
-					continue
-				}
-				if o.RSSI != nil {
-					rssiVals = append(rssiVals, *o.RSSI)
-				}
-				if o.SNR != nil {
-					snrVals = append(snrVals, *o.SNR)
-				}
+	for _, tx := range s.byNode[pubKey] {
+		for _, o := range tx.Observations {
+			if o.RSSI != nil {
+				rssiVals = append(rssiVals, *o.RSSI)
+			}
+			if o.SNR != nil {
+				snrVals = append(snrVals, *o.SNR)
 			}
 		}
 	}
@@ -581,6 +650,10 @@ type RFStats struct {
 
 // GlobalRFStats scans all observations and returns SNR/RSSI arrays plus summary stats.
 func (s *Store) GlobalRFStats() GlobalRF {
+	return cachedAnalytics(s, "globalRF", s.computeGlobalRFStats)
+}
+
+func (s *Store) computeGlobalRFStats() GlobalRF {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var rssi, snr []float64
@@ -738,11 +811,6 @@ func (s *Store) ObserverAnalytics(id string, days int) ObserverAnalyticsData {
 	buckets := make(map[int64]int)
 	var snrVals []float64
 	typeCounts := make(map[string]int)
-	payloadNames := map[int]string{
-		0: "REQ", 1: "RESPONSE", 2: "TXT_MSG", 3: "ACK", 4: "ADVERT",
-		5: "GRP_TXT", 6: "GRP_DATA", 7: "ANON_REQ", 8: "PATH", 9: "TRACE",
-		10: "MULTIPART", 11: "CONTROL", 15: "RAW_CUSTOM",
-	}
 
 	for _, o := range obsList {
 		t := parseTimeToTime(o.Timestamp)
@@ -755,9 +823,7 @@ func (s *Store) ObserverAnalytics(id string, days int) ObserverAnalyticsData {
 			snrVals = append(snrVals, *o.SNR)
 		}
 		if tx, ok := s.byTxID[o.TxID]; ok {
-			name := payloadNames[tx.PayloadType]
-			if name == "" { name = "UNKNOWN" }
-			typeCounts[name]++
+			typeCounts[decoder.PayloadName(tx.PayloadType)]++
 		}
 	}
 
@@ -788,20 +854,15 @@ type ObserverAnalyticsData struct {
 
 // PacketsByType returns counts per payload type.
 func (s *Store) PacketsByType() map[string]int {
+	return cachedAnalytics(s, "packetsByType", s.computePacketsByType)
+}
+
+func (s *Store) computePacketsByType() map[string]int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	names := map[int]string{
-		0: "REQ", 1: "RESPONSE", 2: "TXT_MSG", 3: "ACK", 4: "ADVERT",
-		5: "GRP_TXT", 6: "GRP_DATA", 7: "ANON_REQ", 8: "PATH", 9: "TRACE",
-		10: "MULTIPART", 11: "CONTROL", 15: "RAW_CUSTOM",
-	}
 	out := make(map[string]int)
 	for _, tx := range s.packets {
-		n := names[tx.PayloadType]
-		if n == "" {
-			n = "UNKNOWN"
-		}
-		out[n]++
+		out[decoder.PayloadName(tx.PayloadType)]++
 	}
 	return out
 }
@@ -809,11 +870,15 @@ func (s *Store) PacketsByType() map[string]int {
 // helpers
 
 func txFromRow(r *db.TxRow) *Tx {
-	return &Tx{
+	t := &Tx{
 		ID: r.ID, RawHex: r.RawHex, Hash: r.Hash, FirstSeen: r.FirstSeen,
 		RouteType: r.RouteType, PayloadType: r.PayloadType, DecodedJSON: r.DecodedJSON,
 		ObsCount: r.ObsCount, ChannelHash: r.ChannelHash,
 	}
+	// Decode once here, under the write lock held by Load/AddTxBatch, so that
+	// Tx.Decoded() is a race-free pure getter for read-lock holders.
+	json.Unmarshal([]byte(t.DecodedJSON), &t.DecodedPayload) //nolint:errcheck
+	return t
 }
 
 func obsFromRow(r *db.ObsRow) *Obs {
@@ -843,15 +908,14 @@ func observerFromRow(r *db.ObserverRow) *Observer {
 
 // SNRByPayloadType returns average SNR and observation count per payload type name.
 func (s *Store) SNRByPayloadType() map[string]SNRTypeStat {
+	return cachedAnalytics(s, "snrByType", s.computeSNRByPayloadType)
+}
+
+func (s *Store) computeSNRByPayloadType() map[string]SNRTypeStat {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	type acc struct{ sum float64; count int }
 	byType := make(map[string]*acc)
-	names := map[int]string{
-		0: "REQ", 1: "RESPONSE", 2: "TXT_MSG", 3: "ACK", 4: "ADVERT",
-		5: "GRP_TXT", 6: "GRP_DATA", 7: "ANON_REQ", 8: "PATH", 9: "TRACE",
-		10: "MULTIPART", 11: "CONTROL", 15: "RAW_CUSTOM",
-	}
 	for _, obsList := range s.byObserver {
 		for _, o := range obsList {
 			if o.SNR == nil {
@@ -861,10 +925,7 @@ func (s *Store) SNRByPayloadType() map[string]SNRTypeStat {
 			if !ok {
 				continue
 			}
-			name := names[tx.PayloadType]
-			if name == "" {
-				name = "UNKNOWN"
-			}
+			name := decoder.PayloadName(tx.PayloadType)
 			a := byType[name]
 			if a == nil {
 				a = &acc{}
@@ -906,6 +967,10 @@ func isHexHop(s string) bool {
 // observation paths (PathJSON).  "1-byte" means a 2-char hex hop like "AB",
 // "2-byte" means "ABCD", etc.  Full node names in paths are ignored.
 func (s *Store) HashStats() HashStatsData {
+	return cachedAnalytics(s, "hashStats", s.computeHashStats)
+}
+
+func (s *Store) computeHashStats() HashStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1060,6 +1125,10 @@ type HashAdopter struct {
 // hourly activity for the last 24 hours, derived from the flood_scope field on
 // observations.
 func (s *Store) ScopeStats() ScopeStatsData {
+	return cachedAnalytics(s, "scopeStats", s.computeScopeStats)
+}
+
+func (s *Store) computeScopeStats() ScopeStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1234,6 +1303,10 @@ type ScopeHour struct {
 // DistanceStats analyses hop-count "distance" across all observations.
 // "Distance" here is the number of intermediate relay hops a packet traversed.
 func (s *Store) DistanceStats() DistanceStatsData {
+	return cachedAnalytics(s, "distanceStats", s.computeDistanceStats)
+}
+
+func (s *Store) computeDistanceStats() DistanceStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1447,7 +1520,11 @@ func (s *Store) geoDistStats() GeoDistData {
 	var maxKm float64
 	pairCount := 0
 	distBuckets := make(map[int]int) // bucket lower bound (km) → count
-	var topPairs []GeoNodePair
+
+	// Keep only the longest pairs (sorted desc) rather than materializing every
+	// O(N²) pair — the previous version appended all of them before truncating.
+	const topN = 15
+	topPairs := make([]GeoNodePair, 0, topN+1)
 
 	for i := 0; i < len(nodes); i++ {
 		for j := i + 1; j < len(nodes); j++ {
@@ -1471,20 +1548,26 @@ func (s *Store) geoDistStats() GeoDistData {
 			default:      b = 500
 			}
 			distBuckets[b]++
-			topPairs = append(topPairs, GeoNodePair{
-				NodeAName: nodes[i].name, NodeAPubKey: nodes[i].pubKey,
-				NodeBName: nodes[j].name, NodeBPubKey: nodes[j].pubKey,
-				DistKm: math.Round(d*100) / 100,
-			})
+
+			dk := math.Round(d*100) / 100
+			if len(topPairs) < topN || dk > topPairs[len(topPairs)-1].DistKm {
+				pair := GeoNodePair{
+					NodeAName: nodes[i].name, NodeAPubKey: nodes[i].pubKey,
+					NodeBName: nodes[j].name, NodeBPubKey: nodes[j].pubKey,
+					DistKm:    dk,
+				}
+				pos := sort.Search(len(topPairs), func(k int) bool { return topPairs[k].DistKm < dk })
+				topPairs = append(topPairs, GeoNodePair{})
+				copy(topPairs[pos+1:], topPairs[pos:])
+				topPairs[pos] = pair
+				if len(topPairs) > topN {
+					topPairs = topPairs[:topN]
+				}
+			}
 		}
 	}
 
 	avgKm := totalKm / float64(pairCount)
-
-	sort.Slice(topPairs, func(i, j int) bool { return topPairs[i].DistKm > topPairs[j].DistKm })
-	if len(topPairs) > 15 {
-		topPairs = topPairs[:15]
-	}
 
 	// Build ordered distribution
 	bucketOrder := []int{0, 1, 5, 10, 25, 50, 100, 250, 500}

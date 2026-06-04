@@ -13,7 +13,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { api } from '../services/api'
 import type { PacketDetail } from '../types'
 import { PAYLOAD_NAMES, ROUTE_NAMES, PAYLOAD_COLORS } from '../types'
-import { parseHops, deduplicateObs, relativeTime } from '../components/PacketDetailPanel'
+import { parseHops, deduplicateObs, relativeTime } from '../utils/packets'
 import { IataFlag } from '../utils/flags'
 import { formatDistanceToNow } from 'date-fns'
 

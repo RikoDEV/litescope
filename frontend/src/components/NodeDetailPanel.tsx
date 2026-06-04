@@ -16,6 +16,8 @@ import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 import type { Node, NodeOverview, RFStats } from '../types'
 import { PAYLOAD_NAMES } from '../types'
+import { bucketize } from '../utils/stats'
+import { isNodeActive as isActive } from '../utils/nodes'
 import L from 'leaflet'
 
 function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: string }) {
@@ -35,18 +37,6 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
   }, [lat, lon, color])
 
   return <div ref={divRef} style={{ height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }} />
-}
-
-function isActive(n: Node) {
-  const ms = (n.role === 'repeater' || n.role === 'room') ? 72 * 3600e3 : 24 * 3600e3
-  return Date.now() - new Date(n.lastSeen).getTime() < ms
-}
-
-function bucketize(vals: number[], min: number, max: number, buckets: number) {
-  const size = (max - min) / buckets
-  const counts = Array(buckets).fill(0)
-  for (const v of vals) counts[Math.min(buckets - 1, Math.max(0, Math.floor((v - min) / size)))]++
-  return counts.map((count, i) => ({ label: `${(min + i * size).toFixed(0)}`, count }))
 }
 
 interface NodeDetailPanelProps {

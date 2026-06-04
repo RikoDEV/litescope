@@ -50,6 +50,14 @@ var payloadNames = map[int]string{
 	0x08: "PATH", 0x09: "TRACE", 0x0A: "MULTIPART", 0x0B: "CONTROL", 0x0F: "RAW_CUSTOM",
 }
 
+// PayloadName maps a payload-type code to its canonical name, or "UNKNOWN".
+func PayloadName(pt int) string {
+	if n, ok := payloadNames[pt]; ok {
+		return n
+	}
+	return "UNKNOWN"
+}
+
 type Header struct {
 	RouteType       int    `json:"routeType"`
 	RouteTypeName   string `json:"routeTypeName"`
@@ -225,9 +233,7 @@ func decodeAdvert(buf []byte) Payload {
 		off += 8
 	}
 	if hasFeat1 && len(appdata) >= off+2 {
-		v := int(binary.LittleEndian.Uint16(appdata[off : off+2]))
-		p.Flags.HasFeat1 = true
-		_ = v
+		// feat1 carries a 2-byte value we don't currently surface; skip past it.
 		off += 2
 	}
 	if hasFeat2 && len(appdata) >= off+2 {

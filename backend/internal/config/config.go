@@ -13,7 +13,11 @@ type Config struct {
 	MQTTSources    []MQTTSource      `json:"mqttSources"`
 	ChannelKeys    map[string]string `json:"channelKeys"`
 	HashChannels   []string          `json:"hashChannels"`
-	ScopeList []string          `json:"scopeList"`
+	ScopeList      []string          `json:"scopeList"`
+	// AllowedOrigins controls CORS and WebSocket origin checks. Empty or ["*"]
+	// allows any origin (default, preserves prior behavior); otherwise only the
+	// listed origins (e.g. "https://litescope.example") are accepted.
+	AllowedOrigins []string `json:"allowedOrigins"`
 }
 
 type MQTTSource struct {
@@ -45,6 +49,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.ScopeList == nil {
 		cfg.ScopeList = []string{}
+	}
+	if len(cfg.AllowedOrigins) == 0 {
+		cfg.AllowedOrigins = []string{"*"}
 	}
 	// Built-in public channel key from MeshCore firmware defaults
 	if _, ok := cfg.ChannelKeys["Public"]; !ok {

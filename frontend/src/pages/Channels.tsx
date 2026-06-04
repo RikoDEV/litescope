@@ -34,22 +34,21 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
-import { deduplicateObs } from '../components/PacketDetailPanel'
+import { deduplicateObs } from '../utils/packets'
+import { hashColor } from '../utils/colors'
+import { LS_KEYS, loadChannelKeys, saveChannelKeys, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
 import { IataFlag } from '../utils/flags'
 import { useDateLocale } from '../hooks/useDateLocale'
 
 // ── unread count storage ──────────────────────────────────────────────────────
-const LS_SEEN_KEY = 'litescope-channel-seen'
-function loadSeen(): Record<string, number> { try { return JSON.parse(localStorage.getItem(LS_SEEN_KEY) ?? '{}') } catch { return {} } }
-function saveSeen(s: Record<string, number>) { localStorage.setItem(LS_SEEN_KEY, JSON.stringify(s)) }
+function loadSeen(): Record<string, number> { try { return JSON.parse(localStorage.getItem(LS_KEYS.channelSeen) ?? '{}') } catch { return {} } }
+function saveSeen(s: Record<string, number>) { localStorage.setItem(LS_KEYS.channelSeen, JSON.stringify(s)) }
 
-// ── channel key storage ───────────────────────────────────────────────────────
-const LS_KEY = 'litescope-channel-keys'
-interface StoredKey { name: string; key: string; derived: boolean }
-
-function loadKeys(): StoredKey[] { try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') } catch { return [] } }
-function saveKeys(k: StoredKey[]) { localStorage.setItem(LS_KEY, JSON.stringify(k)) }
+// ── channel key storage (shared with the Decoder page via utils/storage) ───────
+type StoredKey = ChannelKey
+const loadKeys = loadChannelKeys
+const saveKeys = saveChannelKeys
 
 async function deriveHashtagKey(name: string): Promise<string> {
   const n = name.startsWith('#') ? name : '#' + name
@@ -91,11 +90,6 @@ function hexToBytes(h: string): Uint8Array {
   const c = h.replace(/\s/g, ''); const a = new Uint8Array(c.length / 2)
   for (let i = 0; i < a.length; i++) a[i] = parseInt(c.slice(i * 2, i * 2 + 2), 16)
   return a
-}
-
-function hashColor(s: string) {
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffff
-  return `hsl(${h % 360}, 65%, 55%)`
 }
 
 // First emoji in the name (full grapheme cluster), else first letter, else '?'

@@ -66,10 +66,6 @@ type ObserverRow struct {
 	NoiseFloor *float64
 }
 
-type PacketMeta struct {
-	ObserverMeta
-}
-
 type ObserverMeta struct {
 	Model      *string
 	Firmware   *string
@@ -302,25 +298,25 @@ func (d *DB) LoadAll() ([]*TxRow, []*ObsRow, []*NodeRow, []*ObserverRow, error) 
 
 // LoadSince loads packets with id > afterID for polling.
 func (d *DB) LoadSince(afterTxID, afterObsID int64) ([]*TxRow, []*ObsRow, error) {
-	txs, err := d.loadTxs(fmt.Sprintf(
-		`SELECT id, raw_hex, hash, first_seen, route_type, payload_type, decoded_json, observation_count, COALESCE(channel_hash,'') FROM transmissions WHERE id > %d ORDER BY id ASC`,
+	txs, err := d.loadTxs(
+		`SELECT id, raw_hex, hash, first_seen, route_type, payload_type, decoded_json, observation_count, COALESCE(channel_hash,'') FROM transmissions WHERE id > ? ORDER BY id ASC`,
 		afterTxID,
-	))
+	)
 	if err != nil {
 		return nil, nil, err
 	}
-	obss, err := d.loadObs(fmt.Sprintf(
-		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, COALESCE(raw_hex,'') FROM observations WHERE id > %d ORDER BY id ASC`,
+	obss, err := d.loadObs(
+		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, COALESCE(raw_hex,'') FROM observations WHERE id > ? ORDER BY id ASC`,
 		afterObsID,
-	))
+	)
 	if err != nil {
 		return nil, nil, err
 	}
 	return txs, obss, nil
 }
 
-func (d *DB) loadTxs(query string) ([]*TxRow, error) {
-	rows, err := d.db.Query(query)
+func (d *DB) loadTxs(query string, args ...interface{}) ([]*TxRow, error) {
+	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -336,8 +332,8 @@ func (d *DB) loadTxs(query string) ([]*TxRow, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) loadObs(query string) ([]*ObsRow, error) {
-	rows, err := d.db.Query(query)
+func (d *DB) loadObs(query string, args ...interface{}) ([]*ObsRow, error) {
+	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -387,13 +383,14 @@ func (d *DB) loadObservers() ([]*ObserverRow, error) {
 	return out, rows.Err()
 }
 
-// LoadNodeUpdates loads nodes updated since a timestamp.
-func (d *DB) LoadNodeUpdates(since string) ([]*NodeRow, error) {
-	return d.loadNodes() // simplified: always return all
+// LoadNodeUpdates reloads all node rows (the table is small enough to refresh
+// wholesale on the server's periodic meta-refresh tick).
+func (d *DB) LoadNodeUpdates() ([]*NodeRow, error) {
+	return d.loadNodes()
 }
 
-// LoadObserverUpdates loads observers updated since a timestamp.
-func (d *DB) LoadObserverUpdates(since string) ([]*ObserverRow, error) {
+// LoadObserverUpdates reloads all observer rows. See LoadNodeUpdates.
+func (d *DB) LoadObserverUpdates() ([]*ObserverRow, error) {
 	return d.loadObservers()
 }
 

@@ -13,6 +13,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CheckIcon from '@mui/icons-material/Check'
 import { api } from '../services/api'
+import { loadChannelKeys } from '../utils/storage'
 
 const EXAMPLES = [
   { label: 'ADVERT', hex: '04014c35b8e3e4cd26a7f3d5b8f7c6b9a3d1e5f8b2c4a6d8e0f2b4c6a8d0e2f4b6c8daabbcdef012345678910111213141516171819202122232425262728293031323334353637383940414243444546474849505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f70' },
@@ -33,7 +34,7 @@ export default function Decoder() {
     setLoading(true); setResult(null)
     try {
       // Read channel keys from localStorage (set in Channels page)
-      const stored: { name: string; key: string }[] = JSON.parse(localStorage.getItem('litescope-channel-keys') ?? '[]')
+      const stored = loadChannelKeys()
       const channelKeys: Record<string, string> = {}
       for (const { name, key } of stored) if (name && key) channelKeys[name] = key
       setResult(await api.decodePacket(h, Object.keys(channelKeys).length ? channelKeys : undefined))

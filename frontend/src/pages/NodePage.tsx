@@ -24,27 +24,13 @@ import L from 'leaflet'
 import { api } from '../services/api'
 import type { Node, NodeOverview, Packet, RFStats, RichPacket } from '../types'
 import { PAYLOAD_NAMES } from '../types'
+import { hashColor } from '../utils/colors'
+import { bucketize } from '../utils/stats'
+import { isNodeActive as isActive } from '../utils/nodes'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function hashColor(s: string) {
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffff
-  return `hsl(${h % 360}, 60%, 55%)`
-}
-
 function roleColor(role: string, md3: Record<string, string>) {
   return ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b', none: md3.outline }[role] ?? md3.outline)
-}
-
-function isActive(n: Node) {
-  const ms = (n.role === 'repeater' || n.role === 'room') ? 72 * 3600e3 : 24 * 3600e3
-  return Date.now() - new Date(n.lastSeen).getTime() < ms
-}
-
-function bucketize(vals: number[], min: number, max: number, buckets: number) {
-  const size = (max - min) / buckets
-  const counts = Array(buckets).fill(0)
-  for (const v of vals) counts[Math.min(buckets - 1, Math.max(0, Math.floor((v - min) / size)))]++
-  return counts.map((count, i) => ({ label: `${(min + i * size).toFixed(0)}`, count }))
 }
 
 function buildActivityChart(packets: Packet[]): Array<{ label: string; count: number }> {
@@ -93,7 +79,11 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
     })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
     L.circleMarker([lat, lon], { radius: 9, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5 }).addTo(map)
-    return () => { map.remove() }
+    // The map fills a flex container whose height depends on a sibling card that
+    // loads asynchronously — re-measure when the container is resized.
+    const ro = new ResizeObserver(() => map.invalidateSize())
+    ro.observe(divRef.current)
+    return () => { ro.disconnect(); map.remove() }
   }, [lat, lon, color])
   return <div ref={divRef} style={{ height: '100%', minHeight: 200, borderRadius: 8, overflow: 'hidden' }} />
 }
@@ -388,9 +378,9 @@ export default function NodePage() {
 
           {/* Mini map */}
           {node.lat != null && node.lon != null && (
-            <Card sx={{ minHeight: 260 }}>
+            <Card sx={{ minHeight: 260, display: 'flex', flexDirection: 'column' }}>
               <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📍</Box>} label={`${node.lat.toFixed(5)}, ${node.lon?.toFixed(5)}`} />
-              <Box sx={{ flex: 1, height: 220 }}>
+              <Box sx={{ flex: 1, minHeight: 200 }}>
                 <NodeMiniMap lat={node.lat} lon={node.lon} color={color} />
               </Box>
             </Card>

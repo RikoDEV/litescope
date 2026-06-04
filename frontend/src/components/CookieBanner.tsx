@@ -6,8 +6,9 @@ import Button from '@mui/material/Button'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CookieIcon from '@mui/icons-material/Cookie'
+import { LS_KEYS } from '../utils/storage'
 
-const LS_KEY = 'litescope-cookie-consent'
+const LS_KEY = LS_KEYS.cookieConsent
 
 export type CookieConsent = 'all' | 'necessary'
 

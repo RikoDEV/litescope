@@ -29,7 +29,8 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Packet, PacketDetail } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
-import PacketDetailPanel, { parseHops, relativeTime, deduplicateObs } from '../components/PacketDetailPanel'
+import PacketDetailPanel from '../components/PacketDetailPanel'
+import { parseHops, relativeTime, deduplicateObs } from '../utils/packets'
 
 const PAGE = 100
 

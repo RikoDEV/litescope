@@ -186,7 +186,7 @@ export default function Home() {
                 </Box>
               </Box>
               <Box sx={{ flex: 1, minHeight: 80 }}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={80}>
                 <AreaChart data={activity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="homeActGrad" x1="0" y1="0" x2="0" y2="1">

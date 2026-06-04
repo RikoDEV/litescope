@@ -40,6 +40,8 @@ import GroupWorkIcon from '@mui/icons-material/GroupWork'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import type { SvgIconComponent } from '@mui/icons-material'
 import { IataFlag } from '../utils/flags'
+import { bucketize } from '../utils/stats'
+import HashMatrix from '../components/HashMatrix'
 
 type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope' | 'distance'
 
@@ -610,6 +612,10 @@ function HashesTab() {
         ))}
       </Box>
 
+      <Box sx={{ mb: 2 }}>
+        <HashMatrix />
+      </Box>
+
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
         <ChartCard title={t('analytics.hashSizeDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={200}>
@@ -1125,13 +1131,6 @@ function ChartCard({ title, Icon, children, sx }: { title: string; Icon?: SvgIco
       </CardContent>
     </Card>
   )
-}
-
-function bucketize(vals: number[], min: number, max: number, buckets: number) {
-  const size = (max - min) / buckets
-  const counts = Array(buckets).fill(0)
-  for (const v of vals) counts[Math.min(buckets - 1, Math.max(0, Math.floor((v - min) / size)))]++
-  return counts.map((count, i) => ({ label: `${(min + i * size).toFixed(0)}`, count }))
 }
 
 function fmtUptime(secs: number) {

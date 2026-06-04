@@ -25,11 +25,7 @@ import type { Node, NodeOverview, RFStats } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 import NodeDetailPanel from '../components/NodeDetailPanel'
-
-function isActive(n: Node) {
-  const ms = (n.role === 'repeater' || n.role === 'room') ? 72 * 3600e3 : 24 * 3600e3
-  return Date.now() - new Date(n.lastSeen).getTime() < ms
-}
+import { isNodeActive as isActive } from '../utils/nodes'
 
 type SortCol = 'name' | 'role' | 'lastSeen' | 'advertCount'
 

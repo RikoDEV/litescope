@@ -25,37 +25,10 @@ import { PAYLOAD_NAMES, ROUTE_NAMES } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { api } from '../services/api'
 import { useDateLocale } from '../hooks/useDateLocale'
-
-function hashColor(s: string) {
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffffff
-  return `hsl(${h % 360}, 65%, 55%)`
-}
+import { hashColor } from '../utils/colors'
+import { parseHops, deduplicateObs, relativeTime } from '../utils/packets'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
-export function deduplicateObs<T extends { observerId: string; snr: number | null; rssi: number | null; timestamp: string }>(obs: T[]): T[] {
-  const map = new Map<string, T>()
-  for (const o of obs) {
-    const prev = map.get(o.observerId)
-    if (!prev) { map.set(o.observerId, o); continue }
-    const snrA = o.snr ?? -Infinity, snrB = prev.snr ?? -Infinity
-    const rssiA = o.rssi ?? -Infinity, rssiB = prev.rssi ?? -Infinity
-    if (snrA > snrB || (snrA === snrB && rssiA > rssiB) || (snrA === snrB && rssiA === rssiB && o.timestamp > prev.timestamp))
-      map.set(o.observerId, o)
-  }
-  return [...map.values()]
-}
-
-export function parseHops(pathJson: string): string[] {
-  try { return JSON.parse(pathJson) ?? [] } catch { return [] }
-}
-
-export function relativeTime(ts: string): string {
-  const diff = (Date.now() - new Date(ts).getTime()) / 1000
-  if (diff < 60) return `${Math.round(diff)}s ago`
-  if (diff < 3600) return `${Math.round(diff / 60)}m ago`
-  return `${Math.round(diff / 3600)}h ago`
-}
 
 function rssiColor(v: number | null, errColor: string, outline: string) {
   if (v == null) return outline

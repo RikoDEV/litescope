@@ -12,30 +12,22 @@ import (
 	"github.com/litescope/backend/internal/store"
 )
 
-// decodeHexPacket wraps the decoder package so handlers.go stays thin.
-func decodeHexPacket(hex string, channelKeys map[string]string) (interface{}, error) {
-	pkt, err := decoder.DecodePacket(hex, channelKeys)
-	if err != nil {
-		return nil, err
-	}
-	return pkt, nil
-}
-
 // Server holds all dependencies for the HTTP handlers.
 type Server struct {
-	Store       *store.Store
-	Hub         *Hub
-	ChannelKeys map[string]string
+	Store          *store.Store
+	Hub            *Hub
+	ChannelKeys    map[string]string
+	AllowedOrigins []string
 }
 
-func NewServer(st *store.Store, hub *Hub, channelKeys map[string]string) *Server {
-	return &Server{Store: st, Hub: hub, ChannelKeys: channelKeys}
+func NewServer(st *store.Store, hub *Hub, channelKeys map[string]string, allowedOrigins []string) *Server {
+	return &Server{Store: st, Hub: hub, ChannelKeys: channelKeys, AllowedOrigins: allowedOrigins}
 }
 
 // Router returns a configured mux.Router.
 func (s *Server) Router() *mux.Router {
 	r := mux.NewRouter()
-	r.Use(corsMiddleware)
+	r.Use(corsMiddleware(s.AllowedOrigins))
 	r.HandleFunc("/ws", s.Hub.ServeWS)
 	api := r.PathPrefix("/api").Subrouter()
 
@@ -67,17 +59,50 @@ func (s *Server) Router() *mux.Router {
 	return r
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
+// originAllowed reports whether an Origin header value passes the allowlist.
+// An empty allowlist or one containing "*" permits any origin. Requests with no
+// Origin header (same-origin or non-browser clients) are always allowed.
+func originAllowed(origin string, allowed []string) bool {
+	if origin == "" {
+		return true
+	}
+	for _, a := range allowed {
+		if a == "*" || a == origin {
+			return true
 		}
-		next.ServeHTTP(w, r)
-	})
+	}
+	return false
+}
+
+func isWildcard(allowed []string) bool {
+	for _, a := range allowed {
+		if a == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func corsMiddleware(allowed []string) func(http.Handler) http.Handler {
+	wildcard := isWildcard(allowed)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if wildcard {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if origin != "" && originAllowed(origin, allowed) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -426,7 +451,7 @@ func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 	for k, v := range body.ChannelKeys {
 		keys[k] = v
 	}
-	result, err := decodeHexPacket(body.Hex, keys)
+	result, err := decoder.DecodePacket(body.Hex, keys)
 	if err != nil {
 		writeJSON(w, decodeResp{OK: false, Error: err.Error()})
 		return
@@ -501,39 +526,16 @@ type observerSummary struct {
 }
 
 func summarizeTx(tx *store.Tx) packetSummary {
-	maxHops := 0
-	hopSize := 0
-	bestScope := ""
-	var bestPath []string
-	bestObserver := ""
-	uniqueObs := make(map[string]struct{})
-	for _, o := range tx.Observations {
-		uniqueObs[o.ObserverID] = struct{}{}
-		if bestObserver == "" {
-			bestObserver = o.ObserverID
-		}
-		var hops []string
-		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > maxHops {
-			maxHops = len(hops)
-			bestPath = hops
-			bestObserver = o.ObserverID
-			if len(hops) > 0 {
-				hopSize = len(hops[0]) / 2 // hex chars → bytes
-			}
-		}
-		if bestScope == "" && o.FloodScope != "" {
-			bestScope = o.FloodScope
-		}
-	}
-	obsCount := len(uniqueObs)
+	b := tx.BestObservation()
+	obsCount := b.UniqueObs
 	if obsCount == 0 {
 		obsCount = tx.ObsCount // fallback for packets with no loaded observations
 	}
 	return packetSummary{
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
-		ObsCount: obsCount, MaxHops: maxHops, HopSize: hopSize, BestScope: bestScope,
-		BestPath: bestPath, BestObserver: bestObserver,
+		ObsCount: obsCount, MaxHops: b.MaxHops, HopSize: b.HopSize, BestScope: b.BestScope,
+		BestPath: b.BestPath, BestObserver: b.BestObserver,
 		ByteSize: len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}
