@@ -312,7 +312,7 @@ export default function Layout() {
           <Tooltip title="GitHub">
             <Typography component="a" href="https://github.com/RikoDEV/litescope" target="_blank" rel="noopener noreferrer" variant="caption"
               sx={{ color: md3.primary, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
-              v0.1.0
+              v{__APP_VERSION__}
             </Typography>
           </Tooltip>
         </Box>
