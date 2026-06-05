@@ -81,7 +81,6 @@ export default function HashMatrix() {
       else byFirst.set(fb, [n])
     }
 
-    let occupied = 0
     let collisionGroups = 0
     for (const g of groups.values()) if (g.length >= 2) collisionGroups++
 
@@ -115,8 +114,6 @@ export default function HashMatrix() {
         else if (maxGroup >= 2) state = 'collision'
         else state = 'taken'
 
-        if (cellNodes.length > 0) occupied++
-
         const subGroups = [...sub.entries()]
           .map(([prefix, ns]) => ({ prefix, nodes: ns }))
           .sort((a, b) => b.nodes.length - a.nodes.length)
@@ -130,7 +127,10 @@ export default function HashMatrix() {
       stats: {
         tracked: all.filter(n => n.pubKey).length,
         distinct: groups.size,
-        spacePct: (occupied / 256) * 100,
+        // Prefix space is evaluated at the selected byte depth: distinct N-byte
+        // prefixes used out of the 256^bytes possible values.
+        spaceTotal: Math.pow(256, bytes),
+        spacePct: (groups.size / Math.pow(256, bytes)) * 100,
         collisions: collisionGroups,
       },
     }
@@ -167,7 +167,7 @@ export default function HashMatrix() {
   const statCards = [
     { l: t('analytics.hashMatrixNodesTracked'), v: stats.tracked.toLocaleString(), c: md3.primary },
     { l: t('analytics.hashMatrixUsingId', { bytes }), v: stats.distinct.toLocaleString(), c: '#14b8a6' },
-    { l: t('analytics.hashMatrixSpaceUsed'), v: `${stats.spacePct.toFixed(1)}%`, sub: t('analytics.hashMatrixOf256'), c: '#f59e0b' },
+    { l: t('analytics.hashMatrixSpaceUsed'), v: `${stats.spacePct < 0.1 && stats.spacePct > 0 ? stats.spacePct.toPrecision(2) : stats.spacePct.toFixed(1)}%`, sub: t('analytics.hashMatrixOfPossible', { total: stats.spaceTotal.toLocaleString() }), c: '#f59e0b' },
     { l: t('analytics.hashMatrixCollisionsStat'), v: stats.collisions.toLocaleString(), c: md3.error },
   ]
 
