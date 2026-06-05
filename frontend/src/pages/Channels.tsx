@@ -36,7 +36,7 @@ import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
 import { deduplicateObs } from '../utils/packets'
 import { hashColor } from '../utils/colors'
-import { LS_KEYS, loadChannelKeys, saveChannelKeys, type ChannelKey } from '../utils/storage'
+import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
 import { IataFlag } from '../utils/flags'
 import { useDateLocale } from '../hooks/useDateLocale'
@@ -56,26 +56,47 @@ async function deriveHashtagKey(name: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// Copy a Uint8Array into a fresh ArrayBuffer (WebCrypto wants ArrayBuffers).
+function ab(u8: Uint8Array): ArrayBuffer {
+  const b = new ArrayBuffer(u8.length); new Uint8Array(b).set(u8); return b
+}
+
+// MeshCore channel messages are AES-128 *ECB* (each 16-byte block decrypted
+// independently). WebCrypto exposes no ECB/raw-block mode, so we run AES-CBC
+// (IV=0) and undo the chaining ourselves: CBC gives P_i = D(B_i) XOR B_{i-1}
+// (B_{-1}=IV=0), so XOR-ing each block back with the preceding ciphertext block
+// recovers the raw ECB block D(B_i). To stop WebCrypto from stripping (and then
+// rejecting) PKCS7 padding on the final block, we append one extra ciphertext
+// block crafted to decrypt to a full 0x10 padding block, which it discards.
+async function aesEcbDecrypt(ct: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
+  const iv = new Uint8Array(16)
+  const dk = await crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['decrypt'])
+  const ek = await crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['encrypt'])
+  const lastBlock = ct.slice(ct.length - 16)
+  const target = new Uint8Array(16)
+  for (let j = 0; j < 16; j++) target[j] = lastBlock[j] ^ 0x10
+  // E(target) = first block of CBC-encrypt(IV=0) of target.
+  const extra = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, ek, ab(target))).slice(0, 16)
+  const feed = new Uint8Array(ct.length + 16); feed.set(ct); feed.set(extra, ct.length)
+  const dec = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, dk, ab(feed)))
+  const out = new Uint8Array(ct.length)
+  out.set(dec.slice(0, 16)) // block 0: D(B0) XOR IV(0) = D(B0)
+  for (let i = 16; i < ct.length; i += 16)
+    for (let j = 0; j < 16; j++) out[i + j] = dec[i + j] ^ ct[i - 16 + j]
+  return out
+}
+
 async function tryDecrypt(encHex: string, macHex: string, keyHex: string): Promise<{ sender: string; text: string } | null> {
   try {
-    const key   = hexToBytes(keyHex)
-    const mac   = hexToBytes(macHex)
-    const ct    = hexToBytes(encHex)
+    const key = hexToBytes(keyHex)
+    const mac = hexToBytes(macHex)
+    const ct  = hexToBytes(encHex)
     if (key.length !== 16 || mac.length !== 2 || ct.length === 0 || ct.length % 16 !== 0) return null
     const secret = new Uint8Array(32); secret.set(key)
-    const secretBuf = new ArrayBuffer(secret.length); new Uint8Array(secretBuf).set(secret)
-    const ctBuf     = new ArrayBuffer(ct.length);     new Uint8Array(ctBuf).set(ct)
-    const keyBuf    = new ArrayBuffer(key.length);    new Uint8Array(keyBuf).set(key)
-    const hmacKey = await crypto.subtle.importKey('raw', secretBuf, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, ctBuf))
+    const hmacKey = await crypto.subtle.importKey('raw', ab(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, ab(ct)))
     if (sig[0] !== mac[0] || sig[1] !== mac[1]) return null
-    const ck  = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['decrypt'])
-    const iv  = new Uint8Array(16)
-    const plain = new Uint8Array(ct.length)
-    for (let i = 0; i < ct.length; i += 16) {
-      const blk = new Uint8Array(32); blk.set(ct.slice(i, i + 16), 16)
-      plain.set(new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, ck, blk)).slice(0, 16), i)
-    }
+    const plain = await aesEcbDecrypt(ct, key)
     if (plain.length < 5) return null
     let text = new TextDecoder('utf-8', { fatal: false }).decode(plain.slice(5))
     const nul = text.indexOf('\0'); if (nul >= 0) text = text.slice(0, nul)
@@ -90,6 +111,16 @@ function hexToBytes(h: string): Uint8Array {
   const c = h.replace(/\s/g, ''); const a = new Uint8Array(c.length / 2)
   for (let i = 0; i < a.length; i++) a[i] = parseInt(c.slice(i * 2, i * 2 + 2), 16)
   return a
+}
+
+// A GRP_TXT packet needs a client-side decrypt attempt when the backend could
+// not decrypt it — either because no keys were configured (`no_key`) or the
+// configured keys didn't match (`decryption_failed`). In both cases the payload
+// still carries the MAC + ciphertext, so a key added in the Key Manager can
+// unlock it in the browser. Treat the two statuses identically here.
+const CLIENT_DECRYPTABLE = new Set(['no_key', 'decryption_failed'])
+function needsClientDecrypt(status?: string): boolean {
+  return status !== undefined && CLIENT_DECRYPTABLE.has(status)
 }
 
 // First emoji in the name (full grapheme cluster), else first letter, else '?'
@@ -134,6 +165,11 @@ export default function Channels() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const skipAutoScroll = useRef(false)
   const initialLoad = useRef(false)
+  // Persisted channelHash → decrypted-name map, re-applied to every server-loaded
+  // channel list so client-side names survive refetches and reloads.
+  const hashNames = useRef<Record<string, string>>(loadChannelHashNames())
+  const applyNames = (chs: Channel[]) =>
+    chs.map(ch => hashNames.current[ch.hash] ? { ...ch, name: hashNames.current[ch.hash] } : ch)
 
   useEffect(() => {
     if (skipAutoScroll.current) { skipAutoScroll.current = false; return }
@@ -143,7 +179,7 @@ export default function Channels() {
     initialLoad.current = false
     bottomRef.current?.scrollIntoView({ behavior })
   }, [messages])
-  useEffect(() => { api.channels().then(setChannels) }, [])
+  useEffect(() => { api.channels().then(chs => setChannels(applyNames(chs))) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     api.nodes().then(res => setNodes((res.nodes ?? []).map(n => ({ pubKey: n.pubKey, name: n.name }))))
   }, [])
@@ -227,7 +263,7 @@ export default function Channels() {
     const nameMap: Record<string, string> = {}   // channelHash → key.name
     for (const msg of msgs) {
       const d = msg.decoded
-      if (!d || d.decryptionStatus !== 'no_key') continue
+      if (!d || !needsClientDecrypt(d.decryptionStatus)) continue
       const mac = d.mac as string | undefined; const enc = d.encryptedData as string | undefined
       if (!mac || !enc) continue
       for (const k of keys) {
@@ -241,8 +277,13 @@ export default function Channels() {
       }
     }
     if (Object.keys(updates).length > 0) setDecrypted(p => ({ ...p, ...updates }))
-    if (Object.keys(nameMap).length > 0)
+    if (Object.keys(nameMap).length > 0) {
+      // Remember the learned hash→name mappings so the channel stays named across
+      // refetches and reloads, not just in this render's channel list.
+      hashNames.current = { ...hashNames.current, ...nameMap }
+      saveChannelHashNames(hashNames.current)
       setChannels(prev => prev.map(ch => nameMap[ch.hash] ? { ...ch, name: nameMap[ch.hash] } : ch))
+    }
   }
 
   useEffect(() => {
@@ -252,7 +293,7 @@ export default function Channels() {
       const hiddenMs = hiddenAt ? Date.now() - hiddenAt : 0
       hiddenAt = null
       if (hiddenMs < 5000) return
-      api.channels().then(setChannels)
+      api.channels().then(chs => setChannels(applyNames(chs)))
       if (selected) selectChannelData(selected)
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -263,24 +304,59 @@ export default function Channels() {
     const unsub = stream.subscribe(async msg => {
       if (msg.type !== 'packet') return
       const d = msg.data.decoded
-      if (!d || (d.decryptionStatus !== 'decrypted' && d.decryptionStatus !== 'no_key')) return
+      if (!d || (d.decryptionStatus !== 'decrypted' && !needsClientDecrypt(d.decryptionStatus))) return
       if (selected && msg.data.channelHash === selected.hash) {
         setMessages(p => [msg.data, ...p])
-        if (d.decryptionStatus === 'no_key') decryptBatch([msg.data], storedKeys)
       }
       setChannels(prev => {
         const idx = prev.findIndex(c => c.hash === msg.data.channelHash)
         if (idx >= 0) { const n = [...prev]; n[idx] = { ...n[idx], messageCount: n[idx].messageCount + 1 }; return n }
-        return [...prev, { hash: msg.data.channelHash ?? '', name: (d.channel as string) ?? msg.data.channelHash ?? 'Unknown', messageCount: 1 }]
+        const h = msg.data.channelHash ?? ''
+        return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
       })
+      // Attempt client-side decryption for every incoming encrypted message —
+      // not just the open channel — so a channel we hold a key for gets named
+      // and promoted out of the collapsed "Encrypted" group as soon as a message
+      // arrives. decryptBatch also renames the matching channel in the list.
+      if (needsClientDecrypt(d.decryptionStatus)) decryptBatch([msg.data], storedKeys)
     })
     return unsub
   }, [selected, storedKeys]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-attempt decryption of already-loaded messages whenever the key set
+  // changes (e.g. the user just added a key in the Key Manager) so the channel
+  // unlocks without needing to reselect it.
+  useEffect(() => {
+    if (messages.length) decryptBatch(messages, storedKeys)
+  }, [storedKeys]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the selected channel's list count in sync with the messages we can
+  // actually decrypt. The server counts every packet that shares the 1-byte
+  // channel hash (including other, colliding channels), so for a keyed channel
+  // that total is inflated; the readable count reflects this channel's real
+  // messages. Only applied once the channel is keyed (something decrypts).
+  useEffect(() => {
+    if (!selected) return
+    const readable = messages.filter(m => decrypted[m.id] || m.decoded?.decryptionStatus === 'decrypted').length
+    if (readable === 0) return
+    setChannels(prev => prev.map(ch =>
+      ch.hash === selected.hash && ch.messageCount !== readable ? { ...ch, messageCount: readable } : ch))
+  }, [decrypted, messages, selected])
 
   const persistKeys = (k: StoredKey[]) => { setStoredKeys(k); saveKeys(k) }
 
   const showSidebar = !isMobile || (!selected && !showKeyMgr)
   const showMain    = !isMobile || selected || showKeyMgr
+
+  // A single-byte channel hash is shared by many different channels, so the
+  // loaded page mixes in messages from other channels that collide on the same
+  // byte. Once we can read at least one message (this channel is keyed), show
+  // only the messages we can actually decrypt — the ones that belong to this
+  // channel's key. For an unkeyed channel (nothing readable) we keep showing the
+  // raw encrypted messages so they can still be browsed.
+  const isReadable = (m: Packet) => !!decrypted[m.id] || m.decoded?.decryptionStatus === 'decrypted'
+  const channelKeyed = messages.some(isReadable)
+  const visibleMessages = channelKeyed ? messages.filter(isReadable) : messages
 
   return (
     <Box sx={{ display: 'flex', height: '100%', background: md3.background }}>
@@ -314,7 +390,7 @@ export default function Channels() {
               <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: hashColor(selected.name) }} />
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{selected.name}</Typography>
               <Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'block' } }}>#{selected.hash}</Typography>
-              <Typography variant="caption" sx={{ color: md3.outline, ml: 'auto' }}>{t('channels.messages', { count: messages.length })}</Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, ml: 'auto' }}>{t('channels.messages', { count: visibleMessages.length })}</Typography>
             </Box>
             <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
             <Box ref={scrollRef} onScroll={onScroll} sx={{ position: 'absolute', inset: 0, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -325,10 +401,10 @@ export default function Channels() {
                   </Button>
                 </Box>
               )}
-              {[...messages].reverse().map(msg => {
+              {[...visibleMessages].reverse().map(msg => {
                 const dec    = msg.decoded
                 const cdec   = decrypted[msg.id]
-                const noKey  = dec?.decryptionStatus === 'no_key' && !cdec
+                const noKey  = needsClientDecrypt(dec?.decryptionStatus) && !cdec
                 const sender = cdec?.sender || (dec?.sender as string) || 'Unknown'
                 const rawT   = cdec?.text || (dec?.text as string) || ''
                 const text   = rawT.startsWith(sender + ': ') ? rawT.slice(sender.length + 2) : rawT

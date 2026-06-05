@@ -558,7 +558,10 @@ type ChannelSummary struct {
 	MessageCount int    `json:"messageCount"`
 }
 
-// ChannelMessages returns decrypted messages for a channel hash.
+// ChannelMessages returns all messages for a channel hash. Both backend-decrypted
+// messages and still-encrypted ones (no_key / decryption_failed) are returned, so
+// the client can decrypt channels whose keys live only in the browser (Key
+// Manager). The client decides what to display.
 func (s *Store) ChannelMessages(chHash string, limit, offset int) []*Tx {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -571,9 +574,6 @@ func (s *Store) ChannelMessages(chHash string, limit, offset int) []*Tx {
 		}
 		dec := tx.Decoded()
 		if dec == nil {
-			continue
-		}
-		if status, _ := dec["decryptionStatus"].(string); status != "decrypted" {
 			continue
 		}
 		if skipped < offset {

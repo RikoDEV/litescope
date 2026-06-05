@@ -5,6 +5,7 @@
 export const LS_KEYS = {
   channelKeys: 'litescope-channel-keys',
   channelSeen: 'litescope-channel-seen',
+  channelHashNames: 'litescope-channel-hash-names',
   themeMode: 'litescope-theme-mode',
   themeAccent: 'litescope-theme-accent',
   cookieConsent: 'litescope-cookie-consent',
@@ -25,4 +26,21 @@ export function loadChannelKeys(): ChannelKey[] {
 
 export function saveChannelKeys(keys: ChannelKey[]): void {
   localStorage.setItem(LS_KEYS.channelKeys, JSON.stringify(keys))
+}
+
+// Channel hashes are a single byte, so the server can only label a channel by
+// its hex hash unless it decrypted a message itself. Once we decrypt a channel
+// client-side we learn its name; we persist the hash→name mapping here so the
+// name survives channel-list refetches (e.g. the visibility refresh) and page
+// reloads, instead of reverting to the hex hash.
+export function loadChannelHashNames(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEYS.channelHashNames) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
+export function saveChannelHashNames(map: Record<string, string>): void {
+  localStorage.setItem(LS_KEYS.channelHashNames, JSON.stringify(map))
 }
