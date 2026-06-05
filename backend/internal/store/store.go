@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -584,6 +585,149 @@ func (s *Store) ChannelMessages(chHash string, limit, offset int) []*Tx {
 	return out
 }
 
+// ChannelAnalytics returns per-channel hourly message activity (last 24 h) and
+// an all-time leaderboard of top senders, derived from GRP_TXT packets.
+func (s *Store) ChannelAnalytics() ChannelAnalyticsData {
+	return cachedAnalytics(s, "channelAnalytics", s.computeChannelAnalytics)
+}
+
+func (s *Store) computeChannelAnalytics() ChannelAnalyticsData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	const windowHours = 24
+	const topChannels = 6
+	now := time.Now().UTC()
+	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
+
+	nameByHash := make(map[string]string)
+	activityByHash := make(map[int64]map[string]int) // hourUnix → channelHash → count
+	totalByHash := make(map[string]int)              // in-window totals for ranking
+
+	type senderAcc struct {
+		count    int
+		channels map[string]bool
+	}
+	senders := make(map[string]*senderAcc)
+
+	for _, tx := range s.packets {
+		if tx.PayloadType != 5 || tx.ChannelHash == "" { // GRP_TXT
+			continue
+		}
+		dec := tx.Decoded()
+		if dec != nil {
+			if ch, _ := dec["channel"].(string); ch != "" {
+				nameByHash[tx.ChannelHash] = ch
+			}
+		}
+
+		t := parseTimeToTime(tx.FirstSeen)
+		if !t.IsZero() && !t.Before(actStart) {
+			b := t.Truncate(time.Hour).Unix()
+			if activityByHash[b] == nil {
+				activityByHash[b] = make(map[string]int)
+			}
+			activityByHash[b][tx.ChannelHash]++
+			totalByHash[tx.ChannelHash]++
+		}
+
+		if dec != nil {
+			if status, _ := dec["decryptionStatus"].(string); status == "decrypted" {
+				if sender, _ := dec["sender"].(string); sender != "" {
+					a := senders[sender]
+					if a == nil {
+						a = &senderAcc{channels: make(map[string]bool)}
+						senders[sender] = a
+					}
+					a.count++
+					a.channels[tx.ChannelHash] = true
+				}
+			}
+		}
+	}
+
+	chanName := func(hash string) string {
+		if n := nameByHash[hash]; n != "" {
+			return n
+		}
+		return hash
+	}
+
+	// Rank channels by in-window volume; keep the top N, fold the rest into "Other".
+	ranked := make([]string, 0, len(totalByHash))
+	for h := range totalByHash {
+		ranked = append(ranked, h)
+	}
+	sort.Slice(ranked, func(i, j int) bool { return totalByHash[ranked[i]] > totalByHash[ranked[j]] })
+	keep := make(map[string]bool)
+	legend := make([]string, 0, topChannels+1)
+	hasOther := false
+	for i, h := range ranked {
+		if i < topChannels {
+			keep[h] = true
+			legend = append(legend, chanName(h))
+		} else {
+			hasOther = true
+		}
+	}
+	const otherLabel = "Other"
+	if hasOther {
+		legend = append(legend, otherLabel)
+	}
+
+	hours := make([]ChannelHour, windowHours)
+	for i := 0; i < windowHours; i++ {
+		h := actStart.Add(time.Duration(i) * time.Hour)
+		counts := make(map[string]int)
+		for hash, c := range activityByHash[h.Unix()] {
+			label := otherLabel
+			if keep[hash] {
+				label = chanName(hash)
+			}
+			counts[label] += c
+		}
+		hours[i] = ChannelHour{Hour: h.Format(time.RFC3339), Label: h.Format("15:04"), Counts: counts}
+	}
+
+	topSenders := make([]ChannelSender, 0, len(senders))
+	for name, a := range senders {
+		topSenders = append(topSenders, ChannelSender{Sender: name, MessageCount: a.count, Channels: len(a.channels)})
+	}
+	sort.Slice(topSenders, func(i, j int) bool {
+		if topSenders[i].MessageCount != topSenders[j].MessageCount {
+			return topSenders[i].MessageCount > topSenders[j].MessageCount
+		}
+		return topSenders[i].Sender < topSenders[j].Sender
+	})
+	if len(topSenders) > 20 {
+		topSenders = topSenders[:20]
+	}
+
+	return ChannelAnalyticsData{
+		ActivityChannels: legend,
+		Activity:         hours,
+		TopSenders:       topSenders,
+	}
+}
+
+type ChannelAnalyticsData struct {
+	ActivityChannels []string        `json:"activityChannels"`
+	Activity         []ChannelHour   `json:"activity"`
+	TopSenders       []ChannelSender `json:"topSenders"`
+}
+
+type ChannelHour struct {
+	Hour   string         `json:"hour"`
+	Label  string         `json:"label"`
+	Counts map[string]int `json:"counts"`
+}
+
+type ChannelSender struct {
+	Sender       string `json:"sender"`
+	MessageCount int    `json:"messageCount"`
+	Channels     int    `json:"channels"`
+}
+
 // Overview returns aggregate stats.
 func (s *Store) Overview() OverviewStats {
 	s.mu.RLock()
@@ -1090,18 +1234,111 @@ func (s *Store) computeHashStats() HashStatsData {
 	}
 
 	return HashStatsData{
-		SizeDistribution:  sizeDist,
-		ByRole:            byRole,
-		OverTime:          overTime,
-		MultiByteAdopters: adopterList,
+		SizeDistribution:   sizeDist,
+		ByRole:             byRole,
+		OverTime:           overTime,
+		MultiByteAdopters:  adopterList,
+		InconsistentHashes: s.computeInconsistentHashes(now),
 	}
 }
 
+// computeInconsistentHashes finds repeaters and room servers whose adverts used
+// more than one self-hash byte size within the last 7 days — the symptom of the
+// firmware bug (MeshCore fcfdc5f) where automatic adverts ignored the configured
+// multibyte path setting. Companion (and other) roles are excluded. Caller must
+// hold the read lock.
+func (s *Store) computeInconsistentHashes(now time.Time) []InconsistentHashNode {
+	const days = 7
+	start := now.AddDate(0, 0, -days)
+
+	out := make([]InconsistentHashNode, 0)
+	for pk, n := range s.nodes {
+		if n.Role != "repeater" && n.Role != "room" {
+			continue
+		}
+		sizesSeen := make(map[int]bool)
+		currentSize := 0
+		var currentSeen time.Time
+		for _, tx := range s.byNode[pk] {
+			if tx.PayloadType != 4 { // ADVERT
+				continue
+			}
+			t := parseTimeToTime(tx.FirstSeen)
+			if t.IsZero() || t.Before(start) {
+				continue
+			}
+			size := advertSelfHashSize(tx, pk)
+			if size == 0 {
+				continue
+			}
+			sizesSeen[size] = true
+			if t.After(currentSeen) {
+				currentSeen, currentSize = t, size
+			}
+		}
+		if len(sizesSeen) < 2 {
+			continue
+		}
+		sizes := make([]int, 0, len(sizesSeen))
+		for sz := range sizesSeen {
+			sizes = append(sizes, sz)
+		}
+		sort.Ints(sizes)
+		out = append(out, InconsistentHashNode{
+			PubKey:      pk,
+			Name:        n.Name,
+			Role:        n.Role,
+			CurrentHash: strings.ToUpper(pk[:min(currentSize*2, len(pk))]),
+			CurrentSize: currentSize,
+			SizesSeen:   sizes,
+		})
+	}
+	// Most distinct sizes first (worst offenders), then alphabetically by name.
+	sort.Slice(out, func(i, j int) bool {
+		if len(out[i].SizesSeen) != len(out[j].SizesSeen) {
+			return len(out[i].SizesSeen) > len(out[j].SizesSeen)
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+// advertSelfHashSize returns the byte size of a node's own routing hash within
+// one of its adverts, located by finding the path hop that prefixes the node's
+// pubKey. Returns 0 when no self-hash hop is present.
+func advertSelfHashSize(tx *Tx, pubKey string) int {
+	pkLower := strings.ToLower(pubKey)
+	for _, o := range tx.Observations {
+		var hops []string
+		if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
+			continue
+		}
+		for _, hop := range hops {
+			if isHexHop(hop) && strings.HasPrefix(pkLower, strings.ToLower(hop)) {
+				return len(hop) / 2
+			}
+		}
+	}
+	return 0
+}
+
 type HashStatsData struct {
-	SizeDistribution  map[string]int            `json:"sizeDistribution"`
-	ByRole            map[string]map[string]int `json:"byRole"`
-	OverTime          []HashTimeBucket          `json:"overTime"`
-	MultiByteAdopters []HashAdopter             `json:"multiByteAdopters"`
+	SizeDistribution   map[string]int            `json:"sizeDistribution"`
+	ByRole             map[string]map[string]int `json:"byRole"`
+	OverTime           []HashTimeBucket          `json:"overTime"`
+	MultiByteAdopters  []HashAdopter             `json:"multiByteAdopters"`
+	InconsistentHashes []InconsistentHashNode    `json:"inconsistentHashes"`
+}
+
+// InconsistentHashNode is a repeater/room server that advertised its routing
+// hash at more than one byte size in the trailing 7-day window.
+type InconsistentHashNode struct {
+	PubKey      string `json:"pubKey"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	CurrentHash string `json:"currentHash"` // pubKey prefix at the latest advertised size, uppercase
+	CurrentSize int    `json:"currentSize"` // bytes
+	SizesSeen   []int  `json:"sizesSeen"`   // sorted distinct byte sizes seen
 }
 
 type HashTimeBucket struct {

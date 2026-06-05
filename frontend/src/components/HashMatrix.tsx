@@ -16,7 +16,7 @@ import type { Node } from '../types'
 const HEX = '0123456789ABCDEF'.split('')
 const MAX_TIP_NODES = 5
 
-type CellState = 'empty' | 'taken' | 'possible' | 'collision'
+type CellState = 'empty' | 'taken' | 'collision'
 
 interface SubGroup { prefix: string; nodes: Node[] }
 interface Cell {
@@ -25,15 +25,24 @@ interface Cell {
   state: CellState
   nodes: Node[]
   maxGroup: number
+  collisionCount: number  // nodes that actually share the selected N-byte prefix
   groups: SubGroup[]
 }
 
-// Orange → red gradient keyed on the largest colliding group (2..6+), matching
-// the reference palette: 2→rgb(220,120,30) … 6→rgb(255,0,30).
+// Gold → orange → red gradient keyed on the largest colliding group (2..6+).
+// Low collision counts get distinct, brighter stops so a 2× cell reads clearly
+// apart from the amber "possible" cells, then ramps into deep red for 6+.
+const COLLISION_STOPS: Record<number, [number, number, number]> = {
+  2: [251, 191, 36],  // amber-gold
+  3: [249, 130, 40],  // orange
+  4: [240, 90, 40],   // deep orange
+  5: [228, 50, 40],   // red-orange
+  6: [200, 20, 35],   // deep red
+}
 function collisionColor(maxGroup: number): string {
   const c = Math.max(2, Math.min(6, maxGroup))
-  const tt = (c - 2) / 4
-  return `rgb(${Math.round(220 + tt * 35)}, ${Math.round(120 - tt * 120)}, 30)`
+  const [r, g, b] = COLLISION_STOPS[c]
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 export default function HashMatrix() {
@@ -88,13 +97,22 @@ export default function HashMatrix() {
           if (a) a.push(n)
           else sub.set(pfx, [n])
         }
+        // Collisions are evaluated at the selected byte size: a group only counts
+        // as a duplicate when 2+ nodes share the full N-byte prefix. Nodes that
+        // merely share the first byte (distinct at N bytes) are NOT duplicates.
         let maxGroup = 0
-        for (const g of sub.values()) if (g.length > maxGroup) maxGroup = g.length
+        let collisionCount = 0
+        for (const g of sub.values()) {
+          if (g.length > maxGroup) maxGroup = g.length
+          if (g.length >= 2) collisionCount += g.length
+        }
 
+        // A cell is judged purely at the selected byte depth: it's a collision
+        // only when 2+ nodes share the full N-byte prefix. Multiple nodes that
+        // merely share the first byte (distinct at N bytes) are just occupied.
         let state: CellState
         if (cellNodes.length === 0) state = 'empty'
         else if (maxGroup >= 2) state = 'collision'
-        else if (cellNodes.length >= 2) state = 'possible'
         else state = 'taken'
 
         if (cellNodes.length > 0) occupied++
@@ -103,7 +121,7 @@ export default function HashMatrix() {
           .map(([prefix, ns]) => ({ prefix, nodes: ns }))
           .sort((a, b) => b.nodes.length - a.nodes.length)
 
-        cells.push({ hex, reserved: hex === '00' || hex === 'FF', state, nodes: cellNodes, maxGroup, groups: subGroups })
+        cells.push({ hex, reserved: hex === '00' || hex === 'FF', state, nodes: cellNodes, maxGroup, collisionCount, groups: subGroups })
       }
     }
 
@@ -124,21 +142,24 @@ export default function HashMatrix() {
   const cellBg = (c: Cell): string => {
     switch (c.state) {
       case 'collision': return collisionColor(c.maxGroup)
-      case 'possible':  return alpha('#f59e0b', 0.2)
+      case 'taken':     return alpha('#14b8a6', 0.22)
       default:          return 'transparent'
     }
   }
   const cellFg = (c: Cell): string => {
-    if (c.state === 'collision') return '#fff'
+    // Light gold/orange stops (low counts) need dark text for contrast; the
+    // deeper red stops use white.
+    if (c.state === 'collision') return c.maxGroup <= 3 ? 'rgba(0,0,0,0.82)' : '#fff'
     if (c.state === 'empty')     return md3.outline
     return md3.onSurfaceVariant
   }
 
   const statusText = (c: Cell): string => {
     switch (c.state) {
-      case 'collision': return t('analytics.hashMatrixCollisionStatus', { count: c.nodes.length })
-      case 'possible':  return t('analytics.hashMatrixPossible', { count: c.nodes.length })
-      case 'taken':     return t('analytics.hashMatrixOneNode')
+      case 'collision': return t('analytics.hashMatrixCollisionStatus', { count: c.collisionCount, bytes })
+      case 'taken':     return c.nodes.length > 1
+        ? t('analytics.hashMatrixOccupied', { count: c.nodes.length, bytes })
+        : t('analytics.hashMatrixOneNode')
       default:          return t('analytics.hashMatrixAvailable')
     }
   }
@@ -243,8 +264,7 @@ export default function HashMatrix() {
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 1.5, fontSize: 11, color: md3.onSurfaceVariant }}>
               {[
                 { l: t('analytics.hashMatrixAvailable'), bg: 'transparent', border: `1px solid ${md3.outlineVariant}` },
-                { l: t('analytics.hashMatrixLegOneNode'), bg: 'transparent', border: `1px solid ${md3.outline}` },
-                { l: t('analytics.hashMatrixLegPossible'), bg: alpha('#f59e0b', 0.2), border: 'none' },
+                { l: t('analytics.hashMatrixLegOccupied'), bg: alpha('#14b8a6', 0.22), border: 'none' },
                 { l: t('analytics.hashMatrixLegCollision'), bg: collisionColor(4), border: 'none' },
                 { l: t('analytics.hashMatrixLegReserved'), bg: 'transparent', border: `1px dashed ${md3.outline}` },
               ].map(s => (

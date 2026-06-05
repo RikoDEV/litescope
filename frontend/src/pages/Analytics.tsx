@@ -14,6 +14,7 @@ import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import Chip from '@mui/material/Chip'
+import Skeleton from '@mui/material/Skeleton'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
@@ -38,6 +39,8 @@ import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import TimelineIcon from '@mui/icons-material/Timeline'
 import GroupWorkIcon from '@mui/icons-material/GroupWork'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import Link from '@mui/material/Link'
 import type { SvgIconComponent } from '@mui/icons-material'
 import { IataFlag } from '../utils/flags'
 import { bucketize } from '../utils/stats'
@@ -108,6 +111,8 @@ function OverviewTab() {
     api.analyticsRF().then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
 
+  if (!stats) return <TabLoading />
+
   const typeData = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))
   const typeTotal = typeData.reduce((s, d) => s + d.value, 0)
   const typeShareData = typeData.map(d => ({ name: d.name, pct: typeTotal > 0 ? +((d.value / typeTotal) * 100).toFixed(1) : 0 }))
@@ -173,14 +178,17 @@ function ActivityTab() {
   const { t } = useTranslation()
   const [hours, setHours] = useState(24)
   const [data, setData]   = useState<Array<{ hour: string; label: string; count: number }>>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => { api.analyticsActivity(hours).then(d => setData(d ?? [])) }, [hours])
+  useEffect(() => { setLoading(true); api.analyticsActivity(hours).then(d => setData(d ?? [])).finally(() => setLoading(false)) }, [hours])
 
   const peak  = data.reduce((m, b) => b.count > m ? b.count : m, 0)
   const total = data.reduce((s, b) => s + b.count, 0)
   const avg   = data.length > 0 ? total / data.length : 0
   const step  = hours <= 24 ? 4 : hours <= 72 ? 12 : 24
   const chartData = data.map((b, i) => ({ ...b, displayLabel: i % step === 0 ? b.label : '' }))
+
+  if (loading && data.length === 0) return <TabLoading />
 
   return (
     <Box>
@@ -236,7 +244,7 @@ function RFTab() {
     api.analyticsSnrByType().then(d => setSnrByType(d ?? {}))
   }, [])
 
-  if (!rf) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
+  if (!rf) return <TabLoading />
   const snr  = rf.snr  ?? []
   const rssi = rf.rssi ?? []
   if (rf.totalObservations === 0 || (snr.length === 0 && rssi.length === 0)) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noRf')}</Typography>
@@ -348,8 +356,10 @@ function RFTab() {
 function NodesTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
-  const [nodes, setNodes] = useState<Node[]>([])
+  const [nodes, setNodes] = useState<Node[] | null>(null)
   useEffect(() => { api.analyticsNodesTop(25).then(d => setNodes(d ?? [])) }, [])
+
+  if (!nodes) return <TabLoading />
 
   const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
   const roleCounts: Record<string, number> = {}
@@ -358,7 +368,7 @@ function NodesTab() {
 
   return (
     <Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 2, mb: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 260px' }, gap: 2, mb: 2 }}>
         <ChartCard title={t('analytics.topNodesByAdvert')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={Math.max(180, nodes.length * 26)}>
             <BarChart data={nodes.map(n => ({ name: n.name || n.pubKey.slice(0, 8), count: n.advertCount, role: n.role }))} layout="vertical">
@@ -387,7 +397,8 @@ function NodesTab() {
       </Box>
 
       <ChartCard title={t('analytics.leaderboard')} Icon={LeaderboardIcon}>
-        <Table size="small">
+        <Box sx={{ overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 560 }}>
           <TableHead>
             <TableRow>
               {['#', t('common.name'), t('common.role'), t('common.adverts'), t('common.lastSeen'), t('common.location')].map(h => <TableCell key={h}>{h}</TableCell>)}
@@ -406,6 +417,7 @@ function NodesTab() {
             ))}
           </TableBody>
         </Table>
+        </Box>
       </ChartCard>
     </Box>
   )
@@ -415,8 +427,10 @@ function NodesTab() {
 function ObserversTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
-  const [observers, setObservers] = useState<Observer[]>([])
+  const [observers, setObservers] = useState<Observer[] | null>(null)
   useEffect(() => { api.analyticsObserversTop(20).then(d => setObservers(d ?? [])) }, [])
+
+  if (!observers) return <TabLoading />
 
   return (
     <Box>
@@ -433,7 +447,8 @@ function ObserversTab() {
       </ChartCard>
 
       <ChartCard title={t('analytics.observerRoster')} Icon={LeaderboardIcon} sx={{ mt: 2 }}>
-        <Table size="small">
+        <Box sx={{ overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 680 }}>
           <TableHead>
             <TableRow>
               {['#', t('common.name'), 'IATA', t('common.packets'), t('common.model'), t('common.battery'), t('common.uptime'), t('common.lastSeen')].map(h => <TableCell key={h}>{h}</TableCell>)}
@@ -460,6 +475,7 @@ function ObserversTab() {
             })}
           </TableBody>
         </Table>
+        </Box>
       </ChartCard>
     </Box>
   )
@@ -469,8 +485,21 @@ function ObserversTab() {
 function ChannelsTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
-  const [channels, setChannels] = useState<Array<{ hash: string; name: string; messageCount: number }>>([])
-  useEffect(() => { api.channels().then(d => setChannels([...(d ?? [])].filter(c => c.name && c.name !== c.hash).sort((a, b) => b.messageCount - a.messageCount))) }, [])
+  const [channels, setChannels] = useState<Array<{ hash: string; name: string; messageCount: number }> | null>(null)
+  const [analytics, setAnalytics] = useState<{
+    activityChannels: string[]
+    activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
+    topSenders: Array<{ sender: string; messageCount: number; channels: number }>
+  } | null>(null)
+  useEffect(() => {
+    api.channels().then(d => setChannels([...(d ?? [])].filter(c => c.name && c.name !== c.hash).sort((a, b) => b.messageCount - a.messageCount)))
+    api.analyticsChannels().then(setAnalytics)
+  }, [])
+
+  if (!channels) return <TabLoading />
+
+  const chColor = (name: string, i: number) => name === 'Other' ? md3.outline : PALETTE[i % PALETTE.length]
+  const actChart = (analytics?.activity ?? []).map((h, i) => ({ label: h.label, displayLabel: i % 4 === 0 ? h.label : '', ...h.counts }))
 
   const total = channels.reduce((s, c) => s + c.messageCount, 0)
 
@@ -493,7 +522,7 @@ function ChannelsTab() {
         ))}
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
         <ChartCard title={t('analytics.channelActivity')} Icon={ForumIcon}>
           <ResponsiveContainer width="100%" height={Math.max(160, channels.length * 30)}>
             <BarChart data={channels.map(c => ({ name: c.name || c.hash.slice(0, 10), count: c.messageCount }))} layout="vertical">
@@ -526,8 +555,46 @@ function ChannelsTab() {
         </ChartCard>
       </Box>
 
+      {analytics && (analytics.activityChannels.length > 0 || analytics.topSenders.length > 0) && (
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mt: 2 }}>
+          {analytics.activityChannels.length > 0 && (
+            <ChartCard title={t('analytics.messagesPerHourByChannel')} Icon={ShowChartIcon}>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={actChart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+                  <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
+                  <YAxis tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                    labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {analytics.activityChannels.map((ch, i) => (
+                    <Area key={ch} type="monotone" dataKey={ch} stackId="1" stroke={chColor(ch, i)} fill={chColor(ch, i)} fillOpacity={0.35} strokeWidth={1.5} />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          )}
+
+          {analytics.topSenders.length > 0 && (
+            <ChartCard title={t('analytics.topSenders')} Icon={LeaderboardIcon}>
+              <ResponsiveContainer width="100%" height={Math.max(160, analytics.topSenders.length * 26)}>
+                <BarChart data={analytics.topSenders.map(s => ({ name: s.sender, count: s.messageCount, channels: s.channels }))} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
+                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                    formatter={(v: unknown, _: unknown, e: { payload?: { channels?: number } }) => [`${Number(v).toLocaleString()} (${e.payload?.channels ?? 0} ch)`, t('analytics.totalMessages')]} />
+                  <Bar dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          )}
+        </Box>
+      )}
+
       <ChartCard title={t('analytics.channelRoster')} Icon={LeaderboardIcon} sx={{ mt: 2 }}>
-        <Table size="small">
+        <Box sx={{ overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 520 }}>
           <TableHead>
             <TableRow>
               {['#', t('analytics.channelCol'), t('packets.hash'), t('analytics.totalMessages'), t('analytics.share')].map(h => <TableCell key={h}>{h}</TableCell>)}
@@ -550,6 +617,7 @@ function ChannelsTab() {
             ))}
           </TableBody>
         </Table>
+        </Box>
       </ChartCard>
     </Box>
   )
@@ -560,17 +628,20 @@ function HashesTab() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
 
+  const navigate = useNavigate()
+
   type HashStats = {
     sizeDistribution: Record<string, number>
     byRole: Record<string, Record<string, number>>
     overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
     multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
+    inconsistentHashes: Array<{ pubKey: string; name: string; role: string; currentHash: string; currentSize: number; sizesSeen: number[] }>
   }
 
   const [data, setData] = useState<HashStats | null>(null)
   useEffect(() => { api.analyticsHashes().then(setData) }, [])
 
-  if (!data) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>Loading…</Typography>
+  if (!data) return <TabLoading />
 
   const HASH_COLORS: Record<string, string> = { '1': '#22c55e', '2': '#f59e0b', '3': '#ec4899', '4+': md3.primary }
 
@@ -689,8 +760,67 @@ function HashesTab() {
           </Table>
         </ChartCard>
       )}
+
+      {(data.inconsistentHashes?.length ?? 0) > 0 && (
+        <ChartCard title={t('analytics.inconsistentHashTitle')} Icon={WarningAmberIcon} sx={{ mt: 2 }}>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 1.5, lineHeight: 1.5 }}>
+            {t('analytics.inconsistentHashDesc1')}
+            <Link href="https://github.com/meshcore-dev/MeshCore/commit/fcfdc5f" target="_blank" rel="noopener" sx={{ color: md3.primary }}>{t('analytics.inconsistentHashFirmwareBug')}</Link>
+            {t('analytics.inconsistentHashDesc2')}
+            <Link href="https://github.com/meshcore-dev/MeshCore/releases/tag/repeater-v1.14.1" target="_blank" rel="noopener" sx={{ color: md3.primary }}>repeater v1.14.1</Link>
+            {t('analytics.inconsistentHashDesc3')}
+          </Typography>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 560 }}>
+              <TableHead>
+                <TableRow>
+                  {[t('common.name'), t('common.role'), t('analytics.inconsistentHashCurrent'), t('analytics.inconsistentHashSizesSeen')].map(h => <TableCell key={h}>{h}</TableCell>)}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {data.inconsistentHashes.map(n => {
+                  const rc = n.role === 'repeater' ? '#dc2626' : n.role === 'room' ? '#0ea5e9' : md3.outline
+                  return (
+                    <TableRow key={n.pubKey}>
+                      <TableCell>
+                        <Box component="span" onClick={() => navigate(`/nodes/${encodeURIComponent(n.pubKey)}?section=node-packets`)}
+                          sx={{ fontWeight: 600, color: md3.primary, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
+                          {n.name || n.pubKey.slice(0, 12)}
+                        </Box>
+                      </TableCell>
+                      <TableCell><Chip label={n.role} size="small" sx={{ background: alpha(rc, 0.15), color: rc, fontSize: 11, height: 20 }} /></TableCell>
+                      <TableCell>
+                        <Box component="code" sx={{ fontFamily: 'monospace', fontWeight: 700, color: md3.onSurface }}>{n.currentHash}</Box>
+                        <Box component="span" sx={{ color: md3.outline, ml: 0.75, fontSize: 11 }}>({n.currentSize}B)</Box>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {n.sizesSeen.map(sz => {
+                            const sc = HASH_SIZE_BADGE[sz] ?? { bg: md3.primary, fg: '#fff' }
+                            return <Chip key={sz} label={`${sz}B`} size="small" sx={{ background: sc.bg, color: sc.fg, fontSize: 10, height: 18, fontFamily: 'monospace', '& .MuiChip-label': { px: 0.75 } }} />
+                          })}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </Box>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mt: 1 }}>
+            {t('analytics.inconsistentHashAffected', { count: data.inconsistentHashes.length })}
+          </Typography>
+        </ChartCard>
+      )}
     </Box>
   )
+}
+
+// Self-hash size badge palette used by the inconsistent-hash table.
+const HASH_SIZE_BADGE: Record<number, { bg: string; fg: string }> = {
+  1: { bg: '#f97316', fg: '#fff' },
+  2: { bg: '#86efac', fg: '#064e3b' },
+  3: { bg: '#16a34a', fg: '#fff' },
 }
 
 // ── Distance / Hop Analytics ──────────────────────────────────────────────────
@@ -722,7 +852,7 @@ function DistanceTab() {
   const [data, setData] = useState<DistData | null>(null)
   useEffect(() => { api.analyticsDistance().then(setData) }, [])
 
-  if (!data) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
+  if (!data) return <TabLoading />
   if (data.pathsAnalyzed === 0 && data.byLinkType.direct === 0)
     return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noDistData')}</Typography>
 
@@ -980,7 +1110,7 @@ function ScopeTab() {
   const [data, setData] = useState<ScopeData | null>(null)
   useEffect(() => { api.analyticsScope().then(setData) }, [])
 
-  if (!data) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('common.loading')}</Typography>
+  if (!data) return <TabLoading />
 
   const knownScopes = data.distribution.filter(d => d.scope !== 'unknown')
   const unknownBucket = data.distribution.find(d => d.scope === 'unknown')
@@ -1114,6 +1244,35 @@ function ScopeTab() {
 }
 
 // ── shared helpers ────────────────────────────────────────────────────────────
+// Animated placeholder shown while a tab's data is loading — a row of stat-pill
+// skeletons plus two chart-card skeletons, mirroring the real tab layouts.
+function TabLoading() {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const shimmer = alpha(md3.onSurface, 0.06)
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} variant="rounded" animation="wave" width={150} height={46} sx={{ borderRadius: 2, bgcolor: shimmer }} />
+        ))}
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <Skeleton variant="rounded" animation="wave" width={26} height={26} sx={{ bgcolor: shimmer }} />
+                <Skeleton variant="text" animation="wave" width={170} sx={{ bgcolor: shimmer }} />
+              </Box>
+              <Skeleton variant="rounded" animation="wave" height={220} sx={{ bgcolor: shimmer }} />
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
+    </Box>
+  )
+}
+
 function ChartCard({ title, Icon, children, sx }: { title: string; Icon?: SvgIconComponent; children: React.ReactNode; sx?: object }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   return (

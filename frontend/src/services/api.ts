@@ -108,7 +108,15 @@ export const api = {
       byRole: Record<string, Record<string, number>>
       overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
       multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
+      inconsistentHashes: Array<{ pubKey: string; name: string; role: string; currentHash: string; currentSize: number; sizesSeen: number[] }>
     }>('/api/analytics/hashes'),
+
+  analyticsChannels: () =>
+    get<{
+      activityChannels: string[]
+      activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
+      topSenders: Array<{ sender: string; messageCount: number; channels: number }>
+    }>('/api/analytics/channels'),
 
   observerAnalytics: (id: string, days = 7) =>
     get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),
