@@ -893,28 +893,110 @@ func parseTimeToTime(s string) time.Time {
 	return time.Time{}
 }
 
-// TopNodes returns nodes sorted by advert count descending, capped at limit.
-func (s *Store) TopNodes(limit int) []*Node {
+// TopNodes returns nodes sorted by advert count descending (the default), or by
+// retransmit count when by == "retransmits", capped at limit. The second return
+// value maps every node's pubKey to its retransmit count so callers can display
+// it regardless of the sort.
+func (s *Store) TopNodes(limit int, by string) ([]*Node, map[string]int) {
+	// Computed first (takes its own read lock) so we don't nest RLocks.
+	retx := s.RetransmitCounts()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	nodes := make([]*Node, 0, len(s.nodes))
 	for _, n := range s.nodes {
 		nodes = append(nodes, n)
 	}
+	rank := func(n *Node) int {
+		if by == "retransmits" {
+			return retx[n.PubKey]
+		}
+		return n.AdvertCount
+	}
 	// simple selection sort (small dataset)
 	for i := 0; i < len(nodes) && i < limit; i++ {
 		best := i
 		for j := i + 1; j < len(nodes); j++ {
-			if nodes[j].AdvertCount > nodes[best].AdvertCount {
+			if rank(nodes[j]) > rank(nodes[best]) {
 				best = j
 			}
 		}
 		nodes[i], nodes[best] = nodes[best], nodes[i]
 	}
 	if limit < len(nodes) {
-		return nodes[:limit]
+		nodes = nodes[:limit]
 	}
-	return nodes
+	return nodes, retx
+}
+
+// RetransmitCounts returns, per node pubKey, the number of distinct packets in
+// which the node appears as a relay (path) hop — i.e. packets it retransmitted.
+func (s *Store) RetransmitCounts() map[string]int {
+	return cachedAnalytics(s, "retransmitCounts", s.computeRetransmitCounts)
+}
+
+func (s *Store) computeRetransmitCounts() map[string]int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Distinct hop lengths (in hex chars) present across all observed paths. A
+	// path hop is a node's routing-hash prefix, usually a single byte.
+	lengths := make(map[int]bool)
+	for _, tx := range s.packets {
+		for _, o := range tx.Observations {
+			var hops []string
+			if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
+				continue
+			}
+			for _, h := range hops {
+				if isHexHop(h) {
+					lengths[len(h)] = true
+				}
+			}
+		}
+	}
+
+	// Index node pubKeys by their leading hex prefix at every observed hop length
+	// so a hop can be matched to candidate nodes without scanning every node. A
+	// short hop may collide with several pubKeys; each candidate is credited,
+	// which is the inherent limit of matching by hash prefix.
+	prefixIndex := make(map[string][]string)
+	for pk := range s.nodes {
+		lpk := strings.ToLower(pk)
+		for l := range lengths {
+			if len(lpk) >= l {
+				prefixIndex[lpk[:l]] = append(prefixIndex[lpk[:l]], pk)
+			}
+		}
+	}
+
+	counts := make(map[string]int)
+	credited := make(map[string]bool)
+	for _, tx := range s.packets {
+		// Count each node at most once per packet, even if several observers
+		// reported the same path or the node appears in multiple observations.
+		for k := range credited {
+			delete(credited, k)
+		}
+		for _, o := range tx.Observations {
+			var hops []string
+			if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
+				continue
+			}
+			for _, h := range hops {
+				if !isHexHop(h) {
+					continue
+				}
+				for _, pk := range prefixIndex[strings.ToLower(h)] {
+					if !credited[pk] {
+						credited[pk] = true
+						counts[pk]++
+					}
+				}
+			}
+		}
+	}
+	return counts
 }
 
 // TopObservers returns observers sorted by packet count descending, capped at limit.

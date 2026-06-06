@@ -387,10 +387,13 @@ func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20)
-	nodes := s.Store.TopNodes(limit)
+	sortBy := r.URL.Query().Get("sort") // "" | "adverts" | "retransmits"
+	nodes, retx := s.Store.TopNodes(limit, sortBy)
 	out := make([]nodeSummary, 0, len(nodes))
 	for _, n := range nodes {
-		out = append(out, summarizeNode(n))
+		ns := summarizeNode(n)
+		ns.RetransmitCount = retx[n.PubKey]
+		out = append(out, ns)
 	}
 	writeJSON(w, out)
 }
@@ -512,6 +515,7 @@ type nodeSummary struct {
 	LastSeen    string   `json:"lastSeen"`
 	FirstSeen   string   `json:"firstSeen"`
 	AdvertCount int      `json:"advertCount"`
+	RetransmitCount int  `json:"retransmitCount,omitempty"`
 	BatteryMv   *int     `json:"batteryMv,omitempty"`
 	TempC       *float64 `json:"temperatureC,omitempty"`
 }

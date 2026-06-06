@@ -8,6 +8,8 @@ import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import RouterIcon from '@mui/icons-material/Router'
@@ -51,6 +53,7 @@ export default function Home() {
   const [stats,     setStats]     = useState<OverviewStats | null>(null)
   const [activity,  setActivity]  = useState<Array<{ hour: string; label: string; count: number }>>([])
   const [topNodes,  setTopNodes]  = useState<Node[]>([])
+  const [topSort,   setTopSort]   = useState<'adverts' | 'retransmits'>('adverts')
   const [observers, setObservers] = useState<Observer[]>([])
   const [recent,    setRecent]    = useState<Packet[]>([])
   const [rf,        setRF]        = useState<{ snrSummary: { avg: number }; rssiSummary: { avg: number }; totalObservations: number } | null>(null)
@@ -84,11 +87,15 @@ export default function Home() {
       }
     })
     api.analyticsActivity(24).then(d => setActivity(d ?? []))
-    api.analyticsNodesTop(6).then(d => setTopNodes(d ?? []))
     api.observers().then(r => setObservers(r.observers ?? []))
     api.packets(6, 0).then(r => setRecent(r.packets ?? []))
     api.analyticsRF().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
+
+  // top nodes — refetch when the ranking metric changes
+  useEffect(() => {
+    api.analyticsNodesTop(6, topSort).then(d => setTopNodes(d ?? []))
+  }, [topSort])
 
   // live packet stream
   useEffect(() => {
@@ -331,14 +338,24 @@ export default function Home() {
 
           {/* Top nodes */}
           <Card>
-            <Box onClick={() => navigate('/nodes')} sx={{ px: 2, pt: 2, pb: 0.5, cursor: 'pointer' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ px: 2, pt: 2, pb: 0.5 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
+                <Box onClick={() => navigate('/nodes')} sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}>
                   <SectionIcon Icon={EmojiEventsIcon} color="#f59e0b" />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{t('home.topNodes')}</Typography>
                 </Box>
-                <Typography variant="caption" sx={{ color: md3.primary }}>{t('common.viewAll')} →</Typography>
+                <Typography onClick={() => navigate('/nodes')} variant="caption" sx={{ color: md3.primary, cursor: 'pointer' }}>{t('common.viewAll')} →</Typography>
               </Box>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={topSort}
+                onChange={(_, v) => v && setTopSort(v)}
+                sx={{ mb: 0.5, '& .MuiToggleButton-root': { py: 0.25, px: 1, fontSize: 11, textTransform: 'none', lineHeight: 1.4 } }}
+              >
+                <ToggleButton value="adverts">{t('common.adverts')}</ToggleButton>
+                <ToggleButton value="retransmits">{t('common.retransmits')}</ToggleButton>
+              </ToggleButtonGroup>
             </Box>
             <Box sx={{ px: 2, pb: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
               {topNodes.length === 0 && (
@@ -381,12 +398,14 @@ export default function Home() {
                       </Box>
                     </Box>
 
-                    {/* Advert count badge */}
+                    {/* Ranking metric badge */}
                     <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
                       <Typography sx={{ fontSize: 16, fontWeight: 800, color, lineHeight: 1 }}>
-                        {n.advertCount}
+                        {topSort === 'retransmits' ? (n.retransmitCount ?? 0) : n.advertCount}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: md3.outline, fontSize: 9 }}>{t('common.adverts').toLowerCase()}</Typography>
+                      <Typography variant="caption" sx={{ color: md3.outline, fontSize: 9 }}>
+                        {(topSort === 'retransmits' ? t('common.retransmits') : t('common.adverts')).toLowerCase()}
+                      </Typography>
                     </Box>
                   </Box>
                 )

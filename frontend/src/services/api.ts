@@ -63,8 +63,8 @@ export const api = {
   analyticsActivity: (hours = 24) =>
     get<Array<{ hour: string; label: string; count: number }>>(`/api/analytics/activity?hours=${hours}`),
 
-  analyticsNodesTop: (limit = 20) =>
-    get<import('../types').Node[]>(`/api/analytics/nodes-top?limit=${limit}`),
+  analyticsNodesTop: (limit = 20, sort: 'adverts' | 'retransmits' = 'adverts') =>
+    get<import('../types').Node[]>(`/api/analytics/nodes-top?limit=${limit}&sort=${sort}`),
 
   analyticsObserversTop: (limit = 20) =>
     get<import('../types').Observer[]>(`/api/analytics/observers-top?limit=${limit}`),

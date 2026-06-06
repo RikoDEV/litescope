@@ -58,6 +58,7 @@ export interface Node {
   lastSeen: string
   firstSeen: string
   advertCount: number
+  retransmitCount?: number
   batteryMv?: number
   temperatureC?: number
 }
