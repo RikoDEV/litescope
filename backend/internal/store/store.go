@@ -912,11 +912,15 @@ func parseTimeToTime(s string) time.Time {
 
 // TopNodes returns nodes sorted by advert count descending (the default), or by
 // retransmit count when by == "retransmits", capped at limit. The second return
-// value maps every node's pubKey to its retransmit count so callers can display
-// it regardless of the sort.
+// value maps the returned nodes' pubKeys to their retransmit count for display.
 func (s *Store) TopNodes(limit int, by string) ([]*Node, map[string]int) {
-	// Computed first (takes its own read lock) so we don't nest RLocks.
-	retx := s.RetransmitCounts()
+	// Retransmit counts require a full packet scan, so only pay that cost when
+	// the caller actually sorts by (or needs) them. Computed first — it takes its
+	// own read lock — so we don't nest RLocks.
+	retx := map[string]int{}
+	if by == "retransmits" {
+		retx = s.RetransmitCounts()
+	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()

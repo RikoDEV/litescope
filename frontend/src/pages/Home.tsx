@@ -92,9 +92,14 @@ export default function Home() {
     api.analyticsRF().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
 
-  // top nodes — refetch when the ranking metric changes
+  // top nodes — refetch when the ranking metric changes. Guard against stale
+  // responses: this endpoint is slow (it computes retransmit counts), so the
+  // mount request and a quick toggle can resolve out of order — without this the
+  // older response could overwrite the list with the wrong ranking.
   useEffect(() => {
-    api.analyticsNodesTop(6, topSort).then(d => setTopNodes(d ?? []))
+    let cancelled = false
+    api.analyticsNodesTop(6, topSort).then(d => { if (!cancelled) setTopNodes(d ?? []) })
+    return () => { cancelled = true }
   }, [topSort])
 
   // live packet stream
