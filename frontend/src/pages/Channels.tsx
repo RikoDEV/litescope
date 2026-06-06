@@ -330,19 +330,6 @@ export default function Channels() {
     if (messages.length) decryptBatch(messages, storedKeys)
   }, [storedKeys]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep the selected channel's list count in sync with the messages we can
-  // actually decrypt. The server counts every packet that shares the 1-byte
-  // channel hash (including other, colliding channels), so for a keyed channel
-  // that total is inflated; the readable count reflects this channel's real
-  // messages. Only applied once the channel is keyed (something decrypts).
-  useEffect(() => {
-    if (!selected) return
-    const readable = messages.filter(m => decrypted[m.id] || m.decoded?.decryptionStatus === 'decrypted').length
-    if (readable === 0) return
-    setChannels(prev => prev.map(ch =>
-      ch.hash === selected.hash && ch.messageCount !== readable ? { ...ch, messageCount: readable } : ch))
-  }, [decrypted, messages, selected])
-
   const persistKeys = (k: StoredKey[]) => { setStoredKeys(k); saveKeys(k) }
 
   const showSidebar = !isMobile || (!selected && !showKeyMgr)

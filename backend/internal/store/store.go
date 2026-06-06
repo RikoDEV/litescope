@@ -518,11 +518,21 @@ func (s *Store) ObserverByID(id string) *Observer {
 	return s.observers[id]
 }
 
-// Channels returns all unique channel hashes seen in GRP_TXT packets.
+// Channels returns all unique channel hashes seen in GRP_TXT packets. The
+// channel hash is a single byte, so many distinct channels collide on it; a raw
+// per-hash packet count is therefore inflated for any channel we can actually
+// read. When at least one packet for a hash decrypted, MessageCount reports the
+// decrypted ("readable") count instead — the real number of messages for that
+// channel. Hashes we never decrypted (no key on the server) fall back to the raw
+// count, since we can't tell the colliding channels apart.
 func (s *Store) Channels() []ChannelSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	counts := make(map[string]*ChannelSummary)
+	type acc struct {
+		total, decrypted int
+		name             string
+	}
+	accs := make(map[string]*acc)
 	for _, tx := range s.packets {
 		if tx.PayloadType != 5 { // GRP_TXT
 			continue
@@ -530,24 +540,31 @@ func (s *Store) Channels() []ChannelSummary {
 		if tx.ChannelHash == "" {
 			continue
 		}
-		cs, ok := counts[tx.ChannelHash]
+		a, ok := accs[tx.ChannelHash]
 		if !ok {
-			cs = &ChannelSummary{Hash: tx.ChannelHash, Name: tx.ChannelHash}
-			counts[tx.ChannelHash] = cs
+			a = &acc{name: tx.ChannelHash}
+			accs[tx.ChannelHash] = a
 		}
-		cs.MessageCount++
-		// Upgrade name from hash to real name as soon as any packet carries it.
-		if cs.Name == cs.Hash {
-			if dec := tx.Decoded(); dec != nil {
+		a.total++
+		if dec := tx.Decoded(); dec != nil {
+			if status, _ := dec["decryptionStatus"].(string); status == "decrypted" {
+				a.decrypted++
+			}
+			// Upgrade name from hash to real name as soon as any packet carries it.
+			if a.name == tx.ChannelHash {
 				if ch, ok2 := dec["channel"].(string); ok2 && ch != "" {
-					cs.Name = ch
+					a.name = ch
 				}
 			}
 		}
 	}
-	out := make([]ChannelSummary, 0, len(counts))
-	for _, cs := range counts {
-		out = append(out, *cs)
+	out := make([]ChannelSummary, 0, len(accs))
+	for hash, a := range accs {
+		count := a.total
+		if a.decrypted > 0 {
+			count = a.decrypted
+		}
+		out = append(out, ChannelSummary{Hash: hash, Name: a.name, MessageCount: count})
 	}
 	return out
 }
