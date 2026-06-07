@@ -27,6 +27,7 @@ import NodeDetailPanel from '../components/NodeDetailPanel'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
 import { passesGeo, selectedCountries } from '../utils/regions'
+import { ROLE_GLYPH, roleColor as roleColorFn, roleMarkerSvg } from '../utils/roles'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -42,14 +43,8 @@ const LH_MS: Record<string, number> = {
   '1h': 3600e3, '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*24*3600e3, '30d': 30*24*3600e3,
 }
 
-const roleShapes: Record<string, (color: string, op: number, stroke: string) => string> = {
-  repeater:  (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,10 10,19 1,10" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
-  companion: (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><circle cx="10" cy="10" r="8" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
-  room:      (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 17.6,5.5 17.6,14.5 10,19 2.4,14.5 2.4,5.5" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
-  sensor:    (c, o, s) => `<svg width="20" height="20" style="opacity:${o}"><polygon points="10,1 19,18 1,18" fill="${c}" stroke="${s}" stroke-width="1.5"/></svg>`,
-}
-
-const ROLE_SHAPES: Record<string, string> = { repeater: '◆', companion: '●', room: '■', sensor: '▲' }
+// Canonical role symbols/colours/markers are shared app-wide via utils/roles.
+const ROLE_SHAPES = ROLE_GLYPH
 
 
 export default function MapView() {
@@ -109,7 +104,7 @@ export default function MapView() {
   // pubKey → byte size of its most recent advert packet (built from VCR buffer)
   const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
 
-  const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
+  const roleColor = (r: string) => roleColorFn(r, md3)
 
   // Shared ref so the markercluster iconCreateFunction (a static closure) can read live theme values
   const clusterCtxRef = useRef({ mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface })
@@ -127,8 +122,7 @@ export default function MapView() {
   function makeIcon(role: string, active: boolean, label?: string) {
     const color  = roleColor(role)
     const stroke = theme.palette.mode === 'dark' ? '#111827' : '#ffffff'
-    const fn     = roleShapes[role] ?? roleShapes.companion
-    const svg    = fn(color, active ? 1 : 0.35, stroke)
+    const svg    = roleMarkerSvg(role, color, active ? 1 : 0.35, stroke)
     const isDark = theme.palette.mode === 'dark'
     const labelBg     = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)'
     const labelBorder = isDark ? '' : `border:1px solid ${color}44;`

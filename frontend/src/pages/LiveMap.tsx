@@ -22,6 +22,7 @@ import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hasValidLocation, validLatLon } from '../utils/geo'
+import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
 import { parseHops } from '../utils/packets'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -37,10 +38,6 @@ const MAX_RINGS   = 6      // max concentric rings drawn
 const HOP_RADIUS  = 40     // px per hop ring
 const MIN_RADIUS  = 40     // minimum outermost radius
 const DOT_RADIUS  = 3.5    // px, traveling dot size
-
-const roleColors: Record<string, string> = {
-  repeater: '#818cf8', companion: '#34d399', room: '#22c55e', sensor: '#fbbf24',
-}
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -157,7 +154,9 @@ export default function LiveMap() {
   // ── Map init ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapDiv.current || mapRef.current) return
-    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: false })
+    // preferCanvas keeps the many ungrouped node markers on a single canvas so
+    // zoom/pan stays smooth (DOM markers repaint every frame and lag badly).
+    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: false, preferCanvas: true })
 
     // Tile layer added by the theme-aware effect below
 
@@ -199,10 +198,10 @@ export default function LiveMap() {
     const latlngs: L.LatLngExpression[] = []
     nodes.forEach(n => {
       if (!hasValidLocation(n.lat, n.lon)) return
-      const color = roleColors[n.role] ?? '#64748b'
+      const color = roleColor(n.role, md3)
       const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
       const marker = L.circleMarker([n.lat!, n.lon!], {
-        radius: 3.5, color: '#0f172a', weight: 1,
+        radius: 3.5, color: theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff', weight: 1,
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
       }).bindTooltip(n.name || n.pubKey.slice(0, 12), { permanent: false, direction: 'top', offset: [0, -8] })
       layer.addLayer(marker)
@@ -211,7 +210,7 @@ export default function LiveMap() {
     if (map && latlngs.length > 0 && map.getZoom() === 2) {
       map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes])
+  }, [nodes, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Create trace from packet ─────────────────────────────────────────────
   const createTrace = useCallback((pkt: Packet) => {
@@ -396,10 +395,12 @@ export default function LiveMap() {
       for (const node of nodesRef.current) {
         if (!involvedKeys.has(node.pubKey)) continue
         if (!hasValidLocation(node.lat, node.lon)) continue
-        const color = roleColors[node.role] ?? '#64748b'
-        L.circleMarker([node.lat!, node.lon!], {
-          radius: 8, color: '#fff', weight: 2.5, fillColor: color, fillOpacity: 1,
+        const color = roleColor(node.role, md3)
+        const icon = L.divIcon({
+          html: roleMarkerSvg(node.role, color, 1, '#ffffff', 22),
+          className: '', iconSize: [22, 22], iconAnchor: [11, 11],
         })
+        L.marker([node.lat!, node.lon!], { icon })
           .bindTooltip(node.name || node.pubKey.slice(0, 12), { permanent: true, direction: 'top', offset: [0, -12] })
           .addTo(replayMarkers)
       }
@@ -767,9 +768,9 @@ export default function LiveMap() {
               </Box>
             ))}
             <Box sx={{ height: '1px', background: alpha(md3.outlineVariant, 0.4), my: 0.25 }} />
-            {Object.entries(roleColors).map(([role, color]) => (
+            {ROLES.map(role => (
               <Box key={role} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                <Box component="span" sx={{ width: 12, textAlign: 'center', color: roleColor(role, md3), fontSize: 11, lineHeight: 1 }}>{ROLE_GLYPH[role]}</Box>
                 <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, textTransform: 'capitalize' }}>{role}</Typography>
               </Box>
             ))}

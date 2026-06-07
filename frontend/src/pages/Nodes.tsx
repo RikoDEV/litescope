@@ -26,6 +26,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 import { isNodeActive as isActive } from '../utils/nodes'
+import { roleColor as roleColorFn } from '../utils/roles'
 
 type SortCol = 'name' | 'role' | 'lastSeen' | 'advertCount'
 
@@ -139,10 +140,7 @@ export default function Nodes() {
     else { setSortCol(col); setSortDir('desc') }
   }
 
-  const roleColor = (role: string) => ({
-    repeater: md3.primary, companion: md3.tertiary, room: '#22c55e',
-    sensor: '#f59e0b', none: md3.outline,
-  }[role] ?? md3.outline)
+  const roleColor = (role: string) => roleColorFn(role, md3)
 
   const sortArrow = (col: SortCol) => sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
 

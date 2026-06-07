@@ -18,6 +18,7 @@ import type { Node, NodeOverview, RFStats } from '../types'
 import { PAYLOAD_NAMES } from '../types'
 import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
+import { roleColor as roleColorFn } from '../utils/roles'
 import L from 'leaflet'
 
 function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: string }) {
@@ -56,10 +57,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
   const navigate = useNavigate()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
-  const roleColor = (role: string) => ({
-    repeater: md3.primary, companion: md3.tertiary, room: '#22c55e',
-    sensor: '#f59e0b', none: md3.outline,
-  }[role] ?? md3.outline)
+  const roleColor = (role: string) => roleColorFn(role, md3)
 
   const snrBuckets  = rf?.snr?.length  ? bucketize(rf.snr,  -25, 15,   8) : []
   const rssiBuckets = rf?.rssi?.length ? bucketize(rf.rssi, -120, -40, 8) : []

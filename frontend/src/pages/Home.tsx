@@ -29,17 +29,7 @@ import { PAYLOAD_NAMES, PAYLOAD_COLORS, PAYLOAD_ICONS } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { IataFlag } from '../utils/flags'
-
-const ROLE_COLOR: Record<string, string> = {
-  repeater: '#7c3aed', companion: '#0ea5e9', room: '#22c55e', sensor: '#f59e0b',
-}
-const ROLE_SHAPE: Record<string, string> = {
-  repeater: '◆', companion: '●', room: '⬡', sensor: '▲',
-}
-
-function roleColor(r: string, md3Primary: string) {
-  return ROLE_COLOR[r] ?? md3Primary
-}
+import { ROLE_GLYPH, roleColor } from '../utils/roles'
 
 // ── component ─────────────────────────────────────────────────────────────────
 export default function Home() {
@@ -367,7 +357,7 @@ export default function Home() {
                 <Typography variant="body2" sx={{ color: md3.outline, py: 2, textAlign: 'center' }}>{t('home.noNodes')}</Typography>
               )}
               {topNodes.map((n, i) => {
-                const color  = roleColor(n.role, md3.primary)
+                const color  = roleColor(n.role, md3)
                 const active = isActive(n)
                 return (
                   <Box key={n.pubKey} onClick={() => navigate(`/nodes/${n.pubKey}`)} sx={{
@@ -382,7 +372,7 @@ export default function Home() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       <Typography sx={{ fontSize: 14, color, lineHeight: 1 }}>
-                        {ROLE_SHAPE[n.role] ?? '●'}
+                        {ROLE_GLYPH[n.role] ?? '●'}
                       </Typography>
                     </Box>
 

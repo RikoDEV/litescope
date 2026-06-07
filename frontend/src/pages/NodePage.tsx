@@ -27,11 +27,9 @@ import { PAYLOAD_NAMES } from '../types'
 import { hashColor } from '../utils/colors'
 import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
+import { roleColor } from '../utils/roles'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function roleColor(role: string, md3: Record<string, string>) {
-  return ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b', none: md3.outline }[role] ?? md3.outline)
-}
 
 function buildActivityChart(packets: Packet[]): Array<{ label: string; count: number }> {
   const now = Date.now()
@@ -172,7 +170,7 @@ export default function NodePage() {
     )
   }
 
-  const color       = roleColor(node.role, md3 as Record<string, string>)
+  const color       = roleColor(node.role, md3)
   const active      = isActive(node)
   const snrBuckets  = rf?.snr?.length  ? bucketize(rf.snr,  -25, 15,   10) : []
   const rssiBuckets = rf?.rssi?.length ? bucketize(rf.rssi, -120, -40, 10) : []

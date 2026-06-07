@@ -48,6 +48,7 @@ import { bucketize } from '../utils/stats'
 import HashMatrix from '../components/HashMatrix'
 import RegionFilter from '../components/RegionFilter'
 import { selectedCountries } from '../utils/regions'
+import { roleColor as roleColorFn } from '../utils/roles'
 
 /** Props every analytics tab receives: the active filter + a string key to use in effect deps. */
 interface TabProps { params: AnalyticsParams; filterKey: string }
@@ -400,11 +401,14 @@ function NodesTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [nodes, setNodes] = useState<Node[] | null>(null)
-  useEffect(() => { api.analyticsNodesTop(25, 'adverts', params).then(d => setNodes(d ?? [])) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [topSort, setTopSort] = useState<'adverts' | 'retransmits'>('adverts')
+  useEffect(() => { api.analyticsNodesTop(25, topSort, params).then(d => setNodes(d ?? [])) }, [filterKey, topSort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!nodes) return <TabLoading />
 
-  const roleColor = (r: string) => ({ repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }[r] ?? md3.outline)
+  const roleColor = (r: string) => roleColorFn(r, md3)
+  const metric = (n: Node) => topSort === 'retransmits' ? (n.retransmitCount ?? 0) : n.advertCount
+  const metricLabel = topSort === 'retransmits' ? t('common.retransmits') : t('common.adverts')
   const roleCounts: Record<string, number> = {}
   for (const n of nodes) roleCounts[n.role] = (roleCounts[n.role] ?? 0) + 1
   const rolePie = Object.entries(roleCounts).map(([name, value]) => ({ name, value }))
@@ -412,9 +416,14 @@ function NodesTab({ params, filterKey }: TabProps) {
   return (
     <Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 260px' }, gap: 2, mb: 2 }}>
-        <ChartCard title={t('analytics.topNodesByAdvert')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.topNodes')} Icon={BarChartIcon}>
+          <ToggleButtonGroup size="small" exclusive value={topSort} onChange={(_, v) => v && setTopSort(v)}
+            sx={{ mb: 1, '& .MuiToggleButton-root': { py: 0.25, px: 1.25, fontSize: 11, textTransform: 'none' } }}>
+            <ToggleButton value="adverts">{t('common.adverts')}</ToggleButton>
+            <ToggleButton value="retransmits">{t('common.retransmits')}</ToggleButton>
+          </ToggleButtonGroup>
           <ResponsiveContainer width="100%" height={Math.max(180, nodes.length * 26)}>
-            <BarChart data={nodes.map(n => ({ name: n.name || n.pubKey.slice(0, 8), count: n.advertCount, role: n.role }))} layout="vertical">
+            <BarChart data={nodes.map(n => ({ name: n.name || n.pubKey.slice(0, 8), count: metric(n), role: n.role }))} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: md3.onSurface }} />
@@ -444,7 +453,7 @@ function NodesTab({ params, filterKey }: TabProps) {
         <Table size="small" sx={{ minWidth: 560 }}>
           <TableHead>
             <TableRow>
-              {['#', t('common.name'), t('common.role'), t('common.adverts'), t('common.lastSeen'), t('common.location')].map(h => <TableCell key={h}>{h}</TableCell>)}
+              {['#', t('common.name'), t('common.role'), metricLabel, t('common.lastSeen'), t('common.location')].map(h => <TableCell key={h}>{h}</TableCell>)}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -453,7 +462,7 @@ function NodesTab({ params, filterKey }: TabProps) {
                 <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>{n.name || n.pubKey.slice(0, 12) + '…'}</TableCell>
                 <TableCell><Chip label={n.role} size="small" sx={{ background: alpha(roleColor(n.role), 0.15), color: roleColor(n.role), fontSize: 11, height: 20 }} /></TableCell>
-                <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{n.advertCount.toLocaleString()}</TableCell>
+                <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{metric(n).toLocaleString()}</TableCell>
                 <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{new Date(n.lastSeen).toLocaleDateString()}</TableCell>
                 <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{n.lat != null ? `${n.lat.toFixed(2)}, ${n.lon?.toFixed(2)}` : '—'}</TableCell>
               </TableRow>
