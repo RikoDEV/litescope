@@ -53,7 +53,7 @@ import { selectedCountries } from '../utils/regions'
 interface TabProps { params: AnalyticsParams; filterKey: string }
 
 const WINDOWS: { h: number; l: string }[] = [
-  { h: 0, l: 'All' }, { h: 24, l: '24h' }, { h: 72, l: '3d' }, { h: 168, l: '7d' },
+  { h: 24, l: '24h' }, { h: 72, l: '3d' }, { h: 168, l: '7d' },
 ]
 
 type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope' | 'distance'
@@ -88,14 +88,14 @@ export default function Analytics() {
   const [iatas, setIatas] = useState<string[]>([])
   const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
   const [regionLock, setRegionLock] = useState(false)
-  const [windowHours, setWindowHours] = useState(0) // 0 = all time
+  const [windowHours, setWindowHours] = useState(24) // default 24h
 
   useEffect(() => { api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {}) }, [])
 
   const params: AnalyticsParams = useMemo(() => {
     const countries = selectedCountries(regionFilter)
     return {
-      hours: windowHours || undefined,
+      hours: windowHours,
       regions: regionFilter.size ? [...regionFilter] : undefined,
       countries: countries.length ? countries : undefined,
       lock: regionLock || undefined,
