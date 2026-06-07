@@ -25,12 +25,16 @@ import TuneIcon from '@mui/icons-material/Tune'
 import CloseIcon from '@mui/icons-material/Close'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import LockIcon from '@mui/icons-material/Lock'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Packet, PacketDetail } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
 import PacketDetailPanel from '../components/PacketDetailPanel'
 import { parseHops, relativeTime, deduplicateObs } from '../utils/packets'
+import { FlagByCC } from '../utils/flags'
+import { groupCountries, passesRegion } from '../utils/regions'
+import RegionFilter from '../components/RegionFilter'
 
 const PAGE = 100
 
@@ -68,12 +72,20 @@ export default function Packets() {
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState<Set<number>>(new Set())
   const [routeFilter, setRouteFilter] = useState<number | null>(null)
+  const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
+  const [regionLock, setRegionLock]   = useState(false)
+  const [iatas, setIatas]             = useState<string[]>([])
   const [minObs, setMinObs]           = useState(1)
   const [windowMs, setWindowMs]       = useState(0)
   const [sortCol, setSortCol]         = useState<SortCol>('firstSeen')
   const [sortDir, setSortDir]         = useState<'asc' | 'desc'>('desc')
 
   const typeColor = (pt: number) => PAYLOAD_COLORS[pt] ?? md3.outline
+
+  // Region (IATA) codes grouped by ISO country, for the active-filter pills.
+  const countries = useMemo(() => groupCountries(iatas), [iatas])
+  const countrySelCount = (codes: string[]) => codes.filter(c => regionFilter.has(c)).length
+  const clearRegions = () => { setRegionFilter(new Set()); setRegionLock(false) }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -82,6 +94,7 @@ export default function Packets() {
       if (windowMs > 0 && new Date(p.firstSeen).getTime() < cutoff) return false
       if (typeFilter.size > 0 && !typeFilter.has(p.payloadType)) return false
       if (routeFilter !== null && p.routeType !== routeFilter) return false
+      if (!passesRegion(p.regions, regionFilter, regionLock)) return false
       if (p.obsCount < minObs) return false
       if (q) {
         const d = p.decoded
@@ -102,7 +115,7 @@ export default function Packets() {
         [new Date(a.firstSeen).getTime(), new Date(b.firstSeen).getTime()]
       return sortDir === 'asc' ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0)
     })
-  }, [packets, typeFilter, routeFilter, minObs, search, windowMs, sortCol, sortDir])
+  }, [packets, typeFilter, routeFilter, regionFilter, regionLock, minObs, search, windowMs, sortCol, sortDir])
 
   const toggleSort = (col: SortCol) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -121,6 +134,8 @@ export default function Packets() {
   }, [])
 
   useEffect(() => { load(0) }, [load])
+
+  useEffect(() => { api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {}) }, [])
 
   // Auto-select packet when ?hash= is present in URL
   useEffect(() => {
@@ -164,8 +179,8 @@ export default function Packets() {
     setSearchParams({ hash: p.hash }, { replace: true })
   }
 
-  const activeFilters = (typeFilter.size > 0 ? 1 : 0) + (routeFilter !== null ? 1 : 0) + (minObs > 1 ? 1 : 0) + (search ? 1 : 0) + (windowMs > 0 ? 1 : 0)
-  const clearFilters = () => { setSearch(''); setTypeFilter(new Set()); setRouteFilter(null); setMinObs(1); setWindowMs(0) }
+  const activeFilters = (typeFilter.size > 0 ? 1 : 0) + (routeFilter !== null ? 1 : 0) + (regionFilter.size > 0 ? 1 : 0) + (minObs > 1 ? 1 : 0) + (search ? 1 : 0) + (windowMs > 0 ? 1 : 0)
+  const clearFilters = () => { setSearch(''); setTypeFilter(new Set()); setRouteFilter(null); clearRegions(); setMinObs(1); setWindowMs(0) }
 
   const sortArrow = (col: SortCol) => sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
 
@@ -271,6 +286,13 @@ export default function Packets() {
               </ToggleButtonGroup>
             </Box>
 
+            {/* Region — country chips cascade to per-airport (IATA) chips */}
+            {iatas.length > 0 && (
+              <Box sx={{ mb: 1.5 }}>
+                <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter} lock={regionLock} onLockChange={setRegionLock} />
+              </Box>
+            )}
+
             <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
               <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, width: 40, flexShrink: 0 }}>{t('common.type')}</Typography>
               {ALL_TYPES.map(pt => {
@@ -319,6 +341,20 @@ export default function Packets() {
             {search && <Chip label={`"${search}"`} size="small" onDelete={() => setSearch('')} sx={{ color: md3.primary, borderColor: md3.primaryContainer }} variant="outlined" />}
             {[...typeFilter].map(t => <Chip key={t} label={PAYLOAD_NAMES[t] ?? t} size="small" onDelete={() => setTypeFilter(p => { const n = new Set(p); n.delete(t); return n })} sx={{ color: typeColor(t) }} variant="outlined" />)}
             {routeFilter !== null && <Chip label={ROUTE_LABELS[routeFilter]} size="small" onDelete={() => setRouteFilter(null)} sx={{ color: md3.secondary }} variant="outlined" />}
+            {regionFilter.size > 0 && regionLock && (
+              <Chip size="small" variant="outlined" icon={<LockIcon sx={{ fontSize: 13 }} />} label={t('packets.localOnly')}
+                onDelete={() => setRegionLock(false)} sx={{ color: md3.tertiary, '& .MuiChip-icon': { color: 'inherit' } }} />
+            )}
+            {countries.filter(c => countrySelCount(c.codes) > 0).map(({ cc, codes }) => {
+              const n = countrySelCount(codes)
+              const text = cc === 'XX' ? `🌐 ${n}` : n === codes.length ? cc : `${cc} ${n}/${codes.length}`
+              return (
+                <Chip key={cc} size="small" variant="outlined"
+                  label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>{cc !== 'XX' && <FlagByCC cc={cc} size={11} />}{text}</Box>}
+                  onDelete={() => setRegionFilter(prev => { const s = new Set(prev); codes.forEach(c => s.delete(c)); return s })}
+                  sx={{ color: md3.secondary }} />
+              )
+            })}
             {minObs > 1 && <Chip label={`obs ≥ ${minObs}`} size="small" onDelete={() => setMinObs(1)} sx={{ color: md3.tertiary }} variant="outlined" />}
             {windowMs > 0 && <Chip label={TIME_WINDOWS.find(w => w.ms === windowMs)?.label} size="small" onDelete={() => setWindowMs(0)} sx={{ color: md3.onSurface }} variant="outlined" />}
           </Box>

@@ -107,6 +107,9 @@ func main() {
 				if b.BestObserver != "" {
 					data["bestObserver"] = b.BestObserver
 				}
+				if len(b.Regions) > 0 {
+					data["regions"] = b.Regions
+				}
 				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
 				hub.Broadcast(msg)
 			}

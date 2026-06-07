@@ -55,6 +55,7 @@ type BestObs struct {
 	BestPath     []string
 	BestObserver string
 	UniqueObs    int
+	Regions      []string // distinct IATA region codes of observers that heard this packet
 }
 
 // BestObservation walks a Tx's observations once and returns the longest decoded
@@ -65,8 +66,12 @@ type BestObs struct {
 func (t *Tx) BestObservation() BestObs {
 	b := BestObs{}
 	uniq := make(map[string]struct{}, len(t.Observations))
+	regions := make(map[string]struct{}, len(t.Observations))
 	for _, o := range t.Observations {
 		uniq[o.ObserverID] = struct{}{}
+		if o.ObserverIATA != "" {
+			regions[o.ObserverIATA] = struct{}{}
+		}
 		if b.BestObserver == "" {
 			b.BestObserver = o.ObserverID
 		}
@@ -84,6 +89,13 @@ func (t *Tx) BestObservation() BestObs {
 		}
 	}
 	b.UniqueObs = len(uniq)
+	if len(regions) > 0 {
+		b.Regions = make([]string, 0, len(regions))
+		for r := range regions {
+			b.Regions = append(b.Regions, r)
+		}
+		sort.Strings(b.Regions)
+	}
 	return b
 }
 
@@ -352,6 +364,31 @@ func (s *Store) Nodes() []*Node {
 	for _, n := range s.nodes {
 		out = append(out, n)
 	}
+	return out
+}
+
+// NodeRegions returns the distinct IATA region codes of observers that have
+// heard this node's advert packets — i.e. the regions the node "belongs" to for
+// region/country filtering. Sorted ascending.
+func (s *Store) NodeRegions(pk string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	seen := make(map[string]struct{})
+	for _, tx := range s.byNode[pk] {
+		for _, o := range tx.Observations {
+			if o.ObserverIATA != "" {
+				seen[o.ObserverIATA] = struct{}{}
+			}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for r := range seen {
+		out = append(out, r)
+	}
+	sort.Strings(out)
 	return out
 }
 

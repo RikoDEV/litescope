@@ -168,7 +168,9 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	out := response{Total: len(nodes), Counts: s.Store.RoleCounts()}
 	for _, n := range nodes {
-		out.Nodes = append(out.Nodes, summarizeNode(n))
+		ns := summarizeNode(n)
+		ns.Regions = s.Store.NodeRegions(n.PubKey)
+		out.Nodes = append(out.Nodes, ns)
 	}
 	writeJSON(w, out)
 }
@@ -481,6 +483,7 @@ type packetSummary struct {
 	BestScope    string                 `json:"bestScope,omitempty"`
 	BestPath     []string               `json:"bestPath,omitempty"`
 	BestObserver string                 `json:"bestObserver,omitempty"`
+	Regions      []string               `json:"regions,omitempty"`
 	ByteSize     int                    `json:"byteSize"`
 	ChannelHash  string                 `json:"channelHash,omitempty"`
 	Decoded      map[string]interface{} `json:"decoded,omitempty"`
@@ -515,6 +518,7 @@ type nodeSummary struct {
 	LastSeen    string   `json:"lastSeen"`
 	FirstSeen   string   `json:"firstSeen"`
 	AdvertCount int      `json:"advertCount"`
+	Regions     []string `json:"regions,omitempty"`
 	RetransmitCount int  `json:"retransmitCount,omitempty"`
 	BatteryMv   *int     `json:"batteryMv,omitempty"`
 	TempC       *float64 `json:"temperatureC,omitempty"`
@@ -544,7 +548,7 @@ func summarizeTx(tx *store.Tx) packetSummary {
 		ID: tx.ID, Hash: tx.Hash, FirstSeen: tx.FirstSeen,
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
 		ObsCount: obsCount, MaxHops: b.MaxHops, HopSize: b.HopSize, BestScope: b.BestScope,
-		BestPath: b.BestPath, BestObserver: b.BestObserver,
+		BestPath: b.BestPath, BestObserver: b.BestObserver, Regions: b.Regions,
 		ByteSize: len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}

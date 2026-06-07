@@ -24,7 +24,9 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, NodeOverview, Packet, RFStats } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
+import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
+import { passesRegion } from '../utils/regions'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -99,6 +101,9 @@ export default function MapView() {
   const [byteSizeFilter, setByteSizeFilter] = useState<'all' | '1' | '2' | '3'>('all')
   const [showLabels, setShowLabels] = useState(false)
   const [quickJump, setQuickJump] = useState('')
+  const [iatas, setIatas] = useState<string[]>([])
+  const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
+  const [regionLock, setRegionLock] = useState(false)
 
   // pubKey → byte size of its most recent advert packet (built from VCR buffer)
   const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
@@ -197,6 +202,7 @@ export default function MapView() {
       }
       setNodes(nodesRes.nodes ?? [])
     })
+    api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {})
   }, [])
 
   // Sync markers with current filters
@@ -209,6 +215,7 @@ export default function MapView() {
     const passes = (n: Node) => {
       if (!hasValidLocation(n.lat, n.lon)) return false
       if (!roleVis[n.role as keyof typeof roleVis]) return false
+      if (!passesRegion(n.regions, regionFilter, regionLock)) return false
       const lastTs = new Date(n.lastSeen).getTime()
       const active = lastTs > activeCut
       if (statusFilter === 'active' && !active) return false
@@ -251,7 +258,7 @@ export default function MapView() {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels, regionFilter, regionLock, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
@@ -274,6 +281,10 @@ export default function MapView() {
         const idx   = prev.findIndex(n => n.pubKey === pubKey)
         const flags = dec.flags as { type?: number } | undefined
         const role  = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
+        // Merge the regions that heard this advert so live nodes stay filterable
+        const regions = pkt.regions?.length
+          ? [...new Set([...(idx >= 0 ? prev[idx].regions ?? [] : []), ...pkt.regions])].sort()
+          : (idx >= 0 ? prev[idx].regions : undefined)
         const updated: Node = {
           pubKey, name: name ?? pubKey.slice(0, 8), role,
           lat: lat ?? (idx >= 0 ? prev[idx].lat : null),
@@ -281,6 +292,7 @@ export default function MapView() {
           lastSeen: pkt.firstSeen,
           firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen,
           advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1,
+          regions,
         }
         if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n }
         return [...prev, updated]
@@ -367,6 +379,17 @@ export default function MapView() {
             </Box>
 
             <Divider sx={{ opacity: 0.4 }} />
+
+            {/* Region */}
+            {iatas.length > 0 && (
+              <>
+                <Box>
+                  <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('common.region')}</Typography>
+                  <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter} lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
+                </Box>
+                <Divider sx={{ opacity: 0.4 }} />
+              </>
+            )}
 
             {/* Byte Size */}
             <Box>

@@ -26,6 +26,7 @@ export interface Packet {
   bestScope?: string
   bestPath?: string[]
   bestObserver?: string
+  regions?: string[]
   byteSize: number
   channelHash?: string
   decoded?: DecodedPayload
@@ -58,6 +59,7 @@ export interface Node {
   lastSeen: string
   firstSeen: string
   advertCount: number
+  regions?: string[]
   retransmitCount?: number
   batteryMv?: number
   temperatureC?: number

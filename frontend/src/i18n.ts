@@ -101,6 +101,7 @@ const en = {
   packets: {
     count: '{{count}} packets', searchPlaceholder: 'Search hash, name, text…',
     minObs: 'Min obs', window: 'Window', hash: 'Hash', obs: 'Obs',
+    localOnly: 'Local only', localOnlyHint: 'Show only packets heard exclusively within the selected region (excludes long-distance propagation caught by your observers)',
     noPackets: 'No packets yet. Connect an observer to start.',
     noMatch: 'No packets match the current filters.',
     loadMore: 'Load more', packetDetail: 'Packet Detail', decoded: 'Decoded',
@@ -287,6 +288,7 @@ const pl: typeof en = {
   packets: {
     count: '{{count}} pakietów', searchPlaceholder: 'Szukaj hash, nazwa, tekst…',
     minObs: 'Min obs', window: 'Okno', hash: 'Hash', obs: 'Obs',
+    localOnly: 'Tylko lokalne', localOnlyHint: 'Pokaż tylko pakiety odebrane wyłącznie w wybranym regionie (pomija daleką propagację złapaną przez Twoich obserwatorów)',
     noPackets: 'Brak pakietów. Podłącz obserwatora.',
     noMatch: 'Brak pakietów pasujących do filtrów.',
     loadMore: 'Wczytaj więcej', packetDetail: 'Szczegóły pakietu', decoded: 'Zdekodowane',
@@ -473,6 +475,7 @@ const de: typeof en = {
   packets: {
     count: '{{count}} Pakete', searchPlaceholder: 'Hash, Name, Text suchen…',
     minObs: 'Min Obs', window: 'Fenster', hash: 'Hash', obs: 'Obs',
+    localOnly: 'Nur lokal', localOnlyHint: 'Nur Pakete anzeigen, die ausschließlich in der gewählten Region empfangen wurden (schließt Fernausbreitung aus, die von deinen Beobachtern erfasst wurde)',
     noPackets: 'Noch keine Pakete. Beobachter verbinden.',
     noMatch: 'Keine Pakete entsprechen den Filtern.',
     loadMore: 'Mehr laden', packetDetail: 'Paketdetails', decoded: 'Dekodiert',
@@ -646,6 +649,7 @@ const fr = {
   packets: {
     count: '{{count}} paquets', searchPlaceholder: 'Rechercher hash, nom, texte…',
     minObs: 'Obs. min', window: 'Fenêtre', hash: 'Hash', obs: 'Obs.',
+    localOnly: 'Local uniquement', localOnlyHint: 'Afficher uniquement les paquets reçus exclusivement dans la région sélectionnée (exclut la propagation longue distance captée par vos observateurs)',
     noPackets: 'Aucun paquet. Connectez un observateur.',
     noMatch: 'Aucun paquet ne correspond aux filtres.',
     loadMore: 'Charger plus', packetDetail: 'Détail paquet', decoded: 'Décodé',
@@ -813,6 +817,7 @@ const uk = {
   packets: {
     count: '{{count}} пакетів', searchPlaceholder: 'Пошук за хешем, ім\'ям, текстом…',
     minObs: 'Мін. спост.', window: 'Вікно', hash: 'Хеш', obs: 'Спост.',
+    localOnly: 'Лише локальні', localOnlyHint: 'Показувати лише пакети, отримані виключно у вибраному регіоні (виключає далеке поширення, спіймане вашими спостерігачами)',
     noPackets: 'Пакетів ще немає. Підключіть спостерігача.',
     noMatch: 'Жоден пакет не відповідає фільтрам.',
     loadMore: 'Завантажити більше', packetDetail: 'Деталі пакету', decoded: 'Декодовано',
@@ -980,6 +985,7 @@ const ru = {
   packets: {
     count: '{{count}} пакетов', searchPlaceholder: 'Поиск по хешу, имени, тексту…',
     minObs: 'Мин. набл.', window: 'Окно', hash: 'Хеш', obs: 'Набл.',
+    localOnly: 'Только локальные', localOnlyHint: 'Показывать только пакеты, принятые исключительно в выбранном регионе (исключает дальнее распространение, пойманное вашими наблюдателями)',
     noPackets: 'Пакетов ещё нет. Подключите наблюдателя.',
     noMatch: 'Ни один пакет не соответствует фильтрам.',
     loadMore: 'Загрузить ещё', packetDetail: 'Детали пакета', decoded: 'Декодировано',
@@ -1147,6 +1153,7 @@ const nl = {
   packets: {
     count: '{{count}} pakketten', searchPlaceholder: 'Zoek hash, naam, tekst…',
     minObs: 'Min. waarn.', window: 'Venster', hash: 'Hash', obs: 'Waarn.',
+    localOnly: 'Alleen lokaal', localOnlyHint: 'Toon alleen pakketten die uitsluitend binnen de geselecteerde regio zijn ontvangen (sluit langeafstandspropagatie uit die door je waarnemers is opgevangen)',
     noPackets: 'Nog geen pakketten. Verbind een waarnemer.',
     noMatch: 'Geen pakketten komen overeen.',
     loadMore: 'Meer laden', packetDetail: 'Pakketdetails', decoded: 'Gedecodeerd',
@@ -1314,6 +1321,7 @@ const es = {
   packets: {
     count: '{{count}} paquetes', searchPlaceholder: 'Buscar hash, nombre, texto…',
     minObs: 'Obs. mín.', window: 'Ventana', hash: 'Hash', obs: 'Obs.',
+    localOnly: 'Solo local', localOnlyHint: 'Mostrar solo paquetes recibidos exclusivamente en la región seleccionada (excluye la propagación de larga distancia captada por tus observadores)',
     noPackets: 'Sin paquetes aún. Conecte un observador.',
     noMatch: 'Ningún paquete coincide con los filtros.',
     loadMore: 'Cargar más', packetDetail: 'Detalle del paquete', decoded: 'Decodificado',
@@ -1481,6 +1489,7 @@ const cs = {
   packets: {
     count: '{{count}} paketů', searchPlaceholder: 'Hledat hash, název, text…',
     minObs: 'Min. poz.', window: 'Okno', hash: 'Hash', obs: 'Poz.',
+    localOnly: 'Pouze lokální', localOnlyHint: 'Zobrazit pouze pakety přijaté výhradně ve vybraném regionu (vyloučí dálkové šíření zachycené vašimi pozorovateli)',
     noPackets: 'Zatím žádné pakety. Připojte pozorovatele.',
     noMatch: 'Žádné pakety neodpovídají filtrům.',
     loadMore: 'Načíst více', packetDetail: 'Detail paketu', decoded: 'Dekódováno',
@@ -1648,6 +1657,7 @@ const sk = {
   packets: {
     count: '{{count}} paketov', searchPlaceholder: 'Hľadať hash, názov, text…',
     minObs: 'Min. poz.', window: 'Okno', hash: 'Hash', obs: 'Poz.',
+    localOnly: 'Iba lokálne', localOnlyHint: 'Zobraziť iba pakety prijaté výhradne vo vybranom regióne (vylúči diaľkové šírenie zachytené vašimi pozorovateľmi)',
     noPackets: 'Zatiaľ žiadne pakety. Pripojte pozorovateľa.',
     noMatch: 'Žiadne pakety nezodpovedajú filtrom.',
     loadMore: 'Načítať viac', packetDetail: 'Detail paketu', decoded: 'Dekódované',
@@ -1815,6 +1825,7 @@ const it = {
   packets: {
     count: '{{count}} pacchetti', searchPlaceholder: 'Cerca hash, nome, testo…',
     minObs: 'Oss. min', window: 'Finestra', hash: 'Hash', obs: 'Oss.',
+    localOnly: 'Solo locali', localOnlyHint: 'Mostra solo i pacchetti ricevuti esclusivamente nella regione selezionata (esclude la propagazione a lunga distanza captata dai tuoi osservatori)',
     noPackets: 'Nessun pacchetto. Connetti un osservatore.',
     noMatch: 'Nessun pacchetto corrisponde.',
     loadMore: 'Carica altro', packetDetail: 'Dettaglio pacchetto', decoded: 'Decodificato',
