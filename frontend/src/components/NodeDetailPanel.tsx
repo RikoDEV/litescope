@@ -15,7 +15,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 import type { Node, NodeOverview, RFStats } from '../types'
-import { PAYLOAD_NAMES } from '../types'
+import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
 import { roleColor as roleColorFn } from '../utils/roles'
@@ -161,8 +161,8 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
                       <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, flexShrink: 0 }}>
                         {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true, locale: dateLocale })}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: md3.primary, fontWeight: 600, fontSize: 11 }}>
-                        📡 {PAYLOAD_NAMES[p.payloadType] ?? p.payloadType}
+                      <Typography variant="caption" sx={{ color: PAYLOAD_COLORS[p.payloadType] ?? md3.primary, fontWeight: 600, fontSize: 11 }}>
+                        {PAYLOAD_NAMES[p.payloadType] ?? p.payloadType}
                       </Typography>
                       {p.obsCount > 0 && (
                         <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>👁 {p.obsCount}</Typography>

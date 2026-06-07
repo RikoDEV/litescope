@@ -23,7 +23,7 @@ import { useRef } from 'react'
 import L from 'leaflet'
 import { api } from '../services/api'
 import type { Node, NodeOverview, Packet, RFStats, RichPacket } from '../types'
-import { PAYLOAD_NAMES } from '../types'
+import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hashColor } from '../utils/colors'
 import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
@@ -400,7 +400,7 @@ export default function NodePage() {
                     {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true, locale: dateLocale })}
                   </Typography>
                   <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
-                    sx={{ fontSize: 10, height: 18, background: alpha(md3.primary, 0.12), color: md3.primary }} />
+                    sx={{ fontSize: 10, height: 18, background: alpha(PAYLOAD_COLORS[p.payloadType] ?? md3.primary, 0.15), color: PAYLOAD_COLORS[p.payloadType] ?? md3.primary }} />
                   {p.obsCount > 0 && (
                     <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>👁 {p.obsCount}</Typography>
                   )}
