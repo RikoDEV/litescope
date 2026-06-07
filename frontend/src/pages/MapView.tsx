@@ -26,7 +26,7 @@ import type { Node, NodeOverview, Packet, RFStats } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
-import { passesRegion } from '../utils/regions'
+import { passesGeo, selectedCountries } from '../utils/regions'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -103,7 +103,8 @@ export default function MapView() {
   const [quickJump, setQuickJump] = useState('')
   const [iatas, setIatas] = useState<string[]>([])
   const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
-  const [regionLock, setRegionLock] = useState(false)
+  // Geographic country set derived from the selected regions (strict geo-lock by node position)
+  const geoCountries = useMemo(() => new Set(selectedCountries(regionFilter)), [regionFilter])
 
   // pubKey → byte size of its most recent advert packet (built from VCR buffer)
   const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
@@ -215,7 +216,7 @@ export default function MapView() {
     const passes = (n: Node) => {
       if (!hasValidLocation(n.lat, n.lon)) return false
       if (!roleVis[n.role as keyof typeof roleVis]) return false
-      if (!passesRegion(n.regions, regionFilter, regionLock)) return false
+      if (!passesGeo(n.country, geoCountries)) return false
       const lastTs = new Date(n.lastSeen).getTime()
       const active = lastTs > activeCut
       if (statusFilter === 'active' && !active) return false
@@ -258,7 +259,7 @@ export default function MapView() {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels, regionFilter, regionLock, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels, geoCountries, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
@@ -289,6 +290,8 @@ export default function MapView() {
           pubKey, name: name ?? pubKey.slice(0, 8), role,
           lat: lat ?? (idx >= 0 ? prev[idx].lat : null),
           lon: lon ?? (idx >= 0 ? prev[idx].lon : null),
+          // Country resolved backend-side from the advert position (for geo-lock)
+          country: pkt.country ?? (idx >= 0 ? prev[idx].country : undefined),
           lastSeen: pkt.firstSeen,
           firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen,
           advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1,
@@ -385,7 +388,7 @@ export default function MapView() {
               <>
                 <Box>
                   <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('common.region')}</Typography>
-                  <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter} lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
+                  <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter} lock={false} onLockChange={() => {}} showLabel={false} showLock={false} />
                 </Box>
                 <Divider sx={{ opacity: 0.4 }} />
               </>

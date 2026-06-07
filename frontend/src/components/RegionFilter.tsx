@@ -22,6 +22,8 @@ interface Props {
   onLockChange: (next: boolean) => void
   /** Show the inline "Region" label (hide it when the parent provides a heading). */
   showLabel?: boolean
+  /** Show the "Local only" lock toggle (hidden where filtering is geographic/strict). */
+  showLock?: boolean
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  * the lock chip switches between inclusive ("observed in") and exclusive
  * ("local only") matching.
  */
-export default function RegionFilter({ iatas, value, onChange, lock, onLockChange, showLabel = true }: Props) {
+export default function RegionFilter({ iatas, value, onChange, lock, onLockChange, showLabel = true, showLock = true }: Props) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -81,7 +83,7 @@ export default function RegionFilter({ iatas, value, onChange, lock, onLockChang
           )
         })}
         {value.size > 0 && <Chip label={t('common.clear')} size="small" onDelete={clear} sx={{ color: md3.outline }} />}
-        {value.size > 0 && (
+        {showLock && value.size > 0 && (
           <Tooltip title={t('packets.localOnlyHint')}>
             <Chip size="small" clickable onClick={() => onLockChange(!lock)}
               icon={lock ? <LockIcon sx={{ fontSize: 13 }} /> : <LockOpenIcon sx={{ fontSize: 13 }} />}

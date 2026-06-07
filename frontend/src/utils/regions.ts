@@ -38,3 +38,23 @@ export function passesRegion(regions: string[] | undefined, selected: Set<string
   if (lock) return !!regions?.length && regions.every(r => selected.has(r))
   return !!regions?.some(r => selected.has(r))
 }
+
+/** Maps a set of selected IATA codes to their distinct ISO country codes. */
+export function selectedCountries(selected: Set<string>): string[] {
+  const out = new Set<string>()
+  for (const code of selected) {
+    const cc = iataCountry(code)
+    if (cc) out.add(cc)
+  }
+  return [...out]
+}
+
+/**
+ * Geographic ("strict") region predicate: an item with a resolved ISO `country`
+ * passes only if it's in the selected-country set. Items with no country are
+ * hidden when a filter is active.
+ */
+export function passesGeo(country: string | undefined, countries: Set<string>): boolean {
+  if (countries.size === 0) return true
+  return !!country && countries.has(country)
+}

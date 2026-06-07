@@ -134,8 +134,12 @@ func analyticsFilter(r *http.Request) store.AnalyticsFilter {
 	if v := q.Get("regions"); v != "" {
 		regions = strings.Split(v, ",")
 	}
+	var countries []string
+	if v := q.Get("countries"); v != "" {
+		countries = strings.Split(v, ",")
+	}
 	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
-	return store.NewAnalyticsFilter(hours, regions, lock)
+	return store.NewAnalyticsFilter(hours, regions, countries, lock)
 }
 
 func (s *Server) listPackets(w http.ResponseWriter, r *http.Request) {
@@ -537,6 +541,7 @@ type nodeSummary struct {
 	FirstSeen   string   `json:"firstSeen"`
 	AdvertCount int      `json:"advertCount"`
 	Regions     []string `json:"regions,omitempty"`
+	Country     string   `json:"country,omitempty"`
 	RetransmitCount int  `json:"retransmitCount,omitempty"`
 	BatteryMv   *int     `json:"batteryMv,omitempty"`
 	TempC       *float64 `json:"temperatureC,omitempty"`
@@ -592,6 +597,7 @@ func summarizeNode(n *store.Node) nodeSummary {
 	return nodeSummary{
 		PubKey: n.PubKey, Name: n.Name, Role: n.Role, Lat: n.Lat, Lon: n.Lon,
 		LastSeen: n.LastSeen, FirstSeen: n.FirstSeen, AdvertCount: n.AdvertCount,
+		Country: n.Country,
 		BatteryMv: n.BatteryMv, TempC: n.TempC,
 	}
 }

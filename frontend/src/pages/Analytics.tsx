@@ -47,6 +47,7 @@ import { IataFlag } from '../utils/flags'
 import { bucketize } from '../utils/stats'
 import HashMatrix from '../components/HashMatrix'
 import RegionFilter from '../components/RegionFilter'
+import { selectedCountries } from '../utils/regions'
 
 /** Props every analytics tab receives: the active filter + a string key to use in effect deps. */
 interface TabProps { params: AnalyticsParams; filterKey: string }
@@ -91,11 +92,15 @@ export default function Analytics() {
 
   useEffect(() => { api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {}) }, [])
 
-  const params: AnalyticsParams = useMemo(() => ({
-    hours: windowHours || undefined,
-    regions: regionFilter.size ? [...regionFilter] : undefined,
-    lock: regionLock || undefined,
-  }), [windowHours, regionFilter, regionLock])
+  const params: AnalyticsParams = useMemo(() => {
+    const countries = selectedCountries(regionFilter)
+    return {
+      hours: windowHours || undefined,
+      regions: regionFilter.size ? [...regionFilter] : undefined,
+      countries: countries.length ? countries : undefined,
+      lock: regionLock || undefined,
+    }
+  }, [windowHours, regionFilter, regionLock])
   const filterKey = `${windowHours}|${[...regionFilter].sort().join(',')}|${regionLock ? 1 : 0}`
   const tabProps: TabProps = { params, filterKey }
 

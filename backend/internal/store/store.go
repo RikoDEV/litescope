@@ -13,6 +13,7 @@ import (
 
 	"github.com/litescope/backend/internal/db"
 	"github.com/litescope/backend/internal/decoder"
+	"github.com/litescope/backend/internal/geo"
 )
 
 func nowMillis() int64 { return time.Now().UnixMilli() }
@@ -123,6 +124,7 @@ type Node struct {
 	Role        string
 	Lat         *float64
 	Lon         *float64
+	Country     string // ISO 3166-1 alpha-2, resolved from Lat/Lon (geo filtering)
 	LastSeen    string
 	FirstSeen   string
 	AdvertCount int
@@ -796,13 +798,16 @@ type ChannelSender struct {
 // AnalyticsFilter scopes analytics to a time window and/or a set of observer
 // regions (IATA codes). The zero value matches everything.
 type AnalyticsFilter struct {
-	sinceMs int64           // 0 = all time
-	regions map[string]bool // nil/empty = all regions
-	lock    bool            // true → packet must be heard EXCLUSIVELY within regions
+	sinceMs   int64           // 0 = all time
+	regions   map[string]bool // observer IATA set; nil/empty = all (packet/observation filtering)
+	countries map[string]bool // ISO-A2 set for geographic node filtering; nil/empty = all
+	lock      bool            // true → packet must be heard EXCLUSIVELY within regions
 }
 
 // NewAnalyticsFilter builds a filter from request params. hours<=0 means all time.
-func NewAnalyticsFilter(hours int, regions []string, lock bool) AnalyticsFilter {
+// regions are observer IATA codes (packet/observation filtering); countries are
+// ISO-A2 codes for geographic node filtering ("strict" by node position).
+func NewAnalyticsFilter(hours int, regions, countries []string, lock bool) AnalyticsFilter {
 	f := AnalyticsFilter{lock: lock}
 	if hours > 0 {
 		f.sinceMs = nowMillis() - int64(hours)*3_600_000
@@ -815,12 +820,31 @@ func NewAnalyticsFilter(hours int, regions []string, lock bool) AnalyticsFilter 
 			}
 		}
 	}
+	if len(countries) > 0 {
+		f.countries = make(map[string]bool, len(countries))
+		for _, c := range countries {
+			if c != "" {
+				f.countries[c] = true
+			}
+		}
+	}
 	return f
 }
 
 // Active reports whether the filter restricts anything, so callers can keep the
 // cached fast path when it doesn't.
-func (f AnalyticsFilter) Active() bool { return f.sinceMs > 0 || len(f.regions) > 0 }
+func (f AnalyticsFilter) Active() bool {
+	return f.sinceMs > 0 || len(f.regions) > 0 || len(f.countries) > 0
+}
+
+// nodeGeoOK reports whether a node passes the geographic country filter. Strict:
+// when countries are set, a node with no resolvable country is excluded.
+func (f AnalyticsFilter) nodeGeoOK(n *Node) bool {
+	if len(f.countries) == 0 {
+		return true
+	}
+	return n.Country != "" && f.countries[n.Country]
+}
 
 func (f AnalyticsFilter) timeOK(tx *Tx) bool {
 	return f.sinceMs == 0 || parseTimeMillis(tx.FirstSeen) >= f.sinceMs
@@ -888,7 +912,11 @@ func (s *Store) Overview(f AnalyticsFilter) OverviewStats {
 		}
 		if dec := tx.Decoded(); dec != nil {
 			if pk, _ := dec["pubKey"].(string); pk != "" {
-				nodes[pk] = true
+				if len(f.countries) == 0 {
+					nodes[pk] = true
+				} else if n := s.nodes[pk]; n != nil && f.nodeGeoOK(n) {
+					nodes[pk] = true
+				}
 			}
 		}
 		for _, o := range tx.Observations {
@@ -1098,6 +1126,9 @@ func (s *Store) TopNodes(limit int, by string, f AnalyticsFilter) ([]*Node, map[
 	nodes := make([]*Node, 0, len(s.nodes))
 	for _, n := range s.nodes {
 		if f.Active() {
+			if !f.nodeGeoOK(n) {
+				continue // strict geographic exclusion
+			}
 			nc := *n
 			nc.AdvertCount = advCount[n.PubKey]
 			nodes = append(nodes, &nc)
@@ -1362,11 +1393,15 @@ func obsFromRow(r *db.ObsRow) *Obs {
 }
 
 func nodeFromRow(r *db.NodeRow) *Node {
-	return &Node{
+	n := &Node{
 		PubKey: r.PubKey, Name: r.Name, Role: r.Role, Lat: r.Lat, Lon: r.Lon,
 		LastSeen: r.LastSeen, FirstSeen: r.FirstSeen, AdvertCount: r.AdvertCount,
 		BatteryMv: r.BatteryMv, TempC: r.TempC,
 	}
+	if r.Lat != nil && r.Lon != nil {
+		n.Country = geo.CountryAt(*r.Lat, *r.Lon)
+	}
+	return n
 }
 
 func observerFromRow(r *db.ObserverRow) *Observer {

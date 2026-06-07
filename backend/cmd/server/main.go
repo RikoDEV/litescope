@@ -14,6 +14,7 @@ import (
 	"github.com/litescope/backend/internal/api"
 	"github.com/litescope/backend/internal/config"
 	"github.com/litescope/backend/internal/db"
+	"github.com/litescope/backend/internal/geo"
 	"github.com/litescope/backend/internal/store"
 	"github.com/litescope/backend/internal/version"
 )
@@ -109,6 +110,17 @@ func main() {
 				}
 				if len(b.Regions) > 0 {
 					data["regions"] = b.Regions
+				}
+				// Geographic country from the advert's own position, so live map
+				// nodes can be geo-filtered without a client-side borders dataset.
+				if dec := tx.Decoded(); dec != nil {
+					lat, okLat := dec["lat"].(float64)
+					lon, okLon := dec["lon"].(float64)
+					if okLat && okLon {
+						if cc := geo.CountryAt(lat, lon); cc != "" {
+							data["country"] = cc
+						}
+					}
 				}
 				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
 				hub.Broadcast(msg)

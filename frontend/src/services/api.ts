@@ -12,7 +12,8 @@ async function get<T>(path: string): Promise<T> {
 /** Shared analytics filter: time window (hours, 0/undefined = all time) + region. */
 export interface AnalyticsParams {
   hours?: number
-  regions?: string[]
+  regions?: string[]   // observer IATA codes (packet/observation filtering)
+  countries?: string[] // ISO-A2 codes (geographic node filtering)
   lock?: boolean
 }
 
@@ -22,6 +23,7 @@ function aq(p?: AnalyticsParams, extra?: Record<string, string | number>): strin
   if (extra) for (const [k, v] of Object.entries(extra)) sp.set(k, String(v))
   if (p?.hours) sp.set('hours', String(p.hours))
   if (p?.regions?.length) sp.set('regions', p.regions.join(','))
+  if (p?.countries?.length) sp.set('countries', p.countries.join(','))
   if (p?.lock) sp.set('lock', '1')
   const q = sp.toString()
   return q ? `?${q}` : ''
