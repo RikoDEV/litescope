@@ -51,12 +51,12 @@ func TestAnalyticsCacheInvalidation(t *testing.T) {
 		{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
 	}, nil, nil, nil)
 
-	first := s.PacketsByType()
+	first := s.PacketsByType(AnalyticsFilter{})
 	if first["ADVERT"] != 1 {
 		t.Fatalf("expected 1 ADVERT, got %v", first)
 	}
 	// Same version → cached (must equal, and map identity reused).
-	if got := s.PacketsByType(); got["ADVERT"] != 1 {
+	if got := s.PacketsByType(AnalyticsFilter{}); got["ADVERT"] != 1 {
 		t.Fatalf("cached call diverged: %v", got)
 	}
 
@@ -64,7 +64,7 @@ func TestAnalyticsCacheInvalidation(t *testing.T) {
 	s.AddTxBatch([]*db.TxRow{
 		{ID: 2, Hash: "b", RawHex: "01", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
 	}, nil)
-	if got := s.PacketsByType(); got["ADVERT"] != 2 {
+	if got := s.PacketsByType(AnalyticsFilter{}); got["ADVERT"] != 2 {
 		t.Fatalf("expected cache invalidation to yield 2 ADVERT, got %v", got)
 	}
 }

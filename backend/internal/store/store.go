@@ -562,7 +562,7 @@ func (s *Store) ObserverByID(id string) *Observer {
 // decrypted ("readable") count instead — the real number of messages for that
 // channel. Hashes we never decrypted (no key on the server) fall back to the raw
 // count, since we can't tell the colliding channels apart.
-func (s *Store) Channels() []ChannelSummary {
+func (s *Store) Channels(f AnalyticsFilter) []ChannelSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	type acc struct {
@@ -575,6 +575,9 @@ func (s *Store) Channels() []ChannelSummary {
 			continue
 		}
 		if tx.ChannelHash == "" {
+			continue
+		}
+		if !f.txOK(tx) {
 			continue
 		}
 		a, ok := accs[tx.ChannelHash]
@@ -641,11 +644,14 @@ func (s *Store) ChannelMessages(chHash string, limit, offset int) []*Tx {
 
 // ChannelAnalytics returns per-channel hourly message activity (last 24 h) and
 // an all-time leaderboard of top senders, derived from GRP_TXT packets.
-func (s *Store) ChannelAnalytics() ChannelAnalyticsData {
-	return cachedAnalytics(s, "channelAnalytics", s.computeChannelAnalytics)
+func (s *Store) ChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData {
+	if f.Active() {
+		return s.computeChannelAnalytics(f)
+	}
+	return cachedAnalytics(s, "channelAnalytics", func() ChannelAnalyticsData { return s.computeChannelAnalytics(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeChannelAnalytics() ChannelAnalyticsData {
+func (s *Store) computeChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -666,6 +672,9 @@ func (s *Store) computeChannelAnalytics() ChannelAnalyticsData {
 
 	for _, tx := range s.packets {
 		if tx.PayloadType != 5 || tx.ChannelHash == "" { // GRP_TXT
+			continue
+		}
+		if !f.txOK(tx) {
 			continue
 		}
 		dec := tx.Decoded()
@@ -782,16 +791,113 @@ type ChannelSender struct {
 	Channels     int    `json:"channels"`
 }
 
+// ── Analytics filtering ────────────────────────────────────────────────────────
+
+// AnalyticsFilter scopes analytics to a time window and/or a set of observer
+// regions (IATA codes). The zero value matches everything.
+type AnalyticsFilter struct {
+	sinceMs int64           // 0 = all time
+	regions map[string]bool // nil/empty = all regions
+	lock    bool            // true → packet must be heard EXCLUSIVELY within regions
+}
+
+// NewAnalyticsFilter builds a filter from request params. hours<=0 means all time.
+func NewAnalyticsFilter(hours int, regions []string, lock bool) AnalyticsFilter {
+	f := AnalyticsFilter{lock: lock}
+	if hours > 0 {
+		f.sinceMs = nowMillis() - int64(hours)*3_600_000
+	}
+	if len(regions) > 0 {
+		f.regions = make(map[string]bool, len(regions))
+		for _, r := range regions {
+			if r != "" {
+				f.regions[r] = true
+			}
+		}
+	}
+	return f
+}
+
+// Active reports whether the filter restricts anything, so callers can keep the
+// cached fast path when it doesn't.
+func (f AnalyticsFilter) Active() bool { return f.sinceMs > 0 || len(f.regions) > 0 }
+
+func (f AnalyticsFilter) timeOK(tx *Tx) bool {
+	return f.sinceMs == 0 || parseTimeMillis(tx.FirstSeen) >= f.sinceMs
+}
+
+// regionOK reports whether a packet matches the region filter, considering only
+// observers with a known IATA (mirrors the frontend packet.regions semantics).
+func (f AnalyticsFilter) regionOK(tx *Tx) bool {
+	if len(f.regions) == 0 {
+		return true
+	}
+	any, all, has := false, true, false
+	for _, o := range tx.Observations {
+		if o.ObserverIATA == "" {
+			continue
+		}
+		has = true
+		if f.regions[o.ObserverIATA] {
+			any = true
+		} else {
+			all = false
+		}
+	}
+	if f.lock {
+		return has && all
+	}
+	return any
+}
+
+// txOK combines the time and region predicates for packet-level analytics.
+func (f AnalyticsFilter) txOK(tx *Tx) bool { return f.timeOK(tx) && f.regionOK(tx) }
+
+// obsOK reports whether an individual observation should be counted for
+// observation-level analytics (restricted to region observers when a region is set).
+func (f AnalyticsFilter) obsOK(o *Obs) bool {
+	if len(f.regions) == 0 {
+		return true
+	}
+	return o.ObserverIATA != "" && f.regions[o.ObserverIATA]
+}
+
 // Overview returns aggregate stats.
-func (s *Store) Overview() OverviewStats {
+func (s *Store) Overview(f AnalyticsFilter) OverviewStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return OverviewStats{
-		TotalPackets:   len(s.packets),
-		TotalNodes:     len(s.nodes),
-		TotalObservers: len(s.observers),
-		PacketRate:     s.packetRate(),
+	if !f.Active() {
+		return OverviewStats{
+			TotalPackets:   len(s.packets),
+			TotalNodes:     len(s.nodes),
+			TotalObservers: len(s.observers),
+			PacketRate:     s.packetRate(),
+		}
 	}
+	pkts, rate := 0, 0
+	rateCut := nowMillis() - 60_000
+	nodes := make(map[string]bool)
+	observers := make(map[string]bool)
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		pkts++
+		if parseTimeMillis(tx.FirstSeen) >= rateCut {
+			rate++
+		}
+		if dec := tx.Decoded(); dec != nil {
+			if pk, _ := dec["pubKey"].(string); pk != "" {
+				nodes[pk] = true
+			}
+		}
+		for _, o := range tx.Observations {
+			if f.obsOK(o) {
+				observers[o.ObserverID] = true
+			}
+		}
+	}
+	return OverviewStats{TotalPackets: pkts, TotalNodes: len(nodes), TotalObservers: len(observers), PacketRate: rate}
 }
 
 // packetRate counts packets seen within the last minute. Caller must hold the
@@ -847,16 +953,25 @@ type RFStats struct {
 // ── Analytics ────────────────────────────────────────────────────────────────
 
 // GlobalRFStats scans all observations and returns SNR/RSSI arrays plus summary stats.
-func (s *Store) GlobalRFStats() GlobalRF {
-	return cachedAnalytics(s, "globalRF", s.computeGlobalRFStats)
+func (s *Store) GlobalRFStats(f AnalyticsFilter) GlobalRF {
+	if f.Active() {
+		return s.computeGlobalRFStats(f)
+	}
+	return cachedAnalytics(s, "globalRF", func() GlobalRF { return s.computeGlobalRFStats(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeGlobalRFStats() GlobalRF {
+func (s *Store) computeGlobalRFStats(f AnalyticsFilter) GlobalRF {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var rssi, snr []float64
-	for _, obsList := range s.byObserver {
-		for _, o := range obsList {
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) {
+				continue
+			}
 			if o.RSSI != nil {
 				rssi = append(rssi, *o.RSSI)
 			}
@@ -902,7 +1017,7 @@ func summarizeFloats(vals []float64) FloatSummary {
 }
 
 // ActivityBuckets returns hourly packet counts for the last windowHours hours.
-func (s *Store) ActivityBuckets(windowHours int) []ActivityBucket {
+func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) []ActivityBucket {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if windowHours <= 0 {
@@ -912,6 +1027,9 @@ func (s *Store) ActivityBuckets(windowHours int) []ActivityBucket {
 	start := now.Add(-time.Duration(windowHours) * time.Hour).Truncate(time.Hour)
 	buckets := make(map[int64]int)
 	for _, tx := range s.packets {
+		if !f.regionOK(tx) {
+			continue
+		}
 		t := parseTimeToTime(tx.FirstSeen)
 		if t.IsZero() || t.Before(start) {
 			continue
@@ -950,20 +1068,42 @@ func parseTimeToTime(s string) time.Time {
 // TopNodes returns nodes sorted by advert count descending (the default), or by
 // retransmit count when by == "retransmits", capped at limit. The second return
 // value maps the returned nodes' pubKeys to their retransmit count for display.
-func (s *Store) TopNodes(limit int, by string) ([]*Node, map[string]int) {
+func (s *Store) TopNodes(limit int, by string, f AnalyticsFilter) ([]*Node, map[string]int) {
 	// Retransmit counts require a full packet scan, so only pay that cost when
 	// the caller actually sorts by (or needs) them. Computed first — it takes its
 	// own read lock — so we don't nest RLocks.
 	retx := map[string]int{}
 	if by == "retransmits" {
-		retx = s.RetransmitCounts()
+		retx = s.RetransmitCounts(f)
 	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// When scoped, recompute advert counts from packets in range and return copies
+	// (never mutate the shared store nodes).
+	advCount := map[string]int{}
+	if f.Active() {
+		for pk, txs := range s.byNode {
+			c := 0
+			for _, tx := range txs {
+				if f.txOK(tx) {
+					c++
+				}
+			}
+			advCount[pk] = c
+		}
+	}
+
 	nodes := make([]*Node, 0, len(s.nodes))
 	for _, n := range s.nodes {
-		nodes = append(nodes, n)
+		if f.Active() {
+			nc := *n
+			nc.AdvertCount = advCount[n.PubKey]
+			nodes = append(nodes, &nc)
+		} else {
+			nodes = append(nodes, n)
+		}
 	}
 	rank := func(n *Node) int {
 		if by == "retransmits" {
@@ -984,16 +1124,27 @@ func (s *Store) TopNodes(limit int, by string) ([]*Node, map[string]int) {
 	if limit < len(nodes) {
 		nodes = nodes[:limit]
 	}
+	// Drop out-of-scope nodes (zero rank) when filtering.
+	if f.Active() {
+		end := len(nodes)
+		for end > 0 && rank(nodes[end-1]) == 0 {
+			end--
+		}
+		nodes = nodes[:end]
+	}
 	return nodes, retx
 }
 
 // RetransmitCounts returns, per node pubKey, the number of distinct packets in
 // which the node appears as a relay (path) hop — i.e. packets it retransmitted.
-func (s *Store) RetransmitCounts() map[string]int {
-	return cachedAnalytics(s, "retransmitCounts", s.computeRetransmitCounts)
+func (s *Store) RetransmitCounts(f AnalyticsFilter) map[string]int {
+	if f.Active() {
+		return s.computeRetransmitCounts(f)
+	}
+	return cachedAnalytics(s, "retransmitCounts", func() map[string]int { return s.computeRetransmitCounts(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeRetransmitCounts() map[string]int {
+func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1031,6 +1182,9 @@ func (s *Store) computeRetransmitCounts() map[string]int {
 	counts := make(map[string]int)
 	credited := make(map[string]bool)
 	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
 		// Count each node at most once per packet, even if several observers
 		// reported the same path or the node appears in multiple observations.
 		for k := range credited {
@@ -1058,12 +1212,39 @@ func (s *Store) computeRetransmitCounts() map[string]int {
 }
 
 // TopObservers returns observers sorted by packet count descending, capped at limit.
-func (s *Store) TopObservers(limit int) []*Observer {
+func (s *Store) TopObservers(limit int, f AnalyticsFilter) []*Observer {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// When scoped, recompute per-observer counts from observations in range and
+	// return copies; otherwise use the stored cumulative PktCount.
+	scoped := map[string]int{}
+	if f.Active() {
+		for _, tx := range s.packets {
+			if !f.txOK(tx) {
+				continue
+			}
+			for _, o := range tx.Observations {
+				if f.obsOK(o) {
+					scoped[o.ObserverID]++
+				}
+			}
+		}
+	}
+
 	obs := make([]*Observer, 0, len(s.observers))
 	for _, o := range s.observers {
-		obs = append(obs, o)
+		if f.Active() {
+			c := scoped[o.ID]
+			if c == 0 {
+				continue
+			}
+			oc := *o
+			oc.PktCount = c
+			obs = append(obs, &oc)
+		} else {
+			obs = append(obs, o)
+		}
 	}
 	for i := 0; i < len(obs) && i < limit; i++ {
 		best := i
@@ -1137,15 +1318,21 @@ type ObserverAnalyticsData struct {
 }
 
 // PacketsByType returns counts per payload type.
-func (s *Store) PacketsByType() map[string]int {
-	return cachedAnalytics(s, "packetsByType", s.computePacketsByType)
+func (s *Store) PacketsByType(f AnalyticsFilter) map[string]int {
+	if f.Active() {
+		return s.computePacketsByType(f)
+	}
+	return cachedAnalytics(s, "packetsByType", func() map[string]int { return s.computePacketsByType(AnalyticsFilter{}) })
 }
 
-func (s *Store) computePacketsByType() map[string]int {
+func (s *Store) computePacketsByType(f AnalyticsFilter) map[string]int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make(map[string]int)
 	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
 		out[decoder.PayloadName(tx.PayloadType)]++
 	}
 	return out
@@ -1191,25 +1378,27 @@ func observerFromRow(r *db.ObserverRow) *Observer {
 }
 
 // SNRByPayloadType returns average SNR and observation count per payload type name.
-func (s *Store) SNRByPayloadType() map[string]SNRTypeStat {
-	return cachedAnalytics(s, "snrByType", s.computeSNRByPayloadType)
+func (s *Store) SNRByPayloadType(f AnalyticsFilter) map[string]SNRTypeStat {
+	if f.Active() {
+		return s.computeSNRByPayloadType(f)
+	}
+	return cachedAnalytics(s, "snrByType", func() map[string]SNRTypeStat { return s.computeSNRByPayloadType(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeSNRByPayloadType() map[string]SNRTypeStat {
+func (s *Store) computeSNRByPayloadType(f AnalyticsFilter) map[string]SNRTypeStat {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	type acc struct{ sum float64; count int }
 	byType := make(map[string]*acc)
-	for _, obsList := range s.byObserver {
-		for _, o := range obsList {
-			if o.SNR == nil {
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		name := decoder.PayloadName(tx.PayloadType)
+		for _, o := range tx.Observations {
+			if o.SNR == nil || !f.obsOK(o) {
 				continue
 			}
-			tx, ok := s.byTxID[o.TxID]
-			if !ok {
-				continue
-			}
-			name := decoder.PayloadName(tx.PayloadType)
 			a := byType[name]
 			if a == nil {
 				a = &acc{}
@@ -1250,11 +1439,14 @@ func isHexHop(s string) bool {
 // HashStats derives byte-size distribution from hex hop identifiers found in
 // observation paths (PathJSON).  "1-byte" means a 2-char hex hop like "AB",
 // "2-byte" means "ABCD", etc.  Full node names in paths are ignored.
-func (s *Store) HashStats() HashStatsData {
-	return cachedAnalytics(s, "hashStats", s.computeHashStats)
+func (s *Store) HashStats(f AnalyticsFilter) HashStatsData {
+	if f.Active() {
+		return s.computeHashStats(f)
+	}
+	return cachedAnalytics(s, "hashStats", func() HashStatsData { return s.computeHashStats(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeHashStats() HashStatsData {
+func (s *Store) computeHashStats(f AnalyticsFilter) HashStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1270,10 +1462,12 @@ func (s *Store) computeHashStats() HashStatsData {
 	type timeBins [4]int
 	overTimeMap := make(map[int64]timeBins)
 
-	for _, obsList := range s.byObserver {
-		for _, o := range obsList {
-			tx, ok := s.byTxID[o.TxID]
-			if !ok {
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) {
 				continue
 			}
 			var hops []string
@@ -1501,11 +1695,14 @@ type HashAdopter struct {
 // ScopeStats computes per-scope packet counts, RF quality, top observers, and
 // hourly activity for the last 24 hours, derived from the flood_scope field on
 // observations.
-func (s *Store) ScopeStats() ScopeStatsData {
-	return cachedAnalytics(s, "scopeStats", s.computeScopeStats)
+func (s *Store) ScopeStats(f AnalyticsFilter) ScopeStatsData {
+	if f.Active() {
+		return s.computeScopeStats(f)
+	}
+	return cachedAnalytics(s, "scopeStats", func() ScopeStatsData { return s.computeScopeStats(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeScopeStats() ScopeStatsData {
+func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1528,8 +1725,14 @@ func (s *Store) computeScopeStats() ScopeStatsData {
 	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
 	activity := make(map[int64]map[string]int)
 
-	for _, list := range s.byObserver {
-		for _, o := range list {
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) {
+				continue
+			}
 			sc := o.FloodScope
 			if sc == "" {
 				sc = unknownScope
@@ -1679,11 +1882,14 @@ type ScopeHour struct {
 
 // DistanceStats analyses hop-count "distance" across all observations.
 // "Distance" here is the number of intermediate relay hops a packet traversed.
-func (s *Store) DistanceStats() DistanceStatsData {
-	return cachedAnalytics(s, "distanceStats", s.computeDistanceStats)
+func (s *Store) DistanceStats(f AnalyticsFilter) DistanceStatsData {
+	if f.Active() {
+		return s.computeDistanceStats(f)
+	}
+	return cachedAnalytics(s, "distanceStats", func() DistanceStatsData { return s.computeDistanceStats(AnalyticsFilter{}) })
 }
 
-func (s *Store) computeDistanceStats() DistanceStatsData {
+func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1717,8 +1923,14 @@ func (s *Store) computeDistanceStats() DistanceStatsData {
 	}
 	txBestMap := make(map[int64]*txBest)
 
-	for _, list := range s.byObserver {
-		for _, o := range list {
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) {
+				continue
+			}
 			var rawHops []string
 			if json.Unmarshal([]byte(o.PathJSON), &rawHops) != nil {
 				rawHops = nil
@@ -1759,11 +1971,6 @@ func (s *Store) computeDistanceStats() DistanceStatsData {
 				}
 				actBuckets[bucket].hopSum += hopCount
 				actBuckets[bucket].count++
-			}
-
-			tx := s.byTxID[o.TxID]
-			if tx == nil {
-				continue
 			}
 
 			allObsEntries = append(allObsEntries, hopObsEntry{

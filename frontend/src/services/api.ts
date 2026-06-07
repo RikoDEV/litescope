@@ -9,6 +9,24 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** Shared analytics filter: time window (hours, 0/undefined = all time) + region. */
+export interface AnalyticsParams {
+  hours?: number
+  regions?: string[]
+  lock?: boolean
+}
+
+/** Builds a query string from analytics params plus any extra fixed params. */
+function aq(p?: AnalyticsParams, extra?: Record<string, string | number>): string {
+  const sp = new URLSearchParams()
+  if (extra) for (const [k, v] of Object.entries(extra)) sp.set(k, String(v))
+  if (p?.hours) sp.set('hours', String(p.hours))
+  if (p?.regions?.length) sp.set('regions', p.regions.join(','))
+  if (p?.lock) sp.set('lock', '1')
+  const q = sp.toString()
+  return q ? `?${q}` : ''
+}
+
 export const api = {
   packets: (limit = 50, offset = 0) =>
     get<{ total: number; packets: Packet[] }>(`/api/packets?limit=${limit}&offset=${offset}`),
@@ -26,6 +44,9 @@ export const api = {
   },
 
   iatas: () => get<string[]>('/api/iatas'),
+
+  channelsFiltered: (p?: AnalyticsParams) =>
+    get<Channel[]>(`/api/channels${aq(p)}`),
 
   node: (pubKey: string) =>
     get<Node>(`/api/nodes/${encodeURIComponent(pubKey)}`),
@@ -51,28 +72,28 @@ export const api = {
   channelMessages: (hash: string, limit = 100, offset = 0) =>
     get<Packet[]>(`/api/channels/${hash}/messages?limit=${limit}&offset=${offset}`),
 
-  overview: () =>
-    get<OverviewStats>('/api/analytics/overview'),
+  overview: (p?: AnalyticsParams) =>
+    get<OverviewStats>(`/api/analytics/overview${aq(p)}`),
 
-  packetsByType: () =>
-    get<Record<string, number>>('/api/analytics/packets-by-type'),
+  packetsByType: (p?: AnalyticsParams) =>
+    get<Record<string, number>>(`/api/analytics/packets-by-type${aq(p)}`),
 
-  analyticsRF: () =>
-    get<{ rssi: number[]; snr: number[]; totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>('/api/analytics/rf'),
+  analyticsRF: (p?: AnalyticsParams) =>
+    get<{ rssi: number[]; snr: number[]; totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p)}`),
 
-  analyticsActivity: (hours = 24) =>
-    get<Array<{ hour: string; label: string; count: number }>>(`/api/analytics/activity?hours=${hours}`),
+  analyticsActivity: (hours = 24, p?: AnalyticsParams) =>
+    get<Array<{ hour: string; label: string; count: number }>>(`/api/analytics/activity${aq(p, { hours })}`),
 
-  analyticsNodesTop: (limit = 20, sort: 'adverts' | 'retransmits' = 'adverts') =>
-    get<import('../types').Node[]>(`/api/analytics/nodes-top?limit=${limit}&sort=${sort}`),
+  analyticsNodesTop: (limit = 20, sort: 'adverts' | 'retransmits' = 'adverts', p?: AnalyticsParams) =>
+    get<import('../types').Node[]>(`/api/analytics/nodes-top${aq(p, { limit, sort })}`),
 
-  analyticsObserversTop: (limit = 20) =>
-    get<import('../types').Observer[]>(`/api/analytics/observers-top?limit=${limit}`),
+  analyticsObserversTop: (limit = 20, p?: AnalyticsParams) =>
+    get<import('../types').Observer[]>(`/api/analytics/observers-top${aq(p, { limit })}`),
 
-  analyticsSnrByType: () =>
-    get<Record<string, { avg: number; count: number }>>('/api/analytics/snr-by-type'),
+  analyticsSnrByType: (p?: AnalyticsParams) =>
+    get<Record<string, { avg: number; count: number }>>(`/api/analytics/snr-by-type${aq(p)}`),
 
-  analyticsDistance: () =>
+  analyticsDistance: (p?: AnalyticsParams) =>
     get<{
       totalHops: number
       pathsAnalyzed: number
@@ -91,32 +112,32 @@ export const api = {
         distribution: Array<{ label: string; count: number }>
         topPairs: Array<{ nodeAName: string; nodeAPubKey: string; nodeBName: string; nodeBPubKey: string; distKm: number }>
       }
-    }>('/api/analytics/distance'),
+    }>(`/api/analytics/distance${aq(p)}`),
 
-  analyticsScope: () =>
+  analyticsScope: (p?: AnalyticsParams) =>
     get<{
       distribution: Array<{ scope: string; pktCount: number; obsCount: number }>
       rfByScope: Array<{ scope: string; avgSnr: number; avgRssi: number; obsCount: number }>
       topObservers: Array<{ scope: string; observerId: string; observerName: string; observerIata: string; count: number }>
       activityScopes: string[]
       activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
-    }>('/api/analytics/scope'),
+    }>(`/api/analytics/scope${aq(p)}`),
 
-  analyticsHashes: () =>
+  analyticsHashes: (p?: AnalyticsParams) =>
     get<{
       sizeDistribution: Record<string, number>
       byRole: Record<string, Record<string, number>>
       overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
       multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
       inconsistentHashes: Array<{ pubKey: string; name: string; role: string; currentHash: string; currentSize: number; sizesSeen: number[] }>
-    }>('/api/analytics/hashes'),
+    }>(`/api/analytics/hashes${aq(p)}`),
 
-  analyticsChannels: () =>
+  analyticsChannels: (p?: AnalyticsParams) =>
     get<{
       activityChannels: string[]
       activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
       topSenders: Array<{ sender: string; messageCount: number; channels: number }>
-    }>('/api/analytics/channels'),
+    }>(`/api/analytics/channels${aq(p)}`),
 
   observerAnalytics: (id: string, days = 7) =>
     get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),

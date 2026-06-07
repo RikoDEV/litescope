@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -118,6 +119,23 @@ func queryInt(r *http.Request, key string, def int) int {
 		}
 	}
 	return def
+}
+
+// analyticsFilter builds a store.AnalyticsFilter from shared query params used by
+// every analytics endpoint: hours (time window, 0/absent = all time), regions
+// (comma-separated IATA codes) and lock (exclusive region matching).
+func analyticsFilter(r *http.Request) store.AnalyticsFilter {
+	q := r.URL.Query()
+	hours := queryInt(r, "hours", 0)
+	if hours > 168 {
+		hours = 168 // cap at 7 days
+	}
+	var regions []string
+	if v := q.Get("regions"); v != "" {
+		regions = strings.Split(v, ",")
+	}
+	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
+	return store.NewAnalyticsFilter(hours, regions, lock)
 }
 
 func (s *Server) listPackets(w http.ResponseWriter, r *http.Request) {
@@ -345,11 +363,11 @@ func (s *Server) getObserver(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.Channels())
+	writeJSON(w, s.Store.Channels(analyticsFilter(r)))
 }
 
 func (s *Server) getChannelAnalytics(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.ChannelAnalytics())
+	writeJSON(w, s.Store.ChannelAnalytics(analyticsFilter(r)))
 }
 
 func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
@@ -368,15 +386,15 @@ func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getOverview(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.Overview())
+	writeJSON(w, s.Store.Overview(analyticsFilter(r)))
 }
 
 func (s *Server) getPacketsByType(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.PacketsByType())
+	writeJSON(w, s.Store.PacketsByType(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.GlobalRFStats())
+	writeJSON(w, s.Store.GlobalRFStats(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
@@ -384,13 +402,13 @@ func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
 	if hours > 168 {
 		hours = 168 // cap at 7 days
 	}
-	writeJSON(w, s.Store.ActivityBuckets(hours))
+	writeJSON(w, s.Store.ActivityBuckets(hours, analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20)
 	sortBy := r.URL.Query().Get("sort") // "" | "adverts" | "retransmits"
-	nodes, retx := s.Store.TopNodes(limit, sortBy)
+	nodes, retx := s.Store.TopNodes(limit, sortBy, analyticsFilter(r))
 	out := make([]nodeSummary, 0, len(nodes))
 	for _, n := range nodes {
 		ns := summarizeNode(n)
@@ -401,24 +419,24 @@ func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnalyticsSNRByType(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.SNRByPayloadType())
+	writeJSON(w, s.Store.SNRByPayloadType(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsHashes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.HashStats())
+	writeJSON(w, s.Store.HashStats(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsScope(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.ScopeStats())
+	writeJSON(w, s.Store.ScopeStats(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsDistance(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.DistanceStats())
+	writeJSON(w, s.Store.DistanceStats(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20)
-	obs := s.Store.TopObservers(limit)
+	obs := s.Store.TopObservers(limit, analyticsFilter(r))
 	out := make([]observerSummary, 0, len(obs))
 	for _, o := range obs {
 		out = append(out, summarizeObserver(o))

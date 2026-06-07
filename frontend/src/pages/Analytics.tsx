@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
@@ -18,6 +18,7 @@ import Skeleton from '@mui/material/Skeleton'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
+import type { AnalyticsParams } from '../services/api'
 import type { Node, Observer, OverviewStats } from '../types'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -45,6 +46,14 @@ import type { SvgIconComponent } from '@mui/icons-material'
 import { IataFlag } from '../utils/flags'
 import { bucketize } from '../utils/stats'
 import HashMatrix from '../components/HashMatrix'
+import RegionFilter from '../components/RegionFilter'
+
+/** Props every analytics tab receives: the active filter + a string key to use in effect deps. */
+interface TabProps { params: AnalyticsParams; filterKey: string }
+
+const WINDOWS: { h: number; l: string }[] = [
+  { h: 0, l: 'All' }, { h: 24, l: '24h' }, { h: 72, l: '3d' }, { h: 168, l: '7d' },
+]
 
 type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope' | 'distance'
 
@@ -74,8 +83,42 @@ export default function Analytics() {
     if (tabParam === 'overview') navigate('/analytics', { replace: true })
   }, [tabParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Global filter (region + time window), applied to every tab ──
+  const [iatas, setIatas] = useState<string[]>([])
+  const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
+  const [regionLock, setRegionLock] = useState(false)
+  const [windowHours, setWindowHours] = useState(0) // 0 = all time
+
+  useEffect(() => { api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {}) }, [])
+
+  const params: AnalyticsParams = useMemo(() => ({
+    hours: windowHours || undefined,
+    regions: regionFilter.size ? [...regionFilter] : undefined,
+    lock: regionLock || undefined,
+  }), [windowHours, regionFilter, regionLock])
+  const filterKey = `${windowHours}|${[...regionFilter].sort().join(',')}|${regionLock ? 1 : 0}`
+  const tabProps: TabProps = { params, filterKey }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: md3.background }}>
+      {/* ── Global filter bar ── */}
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, px: 2, py: 1, background: md3.surfaceContainerHighest, borderBottom: `1px solid ${md3.outlineVariant}`, flexShrink: 0 }}>
+        {iatas.length > 0 && (
+          <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter} lock={regionLock} onLockChange={setRegionLock} />
+        )}
+        <Box sx={{ flex: 1 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.timeWindow')}</Typography>
+          <ToggleButtonGroup exclusive size="small" value={windowHours} onChange={(_, v) => v !== null && setWindowHours(v)}>
+            {WINDOWS.map(w => (
+              <ToggleButton key={w.h} value={w.h} sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
+                {w.l}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Box>
+      </Box>
+
       <Tabs value={tab} onChange={(_, v) => navigate(v === 'overview' ? '/analytics' : `/analytics/${v}`, { replace: true })} variant="scrollable" scrollButtons="auto"
         sx={{ px: 2, background: md3.surfaceContainerLow, flexShrink: 0 }}>
         {TABS.map(({ id, Icon, tk }) => (
@@ -83,22 +126,22 @@ export default function Analytics() {
         ))}
       </Tabs>
       <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        {tab === 'overview'  && <OverviewTab />}
-        {tab === 'activity'  && <ActivityTab />}
-        {tab === 'rf'        && <RFTab />}
-        {tab === 'nodes'     && <NodesTab />}
-        {tab === 'observers' && <ObserversTab />}
-        {tab === 'channels'  && <ChannelsTab />}
-        {tab === 'hashes'    && <HashesTab />}
-        {tab === 'scope'     && <ScopeTab />}
-        {tab === 'distance'  && <DistanceTab />}
+        {tab === 'overview'  && <OverviewTab {...tabProps} />}
+        {tab === 'activity'  && <ActivityTab {...tabProps} />}
+        {tab === 'rf'        && <RFTab {...tabProps} />}
+        {tab === 'nodes'     && <NodesTab {...tabProps} />}
+        {tab === 'observers' && <ObserversTab {...tabProps} />}
+        {tab === 'channels'  && <ChannelsTab {...tabProps} />}
+        {tab === 'hashes'    && <HashesTab {...tabProps} />}
+        {tab === 'scope'     && <ScopeTab {...tabProps} />}
+        {tab === 'distance'  && <DistanceTab {...tabProps} />}
       </Box>
     </Box>
   )
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
-function OverviewTab() {
+function OverviewTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [stats, setStats] = useState<OverviewStats | null>(null)
@@ -106,10 +149,10 @@ function OverviewTab() {
   const [rf, setRF] = useState<{ snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number }; totalObservations: number } | null>(null)
 
   useEffect(() => {
-    api.overview().then(setStats)
-    api.packetsByType().then(d => setByType(d ?? {}))
-    api.analyticsRF().then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
-  }, [])
+    api.overview(params).then(setStats)
+    api.packetsByType(params).then(d => setByType(d ?? {}))
+    api.analyticsRF(params).then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
+  }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!stats) return <TabLoading />
 
@@ -173,14 +216,14 @@ function OverviewTab() {
 }
 
 // ── Activity ──────────────────────────────────────────────────────────────────
-function ActivityTab() {
+function ActivityTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
-  const [hours, setHours] = useState(24)
+  const hours = params.hours ?? 24 // Activity always needs a finite range; default 24h when "All"
   const [data, setData]   = useState<Array<{ hour: string; label: string; count: number }>>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { setLoading(true); api.analyticsActivity(hours).then(d => setData(d ?? [])).finally(() => setLoading(false)) }, [hours])
+  useEffect(() => { setLoading(true); api.analyticsActivity(hours, params).then(d => setData(d ?? [])).finally(() => setLoading(false)) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const peak  = data.reduce((m, b) => b.count > m ? b.count : m, 0)
   const total = data.reduce((s, b) => s + b.count, 0)
@@ -193,11 +236,6 @@ function ActivityTab() {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-        <ToggleButtonGroup exclusive value={hours} onChange={(_, v) => v && setHours(v)} size="small">
-          {[{ h: 24, l: '24 h' }, { h: 72, l: '3 d' }, { h: 168, l: '7 d' }].map(w => (
-            <ToggleButton key={w.h} value={w.h} sx={{ fontSize: 12 }}>{w.l}</ToggleButton>
-          ))}
-        </ToggleButtonGroup>
         {[
           { label: t('home.total'), value: total.toLocaleString(), color: md3.primary },
           { label: t('analytics.peakHour'), value: peak.toLocaleString(), color: md3.tertiary },
@@ -233,16 +271,16 @@ function ActivityTab() {
 }
 
 // ── RF / Signal ───────────────────────────────────────────────────────────────
-function RFTab() {
+function RFTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [rf, setRF] = useState<{ rssi: number[]; snr: number[]; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number }; totalObservations: number } | null>(null)
   const [snrByType, setSnrByType] = useState<Record<string, { avg: number; count: number }>>({})
 
   useEffect(() => {
-    api.analyticsRF().then(setRF)
-    api.analyticsSnrByType().then(d => setSnrByType(d ?? {}))
-  }, [])
+    api.analyticsRF(params).then(setRF)
+    api.analyticsSnrByType(params).then(d => setSnrByType(d ?? {}))
+  }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!rf) return <TabLoading />
   const snr  = rf.snr  ?? []
@@ -353,11 +391,11 @@ function RFTab() {
 }
 
 // ── Nodes ─────────────────────────────────────────────────────────────────────
-function NodesTab() {
+function NodesTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [nodes, setNodes] = useState<Node[] | null>(null)
-  useEffect(() => { api.analyticsNodesTop(25).then(d => setNodes(d ?? [])) }, [])
+  useEffect(() => { api.analyticsNodesTop(25, 'adverts', params).then(d => setNodes(d ?? [])) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!nodes) return <TabLoading />
 
@@ -424,11 +462,11 @@ function NodesTab() {
 }
 
 // ── Observers ─────────────────────────────────────────────────────────────────
-function ObserversTab() {
+function ObserversTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [observers, setObservers] = useState<Observer[] | null>(null)
-  useEffect(() => { api.analyticsObserversTop(20).then(d => setObservers(d ?? [])) }, [])
+  useEffect(() => { api.analyticsObserversTop(20, params).then(d => setObservers(d ?? [])) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!observers) return <TabLoading />
 
@@ -482,7 +520,7 @@ function ObserversTab() {
 }
 
 // ── Channels ──────────────────────────────────────────────────────────────────
-function ChannelsTab() {
+function ChannelsTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [channels, setChannels] = useState<Array<{ hash: string; name: string; messageCount: number }> | null>(null)
@@ -492,9 +530,9 @@ function ChannelsTab() {
     topSenders: Array<{ sender: string; messageCount: number; channels: number }>
   } | null>(null)
   useEffect(() => {
-    api.channels().then(d => setChannels([...(d ?? [])].filter(c => c.name && c.name !== c.hash).sort((a, b) => b.messageCount - a.messageCount)))
-    api.analyticsChannels().then(setAnalytics)
-  }, [])
+    api.channelsFiltered(params).then(d => setChannels([...(d ?? [])].filter(c => c.name && c.name !== c.hash).sort((a, b) => b.messageCount - a.messageCount)))
+    api.analyticsChannels(params).then(setAnalytics)
+  }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!channels) return <TabLoading />
 
@@ -624,7 +662,7 @@ function ChannelsTab() {
 }
 
 // ── Hash Stats ─────────────────────────────────────────────────────────────────
-function HashesTab() {
+function HashesTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
 
@@ -639,7 +677,7 @@ function HashesTab() {
   }
 
   const [data, setData] = useState<HashStats | null>(null)
-  useEffect(() => { api.analyticsHashes().then(setData) }, [])
+  useEffect(() => { api.analyticsHashes(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <TabLoading />
 
@@ -824,7 +862,7 @@ const HASH_SIZE_BADGE: Record<number, { bg: string; fg: string }> = {
 }
 
 // ── Distance / Hop Analytics ──────────────────────────────────────────────────
-function DistanceTab() {
+function DistanceTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
 
@@ -850,7 +888,7 @@ function DistanceTab() {
 
   const navigate = useNavigate()
   const [data, setData] = useState<DistData | null>(null)
-  useEffect(() => { api.analyticsDistance().then(setData) }, [])
+  useEffect(() => { api.analyticsDistance(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <TabLoading />
   if (data.pathsAnalyzed === 0 && data.byLinkType.direct === 0)
@@ -1095,7 +1133,7 @@ function DistanceTab() {
 }
 
 // ── Scope Analytics ──────────────────────────────────────────────────────────
-function ScopeTab() {
+function ScopeTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
 
@@ -1108,7 +1146,7 @@ function ScopeTab() {
   }
 
   const [data, setData] = useState<ScopeData | null>(null)
-  useEffect(() => { api.analyticsScope().then(setData) }, [])
+  useEffect(() => { api.analyticsScope(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <TabLoading />
 
