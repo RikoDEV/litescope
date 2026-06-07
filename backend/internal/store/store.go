@@ -521,20 +521,52 @@ func (s *Store) NodeByPubKey(pk string) *Node {
 	return s.nodes[pk]
 }
 
-// NodePackets returns recent packets for a node (newest first). limit=0 returns all.
+// txRelaysNode reports whether the node's pubkey appears as a relay hop in any
+// of the tx's observation paths (hash-prefix match, same heuristic as the
+// retransmit counts). Caller holds the read lock.
+func txRelaysNode(tx *Tx, lpk string) bool {
+	for _, o := range tx.Observations {
+		var hops []string
+		if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
+			continue
+		}
+		for _, h := range hops {
+			if isHexHop(h) && strings.HasPrefix(lpk, strings.ToLower(h)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// NodePackets returns recent packets the node was involved in — its own adverts
+// (which carry its pubkey) plus packets it relayed (its hash appears in the
+// path) — newest first. Without the relayed packets a node's payload-type
+// breakdown would only ever show ADVERT. limit=0 returns all.
 func (s *Store) NodePackets(pk string, limit int) []*Tx {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	list := s.byNode[pk]
-	if len(list) == 0 {
-		return nil
-	}
-	out := make([]*Tx, 0, len(list))
-	for i := len(list) - 1; i >= 0; i-- {
-		if limit > 0 && len(out) >= limit {
-			break
+	lpk := strings.ToLower(pk)
+	seen := make(map[int64]bool)
+	out := make([]*Tx, 0, len(s.byNode[pk]))
+	for _, tx := range s.byNode[pk] { // adverts (originated by this node)
+		if !seen[tx.ID] {
+			seen[tx.ID] = true
+			out = append(out, tx)
 		}
-		out = append(out, list[i])
+	}
+	for _, tx := range s.packets { // relayed through this node
+		if seen[tx.ID] {
+			continue
+		}
+		if txRelaysNode(tx, lpk) {
+			seen[tx.ID] = true
+			out = append(out, tx)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID }) // newest first
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }
