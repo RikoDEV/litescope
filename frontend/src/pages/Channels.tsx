@@ -569,6 +569,10 @@ function ContactCard({ contact }: { contact: ContactShare }) {
   const [copied, setCopied] = useState(false)
   const color = hashColor(contact.pubKey)
   const shortKey = `${contact.pubKey.slice(0, 8)}…${contact.pubKey.slice(-6)}`
+  // MeshCore deep link the mobile app understands when scanned.
+  const qrValue = `meshcore://contact/add?${new URLSearchParams({
+    name: contact.name, public_key: contact.pubKey, type: String(contact.type),
+  }).toString()}`
 
   const copyKey = () => {
     navigator.clipboard?.writeText(contact.pubKey).then(() => {
@@ -610,7 +614,7 @@ function ContactCard({ contact }: { contact: ContactShare }) {
           <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>{t('channels.sharedContact')}</Typography>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{contact.name}</Typography>
           <Box sx={{ p: 1.5, background: '#fff', borderRadius: 2 }}>
-            <QRCodeSVG value={contact.raw} size={220} level="M" marginSize={2} />
+            <QRCodeSVG value={qrValue} size={220} level="M" marginSize={2} />
           </Box>
           <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, textAlign: 'center' }}>{t('channels.scanToAdd')}</Typography>
           <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all', textAlign: 'center' }}>
