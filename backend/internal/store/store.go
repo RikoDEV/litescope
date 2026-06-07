@@ -251,11 +251,14 @@ func (s *Store) byNodeContains(pk string, tx *Tx) ([]*Tx, bool) {
 	return list, false
 }
 
-// AddTxBatch adds new transmissions (from polling) to the store.
-func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) []*Tx {
+// AddTxBatch adds new transmissions (from polling) to the store. It returns the
+// newly-added packets plus any *existing* packets that gained observations in
+// this batch (so the UI can update their obs/hop counts live as a packet
+// propagates and more observers report it).
+func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, updated []*Tx) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var added []*Tx
+	addedIDs := make(map[int64]bool)
 	for _, r := range txs {
 		if _, ok := s.byHash[r.Hash]; ok {
 			continue
@@ -268,7 +271,9 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) []*Tx {
 			s.lastTxID = t.ID
 		}
 		added = append(added, t)
+		addedIDs[t.ID] = true
 	}
+	updatedSet := make(map[int64]*Tx)
 	for _, r := range obss {
 		if _, ok := s.byObsID[r.ID]; ok {
 			continue
@@ -279,15 +284,22 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) []*Tx {
 		if tx, ok := s.byTxID[o.TxID]; ok {
 			tx.Observations = append(tx.Observations, o)
 			s.indexByNode(tx)
+			// Existing packet (not first seen in this batch) gained an observation.
+			if !addedIDs[tx.ID] {
+				updatedSet[tx.ID] = tx
+			}
 		}
 		if o.ID > s.lastObsID {
 			s.lastObsID = o.ID
 		}
 	}
+	for _, tx := range updatedSet {
+		updated = append(updated, tx)
+	}
 	if len(added) > 0 || len(obss) > 0 {
 		s.bumpVersion()
 	}
-	return added
+	return added, updated
 }
 
 // indexByNode adds tx to the per-node packet index when it carries a pubKey

@@ -308,6 +308,26 @@ export default function Channels() {
 
   useEffect(() => {
     const unsub = stream.subscribe(async msg => {
+      // Live count updates: a previously-seen message gained observers/hops as it
+      // propagated — patch the matching message in place.
+      if (msg.type === 'packetUpdate') {
+        const u = msg.data
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === u.id)
+          if (idx < 0) return prev
+          const n = [...prev]
+          n[idx] = {
+            ...n[idx], obsCount: u.obsCount, maxHops: u.maxHops,
+            hopSize: u.hopSize ?? n[idx].hopSize,
+            bestScope: u.bestScope ?? n[idx].bestScope,
+            bestPath: u.bestPath ?? n[idx].bestPath,
+            bestObserver: u.bestObserver ?? n[idx].bestObserver,
+            regions: u.regions ?? n[idx].regions,
+          }
+          return n
+        })
+        return
+      }
       if (msg.type !== 'packet') return
       const d = msg.data.decoded
       if (!d || (d.decryptionStatus !== 'decrypted' && !needsClientDecrypt(d.decryptionStatus))) return

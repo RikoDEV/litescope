@@ -80,7 +80,7 @@ func main() {
 			if len(newTxs) == 0 && len(newObss) == 0 {
 				continue
 			}
-			added := st.AddTxBatch(newTxs, newObss)
+			added, updated := st.AddTxBatch(newTxs, newObss)
 			tid, oid := st.LastIDs()
 			lastTxID, lastObsID = tid, oid
 
@@ -123,6 +123,33 @@ func main() {
 					}
 				}
 				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
+				hub.Broadcast(msg)
+			}
+
+			// Broadcast count updates for already-seen packets that gained
+			// observations, so the UI can show propagation building up live.
+			for _, tx := range updated {
+				b := tx.BestObservation()
+				data := map[string]interface{}{
+					"id":       tx.ID,
+					"hash":     tx.Hash,
+					"obsCount": b.UniqueObs,
+					"maxHops":  b.MaxHops,
+					"hopSize":  b.HopSize,
+				}
+				if b.BestScope != "" {
+					data["bestScope"] = b.BestScope
+				}
+				if len(b.BestPath) > 0 {
+					data["bestPath"] = b.BestPath
+				}
+				if b.BestObserver != "" {
+					data["bestObserver"] = b.BestObserver
+				}
+				if len(b.Regions) > 0 {
+					data["regions"] = b.Regions
+				}
+				msg, _ := json.Marshal(map[string]interface{}{"type": "packetUpdate", "data": data})
 				hub.Broadcast(msg)
 			}
 		}

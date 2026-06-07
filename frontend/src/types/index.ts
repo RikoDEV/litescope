@@ -124,10 +124,22 @@ export interface NodeOverview extends Node {
   recentPackets: RichPacket[]
 }
 
-export interface WSMessage {
-  type: 'packet'
-  data: Packet
+/** A live count update for an already-seen packet as more observers report it. */
+export interface PacketUpdate {
+  id: number
+  hash: string
+  obsCount: number
+  maxHops: number
+  hopSize?: number
+  bestScope?: string
+  bestPath?: string[]
+  bestObserver?: string
+  regions?: string[]
 }
+
+export type WSMessage =
+  | { type: 'packet'; data: Packet }
+  | { type: 'packetUpdate'; data: PacketUpdate }
 
 export const PAYLOAD_NAMES: Record<number, string> = {
   0: 'REQ', 1: 'RESPONSE', 2: 'TXT_MSG', 3: 'ACK', 4: 'ADVERT',

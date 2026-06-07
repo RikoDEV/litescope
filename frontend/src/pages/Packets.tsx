@@ -149,6 +149,23 @@ export default function Packets() {
       if (msg.type === 'packet') {
         setPackets(prev => [msg.data, ...prev.slice(0, 999)])
         setTotal(t => t + 1)
+      } else if (msg.type === 'packetUpdate') {
+        // Live obs/hop count climb as a packet propagates and more observers report.
+        const u = msg.data
+        setPackets(prev => {
+          const idx = prev.findIndex(p => p.id === u.id)
+          if (idx < 0) return prev
+          const n = [...prev]
+          n[idx] = {
+            ...n[idx], obsCount: u.obsCount, maxHops: u.maxHops,
+            hopSize: u.hopSize ?? n[idx].hopSize,
+            bestScope: u.bestScope ?? n[idx].bestScope,
+            bestPath: u.bestPath ?? n[idx].bestPath,
+            bestObserver: u.bestObserver ?? n[idx].bestObserver,
+            regions: u.regions ?? n[idx].regions,
+          }
+          return n
+        })
       }
     })
   }, [])
