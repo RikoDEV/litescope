@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Popover from '@mui/material/Popover'
+import Dialog from '@mui/material/Dialog'
+import { QRCodeSVG } from 'qrcode.react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
@@ -31,11 +33,15 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import LockIcon from '@mui/icons-material/Lock'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
+import QrCode2Icon from '@mui/icons-material/QrCode2'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Channel, Packet, PacketDetail } from '../types'
 import { deduplicateObs } from '../utils/packets'
 import { hashColor } from '../utils/colors'
+import { parseMessageSegments, isContact, isLocation, type ContactShare, type LocationShare } from '../utils/contacts'
+import L from 'leaflet'
 import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
 import { IataFlag } from '../utils/flags'
@@ -486,7 +492,138 @@ export default function Channels() {
 // ── Message text with mention + channel parsing ───────────────────────────────
 const TOKEN_RE = /@\[([^\]]+)\]|(https?:\/\/[^\s]+)|#(\S+)/g
 
-function MessageText({ text, onMentionClick, channels, onChannelClick }: {
+function MessageText(props: {
+  text: string
+  onMentionClick: (name: string) => void
+  channels: Channel[]
+  onChannelClick: (ch: Channel) => void
+}) {
+  // Contact/location cards are block-level, so split them out and render the
+  // surrounding text inline around each card.
+  const segments = parseMessageSegments(props.text)
+  if (segments.length === 1 && typeof segments[0] === 'string') {
+    return <InlineText {...props} />
+  }
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      {segments.map((seg, i) =>
+        typeof seg === 'string'
+          ? (seg.trim() ? <InlineText key={i} {...props} text={seg} /> : null)
+          : isContact(seg) ? <ContactCard key={i} contact={seg} />
+          : isLocation(seg) ? <LocationCard key={i} loc={seg} />
+          : null
+      )}
+    </Box>
+  )
+}
+
+// ── Location-share card with a tiny map ────────────────────────────────────────
+function LocationCard({ loc }: { loc: LocationShare }) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const divRef = useRef<HTMLDivElement>(null)
+  const isDark = theme.palette.mode === 'dark'
+
+  useEffect(() => {
+    if (!divRef.current) return
+    const map = L.map(divRef.current, {
+      center: [loc.lat, loc.lon], zoom: 13,
+      zoomControl: false, attributionControl: false,
+      dragging: false, scrollWheelZoom: false,
+      doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
+    })
+    L.tileLayer(
+      isDark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+             : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19, subdomains: isDark ? 'abcd' : 'abc' },
+    ).addTo(map)
+    L.circleMarker([loc.lat, loc.lon], { radius: 7, color: '#fff', fillColor: md3.primary, fillOpacity: 1, weight: 2.5 }).addTo(map)
+    return () => { map.remove() }
+  }, [loc.lat, loc.lon, isDark, md3.primary])
+
+  const osmUrl = `https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lon}#map=15/${loc.lat}/${loc.lon}`
+
+  return (
+    <Box sx={{ maxWidth: 300, borderRadius: 2, overflow: 'hidden', border: `1px solid ${md3.outlineVariant}` }}>
+      <Box component="a" href={osmUrl} target="_blank" rel="noopener noreferrer" sx={{ display: 'block' }}>
+        <div ref={divRef} style={{ height: 150, cursor: 'pointer' }} />
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, background: alpha(md3.surfaceContainerHighest, 0.6) }}>
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 11, color: md3.onSurfaceVariant }}>
+          {loc.lat.toFixed(5)}, {loc.lon.toFixed(5)}
+        </Typography>
+        <Tooltip title="OpenStreetMap">
+          <IconButton size="small" component="a" href={osmUrl} target="_blank" rel="noopener noreferrer" sx={{ p: 0.25, ml: 'auto', color: md3.outline }}>
+            <OpenInNewIcon sx={{ fontSize: 13 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  )
+}
+
+// ── Contact-share card with a QR action ────────────────────────────────────────
+function ContactCard({ contact }: { contact: ContactShare }) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+  const [qrOpen, setQrOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const color = hashColor(contact.pubKey)
+  const shortKey = `${contact.pubKey.slice(0, 8)}…${contact.pubKey.slice(-6)}`
+
+  const copyKey = () => {
+    navigator.clipboard?.writeText(contact.pubKey).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
+  return (
+    <>
+      <Box sx={{
+        display: 'flex', alignItems: 'center', gap: 1.25, p: 1, maxWidth: 340,
+        borderRadius: 2, border: `1px solid ${md3.outlineVariant}`,
+        background: alpha(md3.surfaceContainerHighest, 0.6),
+      }}>
+        <Avatar sx={{ width: 38, height: 38, background: color, fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+          {avatarGlyph(contact.name)}
+        </Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {contact.name}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10 }}>{shortKey}</Typography>
+            <Tooltip title={copied ? '✓' : contact.pubKey}>
+              <IconButton size="small" onClick={copyKey} sx={{ p: 0.25, color: md3.outline }}>
+                <ContentCopyIcon sx={{ fontSize: 12 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+        <Button size="small" variant="outlined" startIcon={<QrCode2Icon />} onClick={() => setQrOpen(true)}
+          sx={{ flexShrink: 0, textTransform: 'none' }}>
+          {t('channels.showQr')}
+        </Button>
+      </Box>
+
+      <Dialog open={qrOpen} onClose={() => setQrOpen(false)}>
+        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, minWidth: 260 }}>
+          <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, lineHeight: 1 }}>{t('channels.sharedContact')}</Typography>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{contact.name}</Typography>
+          <Box sx={{ p: 1.5, background: '#fff', borderRadius: 2 }}>
+            <QRCodeSVG value={contact.raw} size={220} level="M" marginSize={2} />
+          </Box>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, textAlign: 'center' }}>{t('channels.scanToAdd')}</Typography>
+          <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all', textAlign: 'center' }}>
+            {contact.pubKey}
+          </Typography>
+        </Box>
+      </Dialog>
+    </>
+  )
+}
+
+// Inline message text (mentions / URLs / #channels).
+function InlineText({ text, onMentionClick, channels, onChannelClick }: {
   text: string
   onMentionClick: (name: string) => void
   channels: Channel[]
