@@ -16,5 +16,6 @@
   },
   "hashChannels": [],
   "scopeList": [],
-  "allowedOrigins": ["*"]
+  "allowedOrigins": ["*"],
+  "retentionDays": 0
 }

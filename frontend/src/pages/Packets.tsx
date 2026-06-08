@@ -106,15 +106,22 @@ export default function Packets() {
       }
       return true
     })
-    return [...list].sort((a, b) => {
+    const sorted = [...list]
+    // Precompute firstSeen → epoch once (keyed by id) instead of parsing Date
+    // inside the comparator, which would re-parse O(n log n) times per sort.
+    const fsMs = sortCol === 'firstSeen'
+      ? new Map(sorted.map(p => [p.id, new Date(p.firstSeen).getTime()]))
+      : null
+    sorted.sort((a, b) => {
       const [va, vb] =
         sortCol === 'payloadType' ? [a.payloadType, b.payloadType] :
         sortCol === 'routeType'   ? [a.routeType,   b.routeType]   :
         sortCol === 'obsCount'    ? [a.obsCount,     b.obsCount]    :
         sortCol === 'id'          ? [a.id,           b.id]          :
-        [new Date(a.firstSeen).getTime(), new Date(b.firstSeen).getTime()]
+        [fsMs!.get(a.id)!, fsMs!.get(b.id)!]
       return sortDir === 'asc' ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0)
     })
+    return sorted
   }, [packets, typeFilter, routeFilter, regionFilter, regionLock, minObs, search, windowMs, sortCol, sortDir])
 
   const toggleSort = (col: SortCol) => {

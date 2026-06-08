@@ -3,6 +3,7 @@ package store
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/litescope/backend/internal/db"
 )
@@ -44,8 +45,11 @@ func TestDecodedConcurrentReads(t *testing.T) {
 }
 
 // TestAnalyticsCacheInvalidation verifies the version-keyed analytics cache
-// serves a memoized value and recomputes after a mutation.
+// serves a memoized value and recomputes after a mutation once the staleness
+// budget is disabled (TTL=0 → version is the sole gate).
 func TestAnalyticsCacheInvalidation(t *testing.T) {
+	defer withCacheTTL(0)()
+
 	s := New()
 	s.Load([]*db.TxRow{
 		{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
@@ -66,6 +70,82 @@ func TestAnalyticsCacheInvalidation(t *testing.T) {
 	}, nil)
 	if got := s.PacketsByType(AnalyticsFilter{}); got["ADVERT"] != 2 {
 		t.Fatalf("expected cache invalidation to yield 2 ADVERT, got %v", got)
+	}
+}
+
+// TestAnalyticsCacheTTL verifies that within the staleness budget a memoized
+// result is reused even after the underlying data (and version) changed — the
+// throttle that keeps heavy analytics from recomputing on every request of a
+// busy network.
+func TestAnalyticsCacheTTL(t *testing.T) {
+	defer withCacheTTL(time.Hour)()
+
+	s := New()
+	s.Load([]*db.TxRow{
+		{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
+	}, nil, nil, nil)
+
+	if got := s.PacketsByType(AnalyticsFilter{}); got["ADVERT"] != 1 {
+		t.Fatalf("expected 1 ADVERT, got %v", got)
+	}
+	// Mutate: version bumps, but the cached value is fresh → still served stale.
+	s.AddTxBatch([]*db.TxRow{
+		{ID: 2, Hash: "b", RawHex: "01", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
+	}, nil)
+	if got := s.PacketsByType(AnalyticsFilter{}); got["ADVERT"] != 1 {
+		t.Fatalf("expected throttled cache to still report 1 ADVERT, got %v", got)
+	}
+}
+
+// withCacheTTL temporarily overrides analyticsCacheTTL, returning a restore func.
+func withCacheTTL(d time.Duration) func() {
+	prev := analyticsCacheTTL
+	analyticsCacheTTL = d
+	return func() { analyticsCacheTTL = prev }
+}
+
+// TestPrune verifies retention drops old packets from every index while leaving
+// recent ones (and their relay/node lookups) intact.
+func TestPrune(t *testing.T) {
+	s := New()
+	old := "2024-01-01T00:00:00Z"
+	recent := time.Now().UTC().Format(time.RFC3339)
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "old", RawHex: "00", FirstSeen: old, PayloadType: 4, DecodedJSON: `{"pubKey":"nodeOld","type":"ADVERT"}`},
+			{ID: 2, Hash: "new", RawHex: "01", FirstSeen: recent, PayloadType: 4, DecodedJSON: `{"pubKey":"nodeNew","type":"ADVERT"}`},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obsA", PathJSON: `["ab","cd"]`},
+			{ID: 2, TxID: 2, ObserverID: "obsA", PathJSON: `["ef"]`},
+		},
+		nil, nil,
+	)
+
+	cutoff := time.Now().UTC().Add(-24 * time.Hour).UnixMilli()
+	if n := s.Prune(cutoff); n != 1 {
+		t.Fatalf("expected 1 pruned, got %d", n)
+	}
+
+	if _, total := s.Packets(50, 0); total != 1 {
+		t.Fatalf("expected 1 packet remaining, got %d", total)
+	}
+	if s.PacketByHash("old") != nil {
+		t.Fatalf("old packet still present by hash")
+	}
+	if s.PacketByHash("new") == nil {
+		t.Fatalf("recent packet was wrongly pruned")
+	}
+	// Relay index for the pruned packet's hop must be gone; the recent one kept.
+	if got := s.NodePackets("ab00000000", 0); len(got) != 0 {
+		t.Fatalf("pruned relay hop still indexed: %d packets", len(got))
+	}
+	if got := s.byObserver["obsA"]; len(got) != 1 {
+		t.Fatalf("expected 1 observation left for obsA, got %d", len(got))
+	}
+	// nodeOld's only advert was pruned from byNode → no packets attributable to it.
+	if got := s.NodePackets("nodeOld", 0); len(got) != 0 {
+		t.Fatalf("pruned node still has packets: %d", len(got))
 	}
 }
 

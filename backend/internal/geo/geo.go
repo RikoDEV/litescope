@@ -26,6 +26,13 @@ type country struct {
 var (
 	once      sync.Once
 	countries []country
+
+	// ccCache memoizes resolved country codes on a ~11 m grid (4 decimal places).
+	// CountryAt is re-run for the whole node fleet on every periodic reload, and
+	// node positions are effectively static, so the point-in-polygon scan only
+	// needs to run once per distinct location.
+	ccMu    sync.RWMutex
+	ccCache = make(map[[2]int32]string)
 )
 
 func load() {
@@ -65,8 +72,24 @@ func load() {
 
 // CountryAt returns the ISO 3166-1 alpha-2 code of the country containing the
 // coordinate, or "" if it falls outside all borders (open sea / unmapped).
+// Results are memoized per ~11 m grid cell.
 func CountryAt(lat, lon float64) string {
 	once.Do(load)
+	key := [2]int32{int32(lat * 1e4), int32(lon * 1e4)}
+	ccMu.RLock()
+	cc, ok := ccCache[key]
+	ccMu.RUnlock()
+	if ok {
+		return cc
+	}
+	cc = countryAtUncached(lat, lon)
+	ccMu.Lock()
+	ccCache[key] = cc
+	ccMu.Unlock()
+	return cc
+}
+
+func countryAtUncached(lat, lon float64) string {
 	for i := range countries {
 		for j := range countries[i].polys {
 			p := &countries[i].polys[j]

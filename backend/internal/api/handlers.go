@@ -188,10 +188,11 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 		Counts map[string]int `json:"counts"`
 		Nodes  []nodeSummary  `json:"nodes"`
 	}
-	out := response{Total: len(nodes), Counts: s.Store.RoleCounts()}
+	regionsByNode := s.Store.NodeRegionsAll()
+	out := response{Total: len(nodes), Counts: s.Store.RoleCounts(), Nodes: make([]nodeSummary, 0, len(nodes))}
 	for _, n := range nodes {
 		ns := summarizeNode(n)
-		ns.Regions = s.Store.NodeRegions(n.PubKey)
+		ns.Regions = regionsByNode[n.PubKey]
 		out.Nodes = append(out.Nodes, ns)
 	}
 	writeJSON(w, out)
@@ -268,11 +269,31 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 			packetsToday++
 		}
 
+		// RF/observer aggregates (avg SNR/hops, "heard by") describe this node's
+		// own link quality, so they count only packets it ORIGINATED (its adverts).
+		// Packets it merely relayed carry another sender's SNR/observers and would
+		// otherwise be misattributed to this node.
+		originated := false
+		if dec := tx.Decoded(); dec != nil {
+			if dpk, _ := dec["pubKey"].(string); dpk == pk {
+				originated = true
+			}
+		}
+
 		rp := richPacket{packetSummary: summarizeTx(tx)}
 		for _, obs := range tx.Observations {
-			var hops []string
-			if json.Unmarshal([]byte(obs.PathJSON), &hops) == nil && len(hops) > 0 {
-				totalHops += len(hops); hopCount++
+			// best SNR observation for this packet (shown on the row) — all packets
+			if obs.SNR != nil && (rp.BestSnr == nil || *obs.SNR > *rp.BestSnr) {
+				rp.BestObserver = obs.ObserverName
+				rp.BestIATA = obs.ObserverIATA
+				rp.BestSnr = obs.SNR
+				rp.BestRssi = obs.RSSI
+			}
+			if !originated {
+				continue
+			}
+			if len(obs.Path) > 0 {
+				totalHops += len(obs.Path); hopCount++
 			}
 			if obs.SNR != nil {
 				snrSum += *obs.SNR; snrN++
@@ -285,13 +306,6 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 			a.count++
 			if obs.SNR != nil { a.snrSum += *obs.SNR; a.snrN++ }
 			if obs.RSSI != nil { a.rssiSum += *obs.RSSI; a.rssiN++ }
-			// pick best SNR observation for this packet
-			if obs.SNR != nil && (rp.BestSnr == nil || *obs.SNR > *rp.BestSnr) {
-				rp.BestObserver = obs.ObserverName
-				rp.BestIATA = obs.ObserverIATA
-				rp.BestSnr = obs.SNR
-				rp.BestRssi = obs.RSSI
-			}
 		}
 		if rp.BestObserver == "" && len(tx.Observations) > 0 {
 			o := tx.Observations[0]

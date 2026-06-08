@@ -18,6 +18,11 @@ type Config struct {
 	// allows any origin (default, preserves prior behavior); otherwise only the
 	// listed origins (e.g. "https://litescope.example") are accepted.
 	AllowedOrigins []string `json:"allowedOrigins"`
+	// RetentionDays bounds history: packets older than this are pruned from the
+	// in-memory store (server) and the SQLite database (ingestor). 0 (default)
+	// keeps everything — unbounded, fine for short-lived or low-volume setups, but
+	// memory and per-request analytics cost grow with history on a busy network.
+	RetentionDays int `json:"retentionDays"`
 }
 
 type MQTTSource struct {

@@ -39,6 +39,11 @@ type Tx struct {
 	ChannelHash     string
 	Observations    []*Obs
 	DecodedPayload  map[string]interface{}
+
+	// relayHops is the set of hex relay-hash prefixes (lowercase) under which this
+	// packet has already been registered in Store.byRelayHop, used to dedupe the
+	// relay index as observations accrue. Maintained under the store write lock.
+	relayHops map[string]struct{}
 }
 
 // Decoded returns the parsed decoded payload. The map is populated once in
@@ -76,14 +81,11 @@ func (t *Tx) BestObservation() BestObs {
 		if b.BestObserver == "" {
 			b.BestObserver = o.ObserverID
 		}
-		var hops []string
-		if json.Unmarshal([]byte(o.PathJSON), &hops) == nil && len(hops) > b.MaxHops {
-			b.MaxHops = len(hops)
-			b.BestPath = hops
+		if len(o.Path) > b.MaxHops {
+			b.MaxHops = len(o.Path)
+			b.BestPath = o.Path
 			b.BestObserver = o.ObserverID
-			if len(hops) > 0 {
-				b.HopSize = len(hops[0]) / 2 // hex chars → bytes
-			}
+			b.HopSize = len(o.Path[0]) / 2 // hex chars → bytes
 		}
 		if b.BestScope == "" && o.FloodScope != "" {
 			b.BestScope = o.FloodScope
@@ -112,6 +114,7 @@ type Obs struct {
 	Score        *float64
 	Direction    string
 	PathJSON     string
+	Path         []string // PathJSON decoded once in obsFromRow (nil on malformed/empty)
 	FloodScope   string
 	Timestamp    string
 	RawHex       string
@@ -150,16 +153,22 @@ type Observer struct {
 // Store is the in-memory packet store with indexed lookup.
 type Store struct {
 	mu         sync.RWMutex
-	packets    []*Tx
-	byHash     map[string]*Tx
-	byTxID     map[int64]*Tx
-	byObsID    map[int64]*Obs
-	byObserver map[string][]*Obs
-	byNode     map[string][]*Tx
-	nodes      map[string]*Node
-	observers  map[string]*Observer
-	lastTxID   int64
-	lastObsID  int64
+	packets         []*Tx
+	byHash          map[string]*Tx
+	byTxID          map[int64]*Tx
+	byObsID         map[int64]*Obs
+	byObserver      map[string][]*Obs
+	byNode          map[string][]*Tx
+	// byRelayHop maps a lowercase hex relay-hash prefix to the packets that were
+	// observed carrying it in a path. relayHopLengths is the set of distinct hop
+	// prefix lengths (in hex chars) seen, so NodePackets can probe a node's pubkey
+	// at every used length instead of scanning every packet.
+	byRelayHop      map[string][]*Tx
+	relayHopLengths map[int]struct{}
+	nodes           map[string]*Node
+	observers       map[string]*Observer
+	lastTxID        int64
+	lastObsID       int64
 
 	// version bumps on every mutation; the analytics cache keys off it so a
 	// result is reused only while the underlying data is unchanged.
@@ -170,19 +179,30 @@ type Store struct {
 
 type cacheEntry struct {
 	version uint64
+	at      time.Time
 	value   any
 }
 
+// analyticsCacheTTL bounds how long a memoized analytics result is reused even
+// when the store version keeps changing. On a live network a packet arrives
+// roughly every second, bumping the version, so pure version-keyed caching never
+// hits; serving a result up to TTL old keeps the heavy full-history scans
+// (distance/geo O(N²), hashes, scope, …) from recomputing on every request.
+// Overridden to 0 in tests that assert immediate invalidation.
+var analyticsCacheTTL = 10 * time.Second
+
 func New() *Store {
 	return &Store{
-		byHash:     make(map[string]*Tx),
-		byTxID:     make(map[int64]*Tx),
-		byObsID:    make(map[int64]*Obs),
-		byObserver: make(map[string][]*Obs),
-		byNode:     make(map[string][]*Tx),
-		nodes:      make(map[string]*Node),
-		observers:  make(map[string]*Observer),
-		cache:      make(map[string]cacheEntry),
+		byHash:          make(map[string]*Tx),
+		byTxID:          make(map[int64]*Tx),
+		byObsID:         make(map[int64]*Obs),
+		byObserver:      make(map[string][]*Obs),
+		byNode:          make(map[string][]*Tx),
+		byRelayHop:      make(map[string][]*Tx),
+		relayHopLengths: make(map[int]struct{}),
+		nodes:           make(map[string]*Node),
+		observers:       make(map[string]*Observer),
+		cache:           make(map[string]cacheEntry),
 	}
 }
 
@@ -197,12 +217,14 @@ func cachedAnalytics[T any](s *Store, key string, compute func() T) T {
 	s.cacheMu.Lock()
 	e, ok := s.cache[key]
 	s.cacheMu.Unlock()
-	if ok && e.version == cur {
+	// Reuse when the underlying data is unchanged (version match) or when the
+	// cached value is still within the staleness budget.
+	if ok && (e.version == cur || time.Since(e.at) < analyticsCacheTTL) {
 		return e.value.(T)
 	}
 	val := compute()
 	s.cacheMu.Lock()
-	s.cache[key] = cacheEntry{version: cur, value: val}
+	s.cache[key] = cacheEntry{version: cur, at: time.Now(), value: val}
 	s.cacheMu.Unlock()
 	return val
 }
@@ -228,6 +250,7 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 		if tx, ok := s.byTxID[o.TxID]; ok {
 			tx.Observations = append(tx.Observations, o)
 			s.indexByNode(tx)
+			s.indexRelayHops(tx, o)
 		}
 		if o.ID > s.lastObsID {
 			s.lastObsID = o.ID
@@ -278,16 +301,25 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		if _, ok := s.byObsID[r.ID]; ok {
 			continue
 		}
+		tx, ok := s.byTxID[r.TxID]
+		if !ok {
+			// The observation's transmission isn't in the store yet: its INSERT
+			// raced between LoadSince's two queries (the tx will be loaded by a
+			// later poll). Stop without advancing lastObsID so the next poll
+			// re-reads from this id and links it. obss are strictly id-ordered,
+			// so deferring the remainder costs at most one extra poll of latency
+			// and never orphans an observation.
+			break
+		}
 		o := obsFromRow(r)
 		s.byObsID[o.ID] = o
 		s.byObserver[o.ObserverID] = append(s.byObserver[o.ObserverID], o)
-		if tx, ok := s.byTxID[o.TxID]; ok {
-			tx.Observations = append(tx.Observations, o)
-			s.indexByNode(tx)
-			// Existing packet (not first seen in this batch) gained an observation.
-			if !addedIDs[tx.ID] {
-				updatedSet[tx.ID] = tx
-			}
+		tx.Observations = append(tx.Observations, o)
+		s.indexByNode(tx)
+		s.indexRelayHops(tx, o)
+		// Existing packet (not first seen in this batch) gained an observation.
+		if !addedIDs[tx.ID] {
+			updatedSet[tx.ID] = tx
 		}
 		if o.ID > s.lastObsID {
 			s.lastObsID = o.ID
@@ -300,6 +332,104 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		s.bumpVersion()
 	}
 	return added, updated
+}
+
+// Prune removes packets first seen before cutoffMs (epoch millis) from the
+// in-memory store and every index. s.packets is append-order (≈ first-seen), so
+// this drops an old prefix; stragglers positioned after the cutoff are left
+// intact (conservative — never over-prunes). Returns the count removed. A
+// cutoffMs <= 0 is a no-op. Takes the write lock.
+func (s *Store) Prune(cutoffMs int64) int {
+	if cutoffMs <= 0 {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cut := 0
+	for cut < len(s.packets) {
+		t := parseTimeMillis(s.packets[cut].FirstSeen)
+		if t == 0 || t >= cutoffMs {
+			break // unparseable or recent enough — stop pruning the prefix
+		}
+		cut++
+	}
+	if cut == 0 {
+		return 0
+	}
+
+	pruned := s.packets[:cut]
+	prunedID := make(map[int64]bool, len(pruned))
+	touchedObservers := make(map[string]bool)
+	touchedNodes := make(map[string]bool)
+	touchedHops := make(map[string]bool)
+
+	for _, tx := range pruned {
+		prunedID[tx.ID] = true
+		delete(s.byHash, tx.Hash)
+		delete(s.byTxID, tx.ID)
+		for _, o := range tx.Observations {
+			delete(s.byObsID, o.ID)
+			touchedObservers[o.ObserverID] = true
+		}
+		for h := range tx.relayHops {
+			touchedHops[h] = true
+		}
+		if dec := tx.Decoded(); dec != nil {
+			if pk, _ := dec["pubKey"].(string); pk != "" {
+				touchedNodes[pk] = true
+			}
+		}
+	}
+
+	// Filter pruned entries out of only the index buckets actually touched.
+	for id := range touchedObservers {
+		if kept := filterObs(s.byObserver[id], prunedID); len(kept) == 0 {
+			delete(s.byObserver, id)
+		} else {
+			s.byObserver[id] = kept
+		}
+	}
+	for pk := range touchedNodes {
+		if kept := filterTx(s.byNode[pk], prunedID); len(kept) == 0 {
+			delete(s.byNode, pk)
+		} else {
+			s.byNode[pk] = kept
+		}
+	}
+	for h := range touchedHops {
+		if kept := filterTx(s.byRelayHop[h], prunedID); len(kept) == 0 {
+			delete(s.byRelayHop, h)
+		} else {
+			s.byRelayHop[h] = kept
+		}
+	}
+
+	// Copy the retained tail to a fresh slice so the pruned prefix is released.
+	s.packets = append([]*Tx(nil), s.packets[cut:]...)
+
+	s.bumpVersion()
+	return cut
+}
+
+func filterObs(list []*Obs, prunedTx map[int64]bool) []*Obs {
+	kept := list[:0]
+	for _, o := range list {
+		if !prunedTx[o.TxID] {
+			kept = append(kept, o)
+		}
+	}
+	return kept
+}
+
+func filterTx(list []*Tx, prunedTx map[int64]bool) []*Tx {
+	kept := list[:0]
+	for _, tx := range list {
+		if !prunedTx[tx.ID] {
+			kept = append(kept, tx)
+		}
+	}
+	return kept
 }
 
 // indexByNode adds tx to the per-node packet index when it carries a pubKey
@@ -315,6 +445,28 @@ func (s *Store) indexByNode(tx *Tx) {
 	}
 	if _, seen := s.byNodeContains(pk, tx); !seen {
 		s.byNode[pk] = append(s.byNode[pk], tx)
+	}
+}
+
+// indexRelayHops registers tx under every distinct hex relay-hash prefix present
+// in observation o's path, so NodePackets can find packets relayed through a node
+// by hash-prefix lookup instead of scanning the whole store. Deduplicated per
+// (tx, hop) via tx.relayHops. Caller must hold the write lock.
+func (s *Store) indexRelayHops(tx *Tx, o *Obs) {
+	for _, h := range o.Path {
+		if !isHexHop(h) {
+			continue
+		}
+		lh := strings.ToLower(h)
+		if _, dup := tx.relayHops[lh]; dup {
+			continue
+		}
+		if tx.relayHops == nil {
+			tx.relayHops = make(map[string]struct{})
+		}
+		tx.relayHops[lh] = struct{}{}
+		s.byRelayHop[lh] = append(s.byRelayHop[lh], tx)
+		s.relayHopLengths[len(lh)] = struct{}{}
 	}
 }
 
@@ -356,7 +508,7 @@ func (s *Store) Packets(limit, offset int) ([]*Tx, int) {
 	total := len(s.packets)
 	// newest first: reverse index
 	start := total - 1 - offset
-	var out []*Tx
+	out := make([]*Tx, 0, limit)
 	for i := start; i >= 0 && len(out) < limit; i-- {
 		out = append(out, s.packets[i])
 	}
@@ -406,6 +558,36 @@ func (s *Store) NodeRegions(pk string) []string {
 	return out
 }
 
+// NodeRegionsAll returns, for every node that has advert packets, the sorted
+// distinct observer IATA regions that heard it. Computed in a single locked pass
+// — the per-node NodeRegions acquired the read lock and re-walked observations
+// once per node, which is O(nodes) lock churn on the /api/nodes hot path.
+func (s *Store) NodeRegionsAll() map[string][]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string][]string, len(s.byNode))
+	for pk, txs := range s.byNode {
+		seen := make(map[string]struct{})
+		for _, tx := range txs {
+			for _, o := range tx.Observations {
+				if o.ObserverIATA != "" {
+					seen[o.ObserverIATA] = struct{}{}
+				}
+			}
+		}
+		if len(seen) == 0 {
+			continue
+		}
+		regions := make([]string, 0, len(seen))
+		for r := range seen {
+			regions = append(regions, r)
+		}
+		sort.Strings(regions)
+		out[pk] = regions
+	}
+	return out
+}
+
 // IATAs returns distinct IATA region codes from all observers.
 func (s *Store) IATAs() []string {
 	s.mu.RLock()
@@ -439,25 +621,19 @@ func (s *Store) NodesFiltered(iata, status, lastHeard string) []*Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Build set of pubkeys heard by the selected IATA region
+	// Build set of pubkeys heard by the selected IATA region. Walk the per-node
+	// advert index (small) rather than every observation in the store.
 	var iataPubkeys map[string]bool
 	if iata != "" {
 		iataPubkeys = make(map[string]bool)
-		for _, obsList := range s.byObserver {
-			for _, obs := range obsList {
-				if obs.ObserverIATA != iata {
-					continue
-				}
-				tx, ok := s.byTxID[obs.TxID]
-				if !ok {
-					continue
-				}
-				dec := tx.Decoded()
-				if dec == nil {
-					continue
-				}
-				if pk, ok := dec["pubKey"].(string); ok && pk != "" {
-					iataPubkeys[pk] = true
+		for pk, txs := range s.byNode {
+		nodeLoop:
+			for _, tx := range txs {
+				for _, o := range tx.Observations {
+					if o.ObserverIATA == iata {
+						iataPubkeys[pk] = true
+						break nodeLoop
+					}
 				}
 			}
 		}
@@ -533,24 +709,6 @@ func (s *Store) NodeByPubKey(pk string) *Node {
 	return s.nodes[pk]
 }
 
-// txRelaysNode reports whether the node's pubkey appears as a relay hop in any
-// of the tx's observation paths (hash-prefix match, same heuristic as the
-// retransmit counts). Caller holds the read lock.
-func txRelaysNode(tx *Tx, lpk string) bool {
-	for _, o := range tx.Observations {
-		var hops []string
-		if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
-			continue
-		}
-		for _, h := range hops {
-			if isHexHop(h) && strings.HasPrefix(lpk, strings.ToLower(h)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // NodePackets returns recent packets the node was involved in — its own adverts
 // (which carry its pubkey) plus packets it relayed (its hash appears in the
 // path) — newest first. Without the relayed packets a node's payload-type
@@ -567,13 +725,18 @@ func (s *Store) NodePackets(pk string, limit int) []*Tx {
 			out = append(out, tx)
 		}
 	}
-	for _, tx := range s.packets { // relayed through this node
-		if seen[tx.ID] {
+	// Relayed through this node: probe the relay index at every hop-prefix length
+	// the network uses, matching the node's pubkey against the hops carried in
+	// observation paths — O(matching packets) instead of a full-store scan.
+	for l := range s.relayHopLengths {
+		if len(lpk) < l {
 			continue
 		}
-		if txRelaysNode(tx, lpk) {
-			seen[tx.ID] = true
-			out = append(out, tx)
+		for _, tx := range s.byRelayHop[lpk[:l]] {
+			if !seen[tx.ID] {
+				seen[tx.ID] = true
+				out = append(out, tx)
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID }) // newest first
@@ -1228,11 +1391,7 @@ func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
 	lengths := make(map[int]bool)
 	for _, tx := range s.packets {
 		for _, o := range tx.Observations {
-			var hops []string
-			if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
-				continue
-			}
-			for _, h := range hops {
+			for _, h := range o.Path {
 				if isHexHop(h) {
 					lengths[len(h)] = true
 				}
@@ -1266,11 +1425,7 @@ func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
 			delete(credited, k)
 		}
 		for _, o := range tx.Observations {
-			var hops []string
-			if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
-				continue
-			}
-			for _, h := range hops {
+			for _, h := range o.Path {
 				if !isHexHop(h) {
 					continue
 				}
@@ -1428,12 +1583,17 @@ func txFromRow(r *db.TxRow) *Tx {
 }
 
 func obsFromRow(r *db.ObsRow) *Obs {
-	return &Obs{
+	o := &Obs{
 		ID: r.ID, TxID: r.TxID, ObserverID: r.ObserverID, ObserverName: r.ObserverName,
 		ObserverIATA: r.ObserverIATA, RSSI: r.RSSI, SNR: r.SNR, Score: r.Score,
 		Direction: r.Direction, PathJSON: r.PathJSON, FloodScope: r.FloodScope, Timestamp: r.Timestamp,
 		RawHex: r.RawHex,
 	}
+	// Decode the hop path once here (under the store write lock held by
+	// Load/AddTxBatch) so every analytics pass reads o.Path instead of
+	// re-unmarshalling the JSON string on each request.
+	json.Unmarshal([]byte(r.PathJSON), &o.Path) //nolint:errcheck
+	return o
 }
 
 func nodeFromRow(r *db.NodeRow) *Node {
@@ -1549,8 +1709,8 @@ func (s *Store) computeHashStats(f AnalyticsFilter) HashStatsData {
 			if !f.obsOK(o) {
 				continue
 			}
-			var hops []string
-			if json.Unmarshal([]byte(o.PathJSON), &hops) != nil || len(hops) == 0 {
+			hops := o.Path
+			if len(hops) == 0 {
 				continue
 			}
 
@@ -1722,11 +1882,7 @@ func (s *Store) computeInconsistentHashes(now time.Time) []InconsistentHashNode 
 func advertSelfHashSize(tx *Tx, pubKey string) int {
 	pkLower := strings.ToLower(pubKey)
 	for _, o := range tx.Observations {
-		var hops []string
-		if json.Unmarshal([]byte(o.PathJSON), &hops) != nil {
-			continue
-		}
-		for _, hop := range hops {
+		for _, hop := range o.Path {
 			if isHexHop(hop) && strings.HasPrefix(pkLower, strings.ToLower(hop)) {
 				return len(hop) / 2
 			}
@@ -2010,12 +2166,8 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 			if !f.obsOK(o) {
 				continue
 			}
-			var rawHops []string
-			if json.Unmarshal([]byte(o.PathJSON), &rawHops) != nil {
-				rawHops = nil
-			}
 			var hops []string
-			for _, h := range rawHops {
+			for _, h := range o.Path {
 				if isHexHop(h) {
 					hops = append(hops, h)
 				}

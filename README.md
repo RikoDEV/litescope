@@ -129,7 +129,13 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
 
   // Allowed CORS / WebSocket origins. ["*"] (or empty/omitted) allows any origin;
   // otherwise only the listed origins, e.g. ["https://litescope.example.com"]
-  "allowedOrigins": ["*"]
+  "allowedOrigins": ["*"],
+
+  // History retention in days. 0 (default) keeps everything. When > 0, packets
+  // older than this are pruned hourly from the in-memory store (server) and the
+  // SQLite database (ingestor), bounding memory and analytics cost on busy
+  // networks. Nodes/observers and their lifetime counters are kept.
+  "retentionDays": 0
 }
 ```
 

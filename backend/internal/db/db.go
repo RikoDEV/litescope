@@ -155,11 +155,23 @@ func (d *DB) applySchema() error {
 			return fmt.Errorf("exec %q: %w", s[:min(40, len(s))], err)
 		}
 	}
-	// Migrations for existing databases
-	d.db.Exec(`ALTER TABLE observations ADD COLUMN flood_scope TEXT`)
-	d.db.Exec(`ALTER TABLE observations ADD COLUMN raw_hex TEXT`)
-	// Recalculate observation_count to reflect unique observers (not raw row count)
-	d.db.Exec(`UPDATE transmissions SET observation_count = (SELECT COUNT(DISTINCT observer_id) FROM observations WHERE tx_id = transmissions.id)`)
+	// One-time migrations, gated on PRAGMA user_version. The recalculation below
+	// rewrites every row of transmissions with a correlated subquery; it
+	// previously ran on every ingestor AND server startup, stalling boot and
+	// making the read-only server contend with the live ingestor for the single
+	// writer. Run it (and the additive column migrations) once, then bump the
+	// version so subsequent starts skip it.
+	var userVersion int
+	d.db.QueryRow(`PRAGMA user_version`).Scan(&userVersion)
+	if userVersion < 1 {
+		// Additive columns shipped after the initial schema (idempotent: adding an
+		// existing column errors harmlessly and is ignored).
+		d.db.Exec(`ALTER TABLE observations ADD COLUMN flood_scope TEXT`)
+		d.db.Exec(`ALTER TABLE observations ADD COLUMN raw_hex TEXT`)
+		// Recalculate observation_count to reflect unique observers (not raw row count).
+		d.db.Exec(`UPDATE transmissions SET observation_count = (SELECT COUNT(DISTINCT observer_id) FROM observations WHERE tx_id = transmissions.id)`)
+		d.db.Exec(`PRAGMA user_version = 1`)
+	}
 	return nil
 }
 
@@ -172,12 +184,24 @@ func min(a, b int) int {
 
 // InsertTransmission upserts a transmission and adds an observation.
 // Returns the inserted transmission ID and whether it was new.
+//
+// The upsert, observation insert and observation_count maintenance run in a
+// single transaction: they were four separate autocommit statements before, so
+// each packet paid four serialized round trips (and a crash mid-sequence could
+// leave observation_count inconsistent). Wrapping them is atomic and issues one
+// commit/fsync per packet.
 func (d *DB) InsertTransmission(tx *TxRow, obs *ObsRow) (int64, bool, error) {
+	dbtx, err := d.db.Begin()
+	if err != nil {
+		return 0, false, fmt.Errorf("begin: %w", err)
+	}
+	defer dbtx.Rollback() //nolint:errcheck // no-op once Commit succeeds
+
 	var txID int64
 	var isNew bool
 
 	// Try to insert; if hash exists, just get the ID
-	res, err := d.db.Exec(
+	res, err := dbtx.Exec(
 		`INSERT OR IGNORE INTO transmissions (raw_hex, hash, first_seen, route_type, payload_type, decoded_json, channel_hash)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		tx.RawHex, tx.Hash, tx.FirstSeen, tx.RouteType, tx.PayloadType, tx.DecodedJSON, nilIfEmpty(tx.ChannelHash),
@@ -190,14 +214,14 @@ func (d *DB) InsertTransmission(tx *TxRow, obs *ObsRow) (int64, bool, error) {
 		txID, _ = res.LastInsertId()
 		isNew = true
 	} else {
-		err = d.db.QueryRow(`SELECT id FROM transmissions WHERE hash = ?`, tx.Hash).Scan(&txID)
+		err = dbtx.QueryRow(`SELECT id FROM transmissions WHERE hash = ?`, tx.Hash).Scan(&txID)
 		if err != nil {
 			return 0, false, fmt.Errorf("lookup tx: %w", err)
 		}
 	}
 
 	// Insert observation
-	_, err = d.db.Exec(
+	_, err = dbtx.Exec(
 		`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, flood_scope, timestamp, raw_hex)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		txID, obs.ObserverID, obs.ObserverName, obs.ObserverIATA,
@@ -210,12 +234,15 @@ func (d *DB) InsertTransmission(tx *TxRow, obs *ObsRow) (int64, bool, error) {
 	// Update observation_count: only count the first observation per unique observer
 	if !isNew {
 		var countFromObserver int
-		d.db.QueryRow(`SELECT COUNT(*) FROM observations WHERE tx_id = ? AND observer_id = ?`, txID, obs.ObserverID).Scan(&countFromObserver)
+		dbtx.QueryRow(`SELECT COUNT(*) FROM observations WHERE tx_id = ? AND observer_id = ?`, txID, obs.ObserverID).Scan(&countFromObserver)
 		if countFromObserver == 1 { // the row just inserted is the only one from this observer
-			d.db.Exec(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`, txID)
+			dbtx.Exec(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`, txID)
 		}
 	}
 
+	if err := dbtx.Commit(); err != nil {
+		return txID, isNew, fmt.Errorf("commit: %w", err)
+	}
 	return txID, isNew, nil
 }
 
@@ -404,6 +431,33 @@ func (d *DB) UndecryptedChannelMessages() ([]*TxRow, error) {
 func (d *DB) UpdateDecodedJSON(id int64, decodedJSON string) error {
 	_, err := d.db.Exec(`UPDATE transmissions SET decoded_json = ? WHERE id = ?`, decodedJSON, id)
 	return err
+}
+
+// PruneOlderThan deletes transmissions (and their observations) first seen
+// strictly before cutoff (RFC3339). Returns the number of transmissions removed.
+// Nodes/observers are kept — their counters are lifetime cumulative totals.
+func (d *DB) PruneOlderThan(cutoff string) (int64, error) {
+	dbtx, err := d.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin: %w", err)
+	}
+	defer dbtx.Rollback() //nolint:errcheck
+
+	if _, err := dbtx.Exec(
+		`DELETE FROM observations WHERE tx_id IN (SELECT id FROM transmissions WHERE first_seen < ?)`,
+		cutoff,
+	); err != nil {
+		return 0, fmt.Errorf("prune obs: %w", err)
+	}
+	res, err := dbtx.Exec(`DELETE FROM transmissions WHERE first_seen < ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("prune tx: %w", err)
+	}
+	if err := dbtx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 func nilIfEmpty(s string) interface{} {

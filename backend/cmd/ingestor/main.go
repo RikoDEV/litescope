@@ -52,6 +52,27 @@ func main() {
 		log.Fatal("no mqttSources configured")
 	}
 
+	// Bound database growth: prune transmissions/observations past the retention
+	// window. The ingestor owns DB writes, so it owns DB retention.
+	if cfg.RetentionDays > 0 {
+		prune := func() {
+			cutoff := time.Now().UTC().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).Format(time.RFC3339)
+			if n, err := database.PruneOlderThan(cutoff); err != nil {
+				log.Printf("prune: %v", err)
+			} else if n > 0 {
+				log.Printf("pruned %d transmissions older than %d day(s)", n, cfg.RetentionDays)
+			}
+		}
+		prune()
+		go func() {
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				prune()
+			}
+		}()
+	}
+
 	var clients []mqtt.Client
 	connected := 0
 	for _, src := range cfg.MQTTSources {
@@ -299,10 +320,9 @@ func resolveRxTime(msg map[string]interface{}) string {
 	}
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05.999999", "2006-01-02T15:04:05"} {
 		if t, err := time.Parse(layout, raw); err == nil {
-			if t.After(now.Add(14*time.Hour)) || t.Before(now.Add(-30*24*time.Hour)) {
-				return now.Format(time.RFC3339)
-			}
-			if t.After(now) {
+			// Reject implausible timestamps (future, or older than 30 days) and fall
+			// back to receive time.
+			if t.After(now) || t.Before(now.Add(-30*24*time.Hour)) {
 				return now.Format(time.RFC3339)
 			}
 			return t.UTC().Format(time.RFC3339)

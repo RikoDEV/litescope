@@ -67,6 +67,24 @@ func main() {
 		}
 	}()
 
+	// Bound in-memory growth: drop packets older than the retention window.
+	if cfg.RetentionDays > 0 {
+		prune := func() {
+			cutoff := time.Now().UTC().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).UnixMilli()
+			if n := st.Prune(cutoff); n > 0 {
+				log.Printf("pruned %d packets older than %d day(s) from memory", n, cfg.RetentionDays)
+			}
+		}
+		prune() // once at startup so a large reloaded history is trimmed immediately
+		go func() {
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				prune()
+			}
+		}()
+	}
+
 	// Poll SQLite for new packets every second
 	go func() {
 		ticker := time.NewTicker(time.Second)
@@ -87,13 +105,19 @@ func main() {
 			// Broadcast new packets over WebSocket
 			for _, tx := range added {
 				b := tx.BestObservation()
+				// Report unique observers (matches the REST summary); fall back to
+				// the DB count only when no observations loaded with this packet.
+				obsCount := b.UniqueObs
+				if obsCount == 0 {
+					obsCount = tx.ObsCount
+				}
 				data := map[string]interface{}{
 					"id":          tx.ID,
 					"hash":        tx.Hash,
 					"firstSeen":   tx.FirstSeen,
 					"routeType":   tx.RouteType,
 					"payloadType": tx.PayloadType,
-					"obsCount":    tx.ObsCount,
+					"obsCount":    obsCount,
 					"maxHops":     b.MaxHops,
 					"hopSize":     b.HopSize,
 					"channelHash": tx.ChannelHash,
