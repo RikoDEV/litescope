@@ -12,15 +12,15 @@ type DB struct {
 }
 
 type TxRow struct {
-	ID           int64
-	RawHex       string
-	Hash         string
-	FirstSeen    string
-	RouteType    int
-	PayloadType  int
-	DecodedJSON  string
-	ObsCount     int
-	ChannelHash  string
+	ID          int64
+	RawHex      string
+	Hash        string
+	FirstSeen   string
+	RouteType   int
+	PayloadType int
+	DecodedJSON string
+	ObsCount    int
+	ChannelHash string
 }
 
 type ObsRow struct {
@@ -173,13 +173,6 @@ func (d *DB) applySchema() error {
 		d.db.Exec(`PRAGMA user_version = 1`)
 	}
 	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // InsertTransmission upserts a transmission and adds an observation.
@@ -342,7 +335,7 @@ func (d *DB) LoadSince(afterTxID, afterObsID int64) ([]*TxRow, []*ObsRow, error)
 	return txs, obss, nil
 }
 
-func (d *DB) loadTxs(query string, args ...interface{}) ([]*TxRow, error) {
+func (d *DB) loadTxs(query string, args ...any) ([]*TxRow, error) {
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -359,7 +352,7 @@ func (d *DB) loadTxs(query string, args ...interface{}) ([]*TxRow, error) {
 	return out, rows.Err()
 }
 
-func (d *DB) loadObs(query string, args ...interface{}) ([]*ObsRow, error) {
+func (d *DB) loadObs(query string, args ...any) ([]*ObsRow, error) {
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -460,7 +453,7 @@ func (d *DB) PruneOlderThan(cutoff string) (int64, error) {
 	return n, nil
 }
 
-func nilIfEmpty(s string) interface{} {
+func nilIfEmpty(s string) any {
 	if s == "" {
 		return nil
 	}

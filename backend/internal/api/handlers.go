@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -77,12 +79,7 @@ func originAllowed(origin string, allowed []string) bool {
 }
 
 func isWildcard(allowed []string) bool {
-	for _, a := range allowed {
-		if a == "*" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allowed, "*")
 }
 
 func corsMiddleware(allowed []string) func(http.Handler) http.Handler {
@@ -107,7 +104,7 @@ func corsMiddleware(allowed []string) func(http.Handler) http.Handler {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, v interface{}) {
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
 }
@@ -126,10 +123,7 @@ func queryInt(r *http.Request, key string, def int) int {
 // (comma-separated IATA codes) and lock (exclusive region matching).
 func analyticsFilter(r *http.Request) store.AnalyticsFilter {
 	q := r.URL.Query()
-	hours := queryInt(r, "hours", 0)
-	if hours > 168 {
-		hours = 168 // cap at 7 days
-	}
+	hours := min(queryInt(r, "hours", 0), 168) // cap at 7 days
 	var regions []string
 	if v := q.Get("regions"); v != "" {
 		regions = strings.Split(v, ",")
@@ -255,10 +249,10 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 	snrSum, snrN := 0.0, 0
 
 	type obsAccum struct {
-		name, iata         string
-		count              int
-		snrSum, rssiSum    float64
-		snrN, rssiN        int
+		name, iata      string
+		count           int
+		snrSum, rssiSum float64
+		snrN, rssiN     int
 	}
 	byObs := make(map[string]*obsAccum)
 
@@ -293,10 +287,12 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if len(obs.Path) > 0 {
-				totalHops += len(obs.Path); hopCount++
+				totalHops += len(obs.Path)
+				hopCount++
 			}
 			if obs.SNR != nil {
-				snrSum += *obs.SNR; snrN++
+				snrSum += *obs.SNR
+				snrN++
 			}
 			a := byObs[obs.ObserverID]
 			if a == nil {
@@ -304,8 +300,14 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 				byObs[obs.ObserverID] = a
 			}
 			a.count++
-			if obs.SNR != nil { a.snrSum += *obs.SNR; a.snrN++ }
-			if obs.RSSI != nil { a.rssiSum += *obs.RSSI; a.rssiN++ }
+			if obs.SNR != nil {
+				a.snrSum += *obs.SNR
+				a.snrN++
+			}
+			if obs.RSSI != nil {
+				a.rssiSum += *obs.RSSI
+				a.rssiN++
+			}
 		}
 		if rp.BestObserver == "" && len(tx.Observations) > 0 {
 			o := tx.Observations[0]
@@ -320,15 +322,26 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	avgHops := 0.0
-	if hopCount > 0 { avgHops = float64(totalHops) / float64(hopCount) }
+	if hopCount > 0 {
+		avgHops = float64(totalHops) / float64(hopCount)
+	}
 	var avgSnr *float64
-	if snrN > 0 { v := snrSum / float64(snrN); avgSnr = &v }
+	if snrN > 0 {
+		v := snrSum / float64(snrN)
+		avgSnr = &v
+	}
 
 	heardBy := make([]obsStat, 0, len(byObs))
 	for id, a := range byObs {
 		stat := obsStat{ObserverID: id, ObserverName: a.name, ObserverIATA: a.iata, Count: a.count}
-		if a.snrN > 0 { v := a.snrSum / float64(a.snrN); stat.AvgSnr = &v }
-		if a.rssiN > 0 { v := a.rssiSum / float64(a.rssiN); stat.AvgRssi = &v }
+		if a.snrN > 0 {
+			v := a.snrSum / float64(a.snrN)
+			stat.AvgSnr = &v
+		}
+		if a.rssiN > 0 {
+			v := a.rssiSum / float64(a.rssiN)
+			stat.AvgRssi = &v
+		}
 		heardBy = append(heardBy, stat)
 	}
 	sort.Slice(heardBy, func(i, j int) bool { return heardBy[i].Count > heardBy[j].Count })
@@ -390,10 +403,7 @@ func (s *Server) getChannelAnalytics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
-	limit := queryInt(r, "limit", 100)
-	if limit > 500 {
-		limit = 500
-	}
+	limit := min(queryInt(r, "limit", 100), 500)
 	offset := queryInt(r, "offset", 0)
 	msgs := s.Store.ChannelMessages(hash, limit, offset)
 	out := make([]packetSummary, 0, len(msgs))
@@ -416,10 +426,7 @@ func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
-	hours := queryInt(r, "hours", 24)
-	if hours > 168 {
-		hours = 168 // cap at 7 days
-	}
+	hours := min(queryInt(r, "hours", 24), 168) // cap at 7 days
 	writeJSON(w, s.Store.ActivityBuckets(hours, analyticsFilter(r)))
 }
 
@@ -464,10 +471,7 @@ func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request
 
 func (s *Server) getObserverAnalytics(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	days := queryInt(r, "days", 7)
-	if days > 30 {
-		days = 30
-	}
+	days := min(queryInt(r, "days", 7), 30)
 	writeJSON(w, s.Store.ObserverAnalytics(id, days))
 }
 
@@ -481,9 +485,9 @@ func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type decodeResp struct {
-		OK      bool        `json:"ok"`
-		Error   string      `json:"error,omitempty"`
-		Decoded interface{} `json:"decoded,omitempty"`
+		OK      bool   `json:"ok"`
+		Error   string `json:"error,omitempty"`
+		Decoded any    `json:"decoded,omitempty"`
 	}
 	if body.Hex == "" {
 		writeJSON(w, decodeResp{OK: false, Error: "hex is empty"})
@@ -491,12 +495,8 @@ func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 	}
 	// Merge server-configured keys with keys supplied by the client
 	keys := make(map[string]string)
-	for k, v := range s.ChannelKeys {
-		keys[k] = v
-	}
-	for k, v := range body.ChannelKeys {
-		keys[k] = v
-	}
+	maps.Copy(keys, s.ChannelKeys)
+	maps.Copy(keys, body.ChannelKeys)
 	result, err := decoder.DecodePacket(body.Hex, keys)
 	if err != nil {
 		writeJSON(w, decodeResp{OK: false, Error: err.Error()})
@@ -508,27 +508,27 @@ func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
 // Response shape types
 
 type packetSummary struct {
-	ID           int64                  `json:"id"`
-	Hash         string                 `json:"hash"`
-	FirstSeen    string                 `json:"firstSeen"`
-	RouteType    int                    `json:"routeType"`
-	PayloadType  int                    `json:"payloadType"`
-	ObsCount     int                    `json:"obsCount"`
-	MaxHops      int                    `json:"maxHops"`
-	HopSize      int                    `json:"hopSize,omitempty"`
-	BestScope    string                 `json:"bestScope,omitempty"`
-	BestPath     []string               `json:"bestPath,omitempty"`
-	BestObserver string                 `json:"bestObserver,omitempty"`
-	Regions      []string               `json:"regions,omitempty"`
-	ByteSize     int                    `json:"byteSize"`
-	ChannelHash  string                 `json:"channelHash,omitempty"`
-	Decoded      map[string]interface{} `json:"decoded,omitempty"`
+	ID           int64          `json:"id"`
+	Hash         string         `json:"hash"`
+	FirstSeen    string         `json:"firstSeen"`
+	RouteType    int            `json:"routeType"`
+	PayloadType  int            `json:"payloadType"`
+	ObsCount     int            `json:"obsCount"`
+	MaxHops      int            `json:"maxHops"`
+	HopSize      int            `json:"hopSize,omitempty"`
+	BestScope    string         `json:"bestScope,omitempty"`
+	BestPath     []string       `json:"bestPath,omitempty"`
+	BestObserver string         `json:"bestObserver,omitempty"`
+	Regions      []string       `json:"regions,omitempty"`
+	ByteSize     int            `json:"byteSize"`
+	ChannelHash  string         `json:"channelHash,omitempty"`
+	Decoded      map[string]any `json:"decoded,omitempty"`
 }
 
 type packetDetail struct {
 	packetSummary
-	RawHex       string       `json:"rawHex"`
-	Observations []obsDetail  `json:"observations"`
+	RawHex       string      `json:"rawHex"`
+	Observations []obsDetail `json:"observations"`
 }
 
 type obsDetail struct {
@@ -546,19 +546,19 @@ type obsDetail struct {
 }
 
 type nodeSummary struct {
-	PubKey      string   `json:"pubKey"`
-	Name        string   `json:"name"`
-	Role        string   `json:"role"`
-	Lat         *float64 `json:"lat"`
-	Lon         *float64 `json:"lon"`
-	LastSeen    string   `json:"lastSeen"`
-	FirstSeen   string   `json:"firstSeen"`
-	AdvertCount int      `json:"advertCount"`
-	Regions     []string `json:"regions,omitempty"`
-	Country     string   `json:"country,omitempty"`
-	RetransmitCount int  `json:"retransmitCount,omitempty"`
-	BatteryMv   *int     `json:"batteryMv,omitempty"`
-	TempC       *float64 `json:"temperatureC,omitempty"`
+	PubKey          string   `json:"pubKey"`
+	Name            string   `json:"name"`
+	Role            string   `json:"role"`
+	Lat             *float64 `json:"lat"`
+	Lon             *float64 `json:"lon"`
+	LastSeen        string   `json:"lastSeen"`
+	FirstSeen       string   `json:"firstSeen"`
+	AdvertCount     int      `json:"advertCount"`
+	Regions         []string `json:"regions,omitempty"`
+	Country         string   `json:"country,omitempty"`
+	RetransmitCount int      `json:"retransmitCount,omitempty"`
+	BatteryMv       *int     `json:"batteryMv,omitempty"`
+	TempC           *float64 `json:"temperatureC,omitempty"`
 }
 
 type observerSummary struct {
@@ -586,7 +586,7 @@ func summarizeTx(tx *store.Tx) packetSummary {
 		RouteType: tx.RouteType, PayloadType: tx.PayloadType,
 		ObsCount: obsCount, MaxHops: b.MaxHops, HopSize: b.HopSize, BestScope: b.BestScope,
 		BestPath: b.BestPath, BestObserver: b.BestObserver, Regions: b.Regions,
-		ByteSize: len(tx.RawHex) / 2,
+		ByteSize:    len(tx.RawHex) / 2,
 		ChannelHash: tx.ChannelHash, Decoded: tx.Decoded(),
 	}
 }
@@ -611,7 +611,7 @@ func summarizeNode(n *store.Node) nodeSummary {
 	return nodeSummary{
 		PubKey: n.PubKey, Name: n.Name, Role: n.Role, Lat: n.Lat, Lon: n.Lon,
 		LastSeen: n.LastSeen, FirstSeen: n.FirstSeen, AdvertCount: n.AdvertCount,
-		Country: n.Country,
+		Country:   n.Country,
 		BatteryMv: n.BatteryMv, TempC: n.TempC,
 	}
 }

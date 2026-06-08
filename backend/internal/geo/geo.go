@@ -37,8 +37,8 @@ var (
 
 func load() {
 	var raw []struct {
-		CC    string             `json:"cc"`
-		Polys [][][][2]float64   `json:"polys"` // polygon → ring → point[lon,lat]
+		CC    string           `json:"cc"`
+		Polys [][][][2]float64 `json:"polys"` // polygon → ring → point[lon,lat]
 	}
 	if err := json.Unmarshal(countriesJSON, &raw); err != nil {
 		return
@@ -123,7 +123,7 @@ func inRing(lon, lat float64, r [][2]float64) bool {
 	in := false
 	n := len(r)
 	j := n - 1
-	for i := 0; i < n; i++ {
+	for i := range n {
 		xi, yi := r[i][0], r[i][1]
 		xj, yj := r[j][0], r[j][1]
 		if (yi > lat) != (yj > lat) {

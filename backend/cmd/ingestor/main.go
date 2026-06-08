@@ -157,7 +157,7 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 	topic := m.Topic()
 	parts := strings.Split(topic, "/")
 
-	var msg map[string]interface{}
+	var msg map[string]any
 	if err := json.Unmarshal(m.Payload(), &msg); err != nil {
 		return
 	}
@@ -312,7 +312,7 @@ func redecodeExisting(database *db.DB, channelKeys map[string]string) {
 	}
 }
 
-func resolveRxTime(msg map[string]interface{}) string {
+func resolveRxTime(msg map[string]any) string {
 	now := time.Now().UTC()
 	raw, _ := msg["timestamp"].(string)
 	if raw == "" {
@@ -331,14 +331,14 @@ func resolveRxTime(msg map[string]interface{}) string {
 	return now.Format(time.RFC3339)
 }
 
-func extractObsMeta(msg map[string]interface{}) *db.ObserverMeta {
+func extractObsMeta(msg map[string]any) *db.ObserverMeta {
 	meta := &db.ObserverMeta{}
 	found := false
 
 	// stats fields may live at the top level or nested inside "stats": {}
 	// (observer publishes them inside stats dict)
-	statsMap, _ := msg["stats"].(map[string]interface{})
-	lookup := func(key string) (interface{}, bool) {
+	statsMap, _ := msg["stats"].(map[string]any)
+	lookup := func(key string) (any, bool) {
 		if v, ok := msg[key]; ok {
 			return v, true
 		}
@@ -388,7 +388,7 @@ func extractObsMeta(msg map[string]interface{}) *db.ObserverMeta {
 	return meta
 }
 
-func strField(msg map[string]interface{}, keys ...string) string {
+func strField(msg map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if v, ok := msg[k].(string); ok && v != "" {
 			return v
@@ -397,7 +397,7 @@ func strField(msg map[string]interface{}, keys ...string) string {
 	return ""
 }
 
-func toFloat64(v interface{}) (float64, bool) {
+func toFloat64(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
 		return n, true
@@ -438,4 +438,3 @@ func init() {
 		}
 	}
 }
-

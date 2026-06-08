@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download -x
@@ -11,7 +11,7 @@ ENV VERSION=${VERSION}
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/litescope/backend/internal/version.Version=${VERSION}" -o /bin/ingestor ./cmd/ingestor
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/litescope/backend/internal/version.Version=${VERSION}" -o /bin/server  ./cmd/server
 
-FROM alpine:3.22
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata supervisor
 WORKDIR /app
 COPY --from=builder /bin/ingestor /bin/server ./

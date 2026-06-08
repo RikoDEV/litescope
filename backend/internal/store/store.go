@@ -3,7 +3,9 @@ package store
 
 import (
 	"encoding/json"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,17 +30,17 @@ func parseTimeMillis(s string) int64 {
 
 // Tx is an in-memory transmission record.
 type Tx struct {
-	ID              int64
-	RawHex          string
-	Hash            string
-	FirstSeen       string
-	RouteType       int
-	PayloadType     int
-	DecodedJSON     string
-	ObsCount        int
-	ChannelHash     string
-	Observations    []*Obs
-	DecodedPayload  map[string]interface{}
+	ID             int64
+	RawHex         string
+	Hash           string
+	FirstSeen      string
+	RouteType      int
+	PayloadType    int
+	DecodedJSON    string
+	ObsCount       int
+	ChannelHash    string
+	Observations   []*Obs
+	DecodedPayload map[string]any
 
 	// relayHops is the set of hex relay-hash prefixes (lowercase) under which this
 	// packet has already been registered in Store.byRelayHop, used to dedupe the
@@ -49,7 +51,7 @@ type Tx struct {
 // Decoded returns the parsed decoded payload. The map is populated once in
 // txFromRow (under the store write lock) so this is a pure read — safe to call
 // from handlers holding only the read lock.
-func (t *Tx) Decoded() map[string]interface{} {
+func (t *Tx) Decoded() map[string]any {
 	return t.DecodedPayload
 }
 
@@ -153,12 +155,12 @@ type Observer struct {
 // Store is the in-memory packet store with indexed lookup.
 type Store struct {
 	mu         sync.RWMutex
-	packets         []*Tx
-	byHash          map[string]*Tx
-	byTxID          map[int64]*Tx
-	byObsID         map[int64]*Obs
-	byObserver      map[string][]*Obs
-	byNode          map[string][]*Tx
+	packets    []*Tx
+	byHash     map[string]*Tx
+	byTxID     map[int64]*Tx
+	byObsID    map[int64]*Obs
+	byObserver map[string][]*Obs
+	byNode     map[string][]*Tx
 	// byRelayHop maps a lowercase hex relay-hash prefix to the packets that were
 	// observed carrying it in a path. relayHopLengths is the set of distinct hop
 	// prefix lengths (in hex chars) seen, so NodePackets can probe a node's pubkey
@@ -172,7 +174,7 @@ type Store struct {
 
 	// version bumps on every mutation; the analytics cache keys off it so a
 	// result is reused only while the underlying data is unchanged.
-	version uint64
+	version atomic.Uint64
 	cacheMu sync.Mutex
 	cache   map[string]cacheEntry
 }
@@ -207,13 +209,13 @@ func New() *Store {
 }
 
 // bumpVersion invalidates the analytics cache. Caller must hold the write lock.
-func (s *Store) bumpVersion() { atomic.AddUint64(&s.version, 1) }
+func (s *Store) bumpVersion() { s.version.Add(1) }
 
 // cachedAnalytics memoizes a no-arg analytics computation by store version.
 // compute() is run outside the cache lock (it takes the store read lock itself),
 // so concurrent callers never serialize on the cache and at worst recompute once.
 func cachedAnalytics[T any](s *Store, key string, compute func() T) T {
-	cur := atomic.LoadUint64(&s.version)
+	cur := s.version.Load()
 	s.cacheMu.Lock()
 	e, ok := s.cache[key]
 	s.cacheMu.Unlock()
@@ -948,7 +950,7 @@ func (s *Store) computeChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData 
 	}
 
 	hours := make([]ChannelHour, windowHours)
-	for i := 0; i < windowHours; i++ {
+	for i := range windowHours {
 		h := actStart.Add(time.Duration(i) * time.Hour)
 		counts := make(map[string]int)
 		for hash, c := range activityByHash[h.Unix()] {
@@ -1141,8 +1143,8 @@ func (s *Store) Overview(f AnalyticsFilter) OverviewStats {
 func (s *Store) packetRate() int {
 	cut := time.Now().UTC().Add(-time.Minute)
 	rate := 0
-	for i := len(s.packets) - 1; i >= 0; i-- {
-		t := parseTimeToTime(s.packets[i].FirstSeen)
+	for _, v := range slices.Backward(s.packets) {
+		t := parseTimeToTime(v.FirstSeen)
 		if t.IsZero() {
 			continue
 		}
@@ -1225,9 +1227,9 @@ func (s *Store) computeGlobalRFStats(f AnalyticsFilter) GlobalRF {
 }
 
 type GlobalRF struct {
-	RSSI              []float64 `json:"rssi"`
-	SNR               []float64 `json:"snr"`
-	TotalObservations int       `json:"totalObservations"`
+	RSSI              []float64    `json:"rssi"`
+	SNR               []float64    `json:"snr"`
+	TotalObservations int          `json:"totalObservations"`
 	SNRSummary        FloatSummary `json:"snrSummary"`
 	RSSISummary       FloatSummary `json:"rssiSummary"`
 }
@@ -1245,8 +1247,12 @@ func summarizeFloats(vals []float64) FloatSummary {
 	sum, mn, mx := 0.0, vals[0], vals[0]
 	for _, v := range vals {
 		sum += v
-		if v < mn { mn = v }
-		if v > mx { mx = v }
+		if v < mn {
+			mn = v
+		}
+		if v > mx {
+			mx = v
+		}
 	}
 	return FloatSummary{Avg: sum / float64(len(vals)), Min: mn, Max: mx}
 }
@@ -1523,7 +1529,7 @@ func (s *Store) ObserverAnalytics(id string, days int) ObserverAnalyticsData {
 	}
 
 	var timeline []ActivityBucket
-	for i := 0; i < windowHours; i++ {
+	for i := range windowHours {
 		h := start.Add(time.Duration(i) * time.Hour)
 		timeline = append(timeline, ActivityBucket{
 			Hour:  h.Format(time.RFC3339),
@@ -1627,7 +1633,10 @@ func (s *Store) SNRByPayloadType(f AnalyticsFilter) map[string]SNRTypeStat {
 func (s *Store) computeSNRByPayloadType(f AnalyticsFilter) map[string]SNRTypeStat {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	type acc struct{ sum float64; count int }
+	type acc struct {
+		sum   float64
+		count int
+	}
 	byType := make(map[string]*acc)
 	for _, tx := range s.packets {
 		if !f.txOK(tx) {
@@ -1788,7 +1797,7 @@ func (s *Store) computeHashStats(f AnalyticsFilter) HashStatsData {
 	}
 
 	overTime := make([]HashTimeBucket, 0, days)
-	for i := 0; i < days; i++ {
+	for i := range days {
 		day := start.AddDate(0, 0, i)
 		arr := overTimeMap[day.Unix()]
 		overTime = append(overTime, HashTimeBucket{
@@ -1948,15 +1957,18 @@ func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 	// scope → observation count
 	obsCntByScope := make(map[string]int)
 	// scope → RF accumulators
-	type rfAcc struct{ snrSum, rssiSum float64; snrN, rssiN int }
+	type rfAcc struct {
+		snrSum, rssiSum float64
+		snrN, rssiN     int
+	}
 	rfAccByScope := make(map[string]*rfAcc)
 	// (scope, observerID) → count
 	type obsKey struct{ scope, id string }
-	obsByKey  := make(map[obsKey]int)
+	obsByKey := make(map[obsKey]int)
 	obsInfoOf := make(map[string][2]string) // observerID → [name, iata]
 	// 24h hourly activity: bucket unix → scope → count
 	const windowHours = 24
-	now      := time.Now().UTC()
+	now := time.Now().UTC()
 	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
 	activity := make(map[int64]map[string]int)
 
@@ -1983,8 +1995,14 @@ func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 				rfAccByScope[sc] = &rfAcc{}
 			}
 			a := rfAccByScope[sc]
-			if o.SNR != nil  { a.snrSum  += *o.SNR;  a.snrN++ }
-			if o.RSSI != nil { a.rssiSum += *o.RSSI; a.rssiN++ }
+			if o.SNR != nil {
+				a.snrSum += *o.SNR
+				a.snrN++
+			}
+			if o.RSSI != nil {
+				a.rssiSum += *o.RSSI
+				a.rssiN++
+			}
 
 			k := obsKey{sc, o.ObserverID}
 			obsByKey[k]++
@@ -2015,8 +2033,12 @@ func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 	rfList := make([]ScopeRF, 0, len(rfAccByScope))
 	for sc, a := range rfAccByScope {
 		r := ScopeRF{Scope: sc, ObsCount: obsCntByScope[sc]}
-		if a.snrN > 0  { r.AvgSNR  = a.snrSum  / float64(a.snrN)  }
-		if a.rssiN > 0 { r.AvgRSSI = a.rssiSum / float64(a.rssiN) }
+		if a.snrN > 0 {
+			r.AvgSNR = a.snrSum / float64(a.snrN)
+		}
+		if a.rssiN > 0 {
+			r.AvgRSSI = a.rssiSum / float64(a.rssiN)
+		}
 		rfList = append(rfList, r)
 	}
 	sort.Slice(rfList, func(i, j int) bool { return rfList[i].ObsCount > rfList[j].ObsCount })
@@ -2058,13 +2080,11 @@ func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 	sort.Strings(actScopes)
 
 	hours := make([]ScopeHour, windowHours)
-	for i := 0; i < windowHours; i++ {
+	for i := range windowHours {
 		h := actStart.Add(time.Duration(i) * time.Hour)
 		counts := make(map[string]int)
 		if bkt := activity[h.Unix()]; bkt != nil {
-			for sc, c := range bkt {
-				counts[sc] = c
-			}
+			maps.Copy(counts, bkt)
 		}
 		hours[i] = ScopeHour{Hour: h.Format(time.RFC3339), Label: h.Format("15:04"), Counts: counts}
 	}
@@ -2133,18 +2153,18 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 	hopDistMap := make(map[int]int) // hopCount → frequency (all obs)
 
 	const windowHours = 24
-	now      := time.Now().UTC()
+	now := time.Now().UTC()
 	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
 	type actAcc struct{ hopSum, count int }
 	actBuckets := make(map[int64]*actAcc)
 
 	// Collect per-observation entries for top-N sorting
 	type hopObsEntry struct {
-		hash, firstSeen        string
-		hopCount               int
-		hops                   []string
+		hash, firstSeen            string
+		hopCount                   int
+		hops                       []string
 		observerName, observerIATA string
-		routeType, payloadType int
+		routeType, payloadType     int
 	}
 	var allObsEntries []hopObsEntry
 
@@ -2236,7 +2256,9 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 	// Hop distribution buckets (0-hop up to maxHopDist)
 	maxBucket := 0
 	for k := range hopDistMap {
-		if k > maxBucket { maxBucket = k }
+		if k > maxBucket {
+			maxBucket = k
+		}
 	}
 	hopDist := make([]HopDistBucket, maxBucket+1)
 	for i := 0; i <= maxBucket; i++ {
@@ -2245,7 +2267,7 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 
 	// Hourly activity
 	actHours := make([]HopActivity, windowHours)
-	for i := 0; i < windowHours; i++ {
+	for i := range windowHours {
 		h := actStart.Add(time.Duration(i) * time.Hour)
 		a := HopActivity{Hour: h.Format(time.RFC3339), Label: h.Format("15:04")}
 		if bkt := actBuckets[h.Unix()]; bkt != nil && bkt.count > 0 {
@@ -2257,7 +2279,9 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 
 	// Top 20 longest hops (per observation, descending)
 	sort.Slice(allObsEntries, func(i, j int) bool { return allObsEntries[i].hopCount > allObsEntries[j].hopCount })
-	if len(allObsEntries) > 20 { allObsEntries = allObsEntries[:20] }
+	if len(allObsEntries) > 20 {
+		allObsEntries = allObsEntries[:20]
+	}
 	top20 := make([]LongHop, len(allObsEntries))
 	for i, e := range allObsEntries {
 		top20[i] = LongHop{
@@ -2276,7 +2300,9 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		}
 	}
 	sort.Slice(pathList, func(i, j int) bool { return pathList[i].maxHops > pathList[j].maxHops })
-	if len(pathList) > 10 { pathList = pathList[:10] }
+	if len(pathList) > 10 {
+		pathList = pathList[:10]
+	}
 	top10 := make([]LongPath, len(pathList))
 	for i, e := range pathList {
 		top10[i] = LongPath{
@@ -2307,7 +2333,7 @@ func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
 	dLon := (lon2 - lon1) * math.Pi / 180
 	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
 		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*
-		math.Sin(dLon/2)*math.Sin(dLon/2)
+			math.Sin(dLon/2)*math.Sin(dLon/2)
 	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
@@ -2352,15 +2378,24 @@ func (s *Store) geoDistStats() GeoDistData {
 			// Bucket: 0-1, 1-5, 5-10, 10-25, 25-50, 50-100, 100-250, 250-500, 500+
 			var b int
 			switch {
-			case d < 1:   b = 0
-			case d < 5:   b = 1
-			case d < 10:  b = 5
-			case d < 25:  b = 10
-			case d < 50:  b = 25
-			case d < 100: b = 50
-			case d < 250: b = 100
-			case d < 500: b = 250
-			default:      b = 500
+			case d < 1:
+				b = 0
+			case d < 5:
+				b = 1
+			case d < 10:
+				b = 5
+			case d < 25:
+				b = 10
+			case d < 50:
+				b = 25
+			case d < 100:
+				b = 50
+			case d < 250:
+				b = 100
+			case d < 500:
+				b = 250
+			default:
+				b = 500
 			}
 			distBuckets[b]++
 
@@ -2369,7 +2404,7 @@ func (s *Store) geoDistStats() GeoDistData {
 				pair := GeoNodePair{
 					NodeAName: nodes[i].name, NodeAPubKey: nodes[i].pubKey,
 					NodeBName: nodes[j].name, NodeBPubKey: nodes[j].pubKey,
-					DistKm:    dk,
+					DistKm: dk,
 				}
 				pos := sort.Search(len(topPairs), func(k int) bool { return topPairs[k].DistKm < dk })
 				topPairs = append(topPairs, GeoNodePair{})
@@ -2408,12 +2443,12 @@ func (s *Store) geoDistStats() GeoDistData {
 }
 
 type GeoDistData struct {
-	NodesWithPos int            `json:"nodesWithPos"`
-	TotalPairs   int            `json:"totalPairs"`
-	MaxDistKm    float64        `json:"maxDistKm"`
-	AvgDistKm    float64        `json:"avgDistKm"`
+	NodesWithPos int             `json:"nodesWithPos"`
+	TotalPairs   int             `json:"totalPairs"`
+	MaxDistKm    float64         `json:"maxDistKm"`
+	AvgDistKm    float64         `json:"avgDistKm"`
 	Distribution []GeoDistBucket `json:"distribution"`
-	TopPairs     []GeoNodePair  `json:"topPairs"`
+	TopPairs     []GeoNodePair   `json:"topPairs"`
 }
 
 type GeoDistBucket struct {

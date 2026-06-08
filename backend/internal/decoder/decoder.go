@@ -22,18 +22,18 @@ const (
 	RouteDirect          = 2
 	RouteTransportDirect = 3
 
-	PayloadREQ      = 0x00
-	PayloadRESPONSE = 0x01
-	PayloadTXTMSG   = 0x02
-	PayloadACK      = 0x03
-	PayloadADVERT   = 0x04
-	PayloadGRPTXT   = 0x05
-	PayloadGRPDATA  = 0x06
-	PayloadANONREQ  = 0x07
-	PayloadPATH     = 0x08
-	PayloadTRACE    = 0x09
-	PayloadMULTI    = 0x0A
-	PayloadCONTROL  = 0x0B
+	PayloadREQ       = 0x00
+	PayloadRESPONSE  = 0x01
+	PayloadTXTMSG    = 0x02
+	PayloadACK       = 0x03
+	PayloadADVERT    = 0x04
+	PayloadGRPTXT    = 0x05
+	PayloadGRPDATA   = 0x06
+	PayloadANONREQ   = 0x07
+	PayloadPATH      = 0x08
+	PayloadTRACE     = 0x09
+	PayloadMULTI     = 0x0A
+	PayloadCONTROL   = 0x0B
 	PayloadRAWCUSTOM = 0x0F
 
 	maxPathSize      = 64
@@ -182,7 +182,7 @@ func decodePath(pb byte, buf []byte, off int) (Path, int, error) {
 		return Path{}, 0, fmt.Errorf("invalid path: 0x%02X", pb)
 	}
 	hops := make([]string, 0, hc)
-	for i := 0; i < hc; i++ {
+	for i := range hc {
 		s, e := off+i*hs, off+i*hs+hs
 		if e > len(buf) {
 			break

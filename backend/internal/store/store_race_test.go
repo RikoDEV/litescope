@@ -22,17 +22,15 @@ func TestDecodedConcurrentReads(t *testing.T) {
 	s.Load(txs, nil, nil, nil)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 200; j++ {
+	for range 50 {
+		wg.Go(func() {
+			for range 200 {
 				pkts, _ := s.Packets(50, 0)
 				for _, p := range pkts {
 					_ = p.Decoded() // pure read; must not race
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

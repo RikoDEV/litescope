@@ -111,7 +111,7 @@ func main() {
 				if obsCount == 0 {
 					obsCount = tx.ObsCount
 				}
-				data := map[string]interface{}{
+				data := map[string]any{
 					"id":          tx.ID,
 					"hash":        tx.Hash,
 					"firstSeen":   tx.FirstSeen,
@@ -146,7 +146,7 @@ func main() {
 						}
 					}
 				}
-				msg, _ := json.Marshal(map[string]interface{}{"type": "packet", "data": data})
+				msg, _ := json.Marshal(map[string]any{"type": "packet", "data": data})
 				hub.Broadcast(msg)
 			}
 
@@ -154,7 +154,7 @@ func main() {
 			// observations, so the UI can show propagation building up live.
 			for _, tx := range updated {
 				b := tx.BestObservation()
-				data := map[string]interface{}{
+				data := map[string]any{
 					"id":       tx.ID,
 					"hash":     tx.Hash,
 					"obsCount": b.UniqueObs,
@@ -173,7 +173,7 @@ func main() {
 				if len(b.Regions) > 0 {
 					data["regions"] = b.Regions
 				}
-				msg, _ := json.Marshal(map[string]interface{}{"type": "packetUpdate", "data": data})
+				msg, _ := json.Marshal(map[string]any{"type": "packetUpdate", "data": data})
 				hub.Broadcast(msg)
 			}
 		}
