@@ -413,7 +413,7 @@ export default function Channels() {
       {/* ── Channel list ── */}
       {showSidebar && (
         <Paper elevation={1} sx={{ width: { xs: '100%', md: 220 }, display: 'flex', flexDirection: 'column', borderRight: { md: `1px solid ${md3.outlineVariant}` }, borderRadius: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0, minHeight: 48, borderBottom: `1px solid ${md3.outlineVariant}` }}>
             <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('channels.count', { count: channels.length })}</Typography>
             <Tooltip title={t('channels.manageKeys')}>
               <IconButton size="small" onClick={() => setShowKeyMgr(v => !v)} sx={{ color: showKeyMgr ? md3.primary : md3.onSurfaceVariant }}>
@@ -431,7 +431,7 @@ export default function Channels() {
           <KeyManager keys={storedKeys} onChange={persistKeys} onClose={() => { setShowKeyMgr(false); if (isMobile) navigate('/channels') }} />
         ) : selected ? (
           <>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0, minHeight: 48, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
               {isMobile && (
                 <IconButton size="small" onClick={() => navigate('/channels')} sx={{ color: md3.onSurfaceVariant, mr: 0.5 }}>
                   <ArrowBackIcon fontSize="small" />
@@ -444,9 +444,10 @@ export default function Channels() {
                 <FormControlLabel
                   sx={{ ml: 'auto', mr: 0 }}
                   control={<Switch size="small" checked={stackDuplicates} onChange={e => setStackDuplicates(e.target.checked)} />}
-                  label={<Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>}
+                  label={<Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>}
                 />
               </Tooltip>
+              <Divider orientation="vertical" flexItem sx={{ my: 0.5, borderColor: md3.outlineVariant }} />
               <Typography variant="caption" sx={{ color: md3.outline }}>{t('channels.messages', { count: visibleMessages.length })}</Typography>
             </Box>
             <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
