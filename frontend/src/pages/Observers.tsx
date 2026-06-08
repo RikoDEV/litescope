@@ -29,6 +29,7 @@ import WifiIcon from '@mui/icons-material/Wifi'
 import { api } from '../services/api'
 import type { Observer } from '../types'
 import { bucketize } from '../utils/stats'
+import { useDateLocale } from '../hooks/useDateLocale'
 import { formatDistanceToNow } from 'date-fns'
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 
@@ -45,6 +46,7 @@ interface Analytics {
 export default function Observers() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
   const [searchParams, setSearchParams] = useSearchParams()
   const [observers, setObservers] = useState<Observer[]>([])
   const [selected, setSelected]   = useState<Observer | null>(null)
@@ -115,7 +117,7 @@ export default function Observers() {
                   <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 12 }}>{o.model || '—'}</TableCell>
                   <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{o.packetCount.toLocaleString()}</TableCell>
                   <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
-                    {formatDistanceToNow(new Date(o.lastSeen), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(o.lastSeen), { addSuffix: true, locale: dateLocale })}
                   </TableCell>
                 </TableRow>
               ))}
@@ -149,7 +151,7 @@ export default function Observers() {
                 { l: t('common.battery'),  v: selected.batteryMv ? `${selected.batteryMv} mV` : '—' },
                 { l: t('common.uptime'),   v: selected.uptimeSecs ? fmtUptime(selected.uptimeSecs) : '—' },
                 { l: t('observers.noise'), v: selected.noiseFloor != null ? `${selected.noiseFloor.toFixed(1)} dBm` : '—' },
-                { l: t('observers.first'), v: new Date(selected.firstSeen).toLocaleDateString() },
+                { l: t('common.firstSeen'), v: new Date(selected.firstSeen).toLocaleDateString(dateLocale.code) },
               ].map(({ l, v }) => (
                 <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75 }}>
                   <Typography variant="caption" sx={{ color: md3.outline, display: 'block' }}>{l}</Typography>

@@ -147,7 +147,7 @@ const en = {
   observers: {
     count: '{{count}} observers', active: '{{count}} active',
     nameId: 'Name / ID', packetsOverTime: 'Packets over time',
-    snrAvg: 'SNR — avg {{value}} dB', packetTypes: 'Packet types', noise: 'Noise', first: 'First',
+    snrAvg: 'SNR — avg {{value}} dB', packetTypes: 'Packet types', noise: 'Noise',
     firmware: 'Firmware',
     connectObserver: 'Connect an Observer',
     connectObserverSub: 'How to forward MeshCore packets to this liteScope instance',
@@ -338,7 +338,7 @@ const pl: typeof en = {
   observers: {
     count: '{{count}} obserwatorów', active: '{{count}} aktywnych',
     nameId: 'Nazwa / ID', packetsOverTime: 'Pakiety w czasie',
-    snrAvg: 'SNR — śr. {{value}} dB', packetTypes: 'Typy pakietów', noise: 'Szum', first: 'Pierwszy',
+    snrAvg: 'SNR — śr. {{value}} dB', packetTypes: 'Typy pakietów', noise: 'Szum',
     firmware: 'Firmware',
     connectObserver: 'Podłącz obserwatora',
     connectObserverSub: 'Jak przekazywać pakiety MeshCore do tej instancji liteScope',
@@ -529,7 +529,7 @@ const de: typeof en = {
   observers: {
     count: '{{count}} Beobachter', active: '{{count}} aktiv',
     nameId: 'Name / ID', packetsOverTime: 'Pakete über Zeit',
-    snrAvg: 'SNR — Ø {{value}} dB', packetTypes: 'Pakettypen', noise: 'Rauschen', first: 'Erster',
+    snrAvg: 'SNR — Ø {{value}} dB', packetTypes: 'Pakettypen', noise: 'Rauschen',
     firmware: 'Firmware',
     connectObserver: 'Beobachter verbinden',
     connectObserverSub: 'MeshCore-Pakete an diese liteScope-Instanz weiterleiten',
@@ -707,7 +707,7 @@ const fr = {
   observers: {
     count: '{{count}} observateurs', active: '{{count}} actifs',
     nameId: 'Nom / ID', packetsOverTime: 'Paquets dans le temps',
-    snrAvg: 'SNR — moy. {{value}} dB', packetTypes: 'Types de paquets', noise: 'Bruit', first: 'Premier',
+    snrAvg: 'SNR — moy. {{value}} dB', packetTypes: 'Types de paquets', noise: 'Bruit',
     firmware: 'Firmware',
     connectObserver: 'Connecter un observateur',
     connectObserverSub: 'Comment transmettre les paquets MeshCore à cette instance',
@@ -876,7 +876,7 @@ const uk = {
   observers: {
     count: '{{count}} спостерігачів', active: '{{count}} активних',
     nameId: 'Назва / ID', packetsOverTime: 'Пакети у часі',
-    snrAvg: 'SNR — сер. {{value}} дБ', packetTypes: 'Типи пакетів', noise: 'Шум', first: 'Перший',
+    snrAvg: 'SNR — сер. {{value}} дБ', packetTypes: 'Типи пакетів', noise: 'Шум',
     firmware: 'Прошивка',
     connectObserver: 'Підключити спостерігача',
     connectObserverSub: 'Як передавати пакети MeshCore до цього екземпляра',
@@ -1045,7 +1045,7 @@ const ru = {
   observers: {
     count: '{{count}} наблюдателей', active: '{{count}} активных',
     nameId: 'Имя / ID', packetsOverTime: 'Пакеты во времени',
-    snrAvg: 'SNR — ср. {{value}} дБ', packetTypes: 'Типы пакетов', noise: 'Шум', first: 'Первый',
+    snrAvg: 'SNR — ср. {{value}} дБ', packetTypes: 'Типы пакетов', noise: 'Шум',
     firmware: 'Прошивка',
     connectObserver: 'Подключить наблюдателя',
     connectObserverSub: 'Как передавать пакеты MeshCore в этот экземпляр',
@@ -1214,7 +1214,7 @@ const nl = {
   observers: {
     count: '{{count}} waarnemers', active: '{{count}} actief',
     nameId: 'Naam / ID', packetsOverTime: 'Pakketten in de tijd',
-    snrAvg: 'SNR — gem. {{value}} dB', packetTypes: 'Pakkettypen', noise: 'Ruis', first: 'Eerste',
+    snrAvg: 'SNR — gem. {{value}} dB', packetTypes: 'Pakkettypen', noise: 'Ruis',
     firmware: 'Firmware',
     connectObserver: 'Waarnemer verbinden',
     connectObserverSub: 'MeshCore-pakketten doorsturen naar deze instantie',
@@ -1383,7 +1383,7 @@ const es = {
   observers: {
     count: '{{count}} observadores', active: '{{count}} activos',
     nameId: 'Nombre / ID', packetsOverTime: 'Paquetes en el tiempo',
-    snrAvg: 'SNR — prom. {{value}} dB', packetTypes: 'Tipos de paquetes', noise: 'Ruido', first: 'Primero',
+    snrAvg: 'SNR — prom. {{value}} dB', packetTypes: 'Tipos de paquetes', noise: 'Ruido',
     firmware: 'Firmware',
     connectObserver: 'Conectar observador',
     connectObserverSub: 'Cómo reenviar paquetes MeshCore a esta instancia',
@@ -1552,7 +1552,7 @@ const cs = {
   observers: {
     count: '{{count}} pozorovatelů', active: '{{count}} aktivní',
     nameId: 'Název / ID', packetsOverTime: 'Pakety v čase',
-    snrAvg: 'SNR — průměr {{value}} dB', packetTypes: 'Typy paketů', noise: 'Šum', first: 'První',
+    snrAvg: 'SNR — průměr {{value}} dB', packetTypes: 'Typy paketů', noise: 'Šum',
     firmware: 'Firmware',
     connectObserver: 'Připojit pozorovatele',
     connectObserverSub: 'Jak přeposílat pakety MeshCore do této instance',
@@ -1721,7 +1721,7 @@ const sk = {
   observers: {
     count: '{{count}} pozorovateľov', active: '{{count}} aktívni',
     nameId: 'Názov / ID', packetsOverTime: 'Pakety v čase',
-    snrAvg: 'SNR — priemer {{value}} dB', packetTypes: 'Typy paketov', noise: 'Šum', first: 'Prvý',
+    snrAvg: 'SNR — priemer {{value}} dB', packetTypes: 'Typy paketov', noise: 'Šum',
     firmware: 'Firmware',
     connectObserver: 'Pripojiť pozorovateľa',
     connectObserverSub: 'Ako preposielať pakety MeshCore do tejto inštancie',
@@ -1890,7 +1890,7 @@ const it = {
   observers: {
     count: '{{count}} osservatori', active: '{{count}} attivi',
     nameId: 'Nome / ID', packetsOverTime: 'Pacchetti nel tempo',
-    snrAvg: 'SNR — med. {{value}} dB', packetTypes: 'Tipi pacchetti', noise: 'Rumore', first: 'Primo',
+    snrAvg: 'SNR — med. {{value}} dB', packetTypes: 'Tipi pacchetti', noise: 'Rumore',
     firmware: 'Firmware',
     connectObserver: 'Connetti osservatore',
     connectObserverSub: 'Come inoltrare pacchetti MeshCore a questa istanza',
