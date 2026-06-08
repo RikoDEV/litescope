@@ -167,6 +167,11 @@ export default function Channels() {
   const [hasMore, setHasMore]       = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
+  // Collapse runs of identical consecutive messages (same sender + text) into a
+  // single bubble with a ×N count — handy when a node retransmits the same line
+  // 2–3 times. Persisted per-browser.
+  const [stackDuplicates, setStackDuplicates] = useState(() => localStorage.getItem(LS_KEYS.channelStackDuplicates) === '1')
+  useEffect(() => { localStorage.setItem(LS_KEYS.channelStackDuplicates, stackDuplicates ? '1' : '0') }, [stackDuplicates])
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const skipAutoScroll = useRef(false)
@@ -371,6 +376,38 @@ export default function Channels() {
   const channelKeyed = messages.some(isReadable)
   const visibleMessages = channelKeyed ? messages.filter(isReadable) : messages
 
+  // Stacking key: readable messages group by sender + text; still-encrypted ones
+  // group by their raw ciphertext (identical retransmits), and fall back to a
+  // unique per-message key so unreadable, non-identical messages never merge.
+  const stackKey = (m: Packet): string => {
+    const cdec = decrypted[m.id]
+    const d = m.decoded
+    if (needsClientDecrypt(d?.decryptionStatus) && !cdec) {
+      const enc = d?.encryptedData as string | undefined
+      return enc ? `e:${enc}` : `u:${m.id}`
+    }
+    const sender = cdec?.sender || (d?.sender as string) || 'Unknown'
+    const text = cdec?.text || (d?.text as string) || ''
+    return `r:${sender} ${text}`
+  }
+
+  // Display rows in chat order (oldest→newest). When stacking is on, each run of
+  // consecutive same-key messages collapses to one row keyed by its newest
+  // member (so time/obs/hops reflect the latest send) with a repeat count.
+  type Row = { msg: Packet; count: number; key: string }
+  const displayRows: Row[] = (() => {
+    const ordered = [...visibleMessages].reverse()
+    if (!stackDuplicates) return ordered.map(m => ({ msg: m, count: 1, key: String(m.id) }))
+    const rows: Row[] = []
+    for (const m of ordered) {
+      const k = stackKey(m)
+      const last = rows[rows.length - 1]
+      if (last && last.key === k) { last.count++; last.msg = m }
+      else rows.push({ msg: m, count: 1, key: k })
+    }
+    return rows
+  })()
+
   return (
     <Box sx={{ display: 'flex', height: '100%', background: md3.background }}>
       {/* ── Channel list ── */}
@@ -403,7 +440,14 @@ export default function Channels() {
               <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: hashColor(selected.name) }} />
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{selected.name}</Typography>
               <Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'block' } }}>#{selected.hash}</Typography>
-              <Typography variant="caption" sx={{ color: md3.outline, ml: 'auto' }}>{t('channels.messages', { count: visibleMessages.length })}</Typography>
+              <Tooltip title={t('channels.stackTooltip')}>
+                <FormControlLabel
+                  sx={{ ml: 'auto', mr: 0 }}
+                  control={<Switch size="small" checked={stackDuplicates} onChange={e => setStackDuplicates(e.target.checked)} />}
+                  label={<Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>}
+                />
+              </Tooltip>
+              <Typography variant="caption" sx={{ color: md3.outline }}>{t('channels.messages', { count: visibleMessages.length })}</Typography>
             </Box>
             <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
             <Box ref={scrollRef} onScroll={onScroll} sx={{ position: 'absolute', inset: 0, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -414,7 +458,7 @@ export default function Channels() {
                   </Button>
                 </Box>
               )}
-              {[...visibleMessages].reverse().map(msg => {
+              {displayRows.map(({ msg, count }) => {
                 const dec    = msg.decoded
                 const cdec   = decrypted[msg.id]
                 const noKey  = needsClientDecrypt(dec?.decryptionStatus) && !cdec
@@ -444,6 +488,11 @@ export default function Channels() {
                         </Tooltip>
                         {noKey && <Chip label={`🔒 ${t('channels.encrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
                         {cdec && <Chip label={`🔓 ${t('channels.decrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#22c55e', 0.15), color: '#22c55e' }} />}
+                        {count > 1 && (
+                          <Tooltip title={t('channels.stackedTimes', { count })}>
+                            <Chip label={`×${count}`} size="small" sx={{ fontSize: 10, height: 18, fontWeight: 700, background: alpha(md3.primary, 0.15), color: md3.primary }} />
+                          </Tooltip>
+                        )}
                       </Box>
 
                       {/* Message body */}

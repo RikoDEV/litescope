@@ -140,6 +140,9 @@ const en = {
     errName: 'Channel name required', errKey: 'Key must be 32 hex chars (16 bytes)', errExists: 'Already exists',
     derivedNote: 'Key = SHA256(#name)[:16 bytes] — same algorithm as MeshCore firmware.',
     loadMore: 'Load older messages', loadingMore: 'Loading…',
+    stackDuplicates: 'Stack repeats',
+    stackTooltip: 'Collapse consecutive identical messages from the same sender into one',
+    stackedTimes: 'Sent {{count}} times',
   },
   observers: {
     count: '{{count}} observers', active: '{{count}} active',
@@ -328,6 +331,9 @@ const pl: typeof en = {
     errName: 'Wymagana nazwa kanału', errKey: 'Klucz musi mieć 32 znaki hex (16 bajtów)', errExists: 'Już istnieje',
     derivedNote: 'Klucz = SHA256(#nazwa)[:16 bajtów] — ten sam algorytm co firmware MeshCore.',
     loadMore: 'Wczytaj starsze wiadomości', loadingMore: 'Wczytywanie…',
+    stackDuplicates: 'Grupuj powtórzenia',
+    stackTooltip: 'Zwiń kolejne identyczne wiadomości od tego samego nadawcy w jedną',
+    stackedTimes: 'Wysłano {{count}} razy',
   },
   observers: {
     count: '{{count}} obserwatorów', active: '{{count}} aktywnych',
@@ -516,6 +522,9 @@ const de: typeof en = {
     errName: 'Kanalname erforderlich', errKey: 'Schlüssel muss 32 Hex-Zeichen (16 Bytes) haben', errExists: 'Existiert bereits',
     derivedNote: 'Schlüssel = SHA256(#Name)[:16 Bytes] — gleicher Algorithmus wie MeshCore-Firmware.',
     loadMore: 'Ältere Nachrichten laden', loadingMore: 'Lädt…',
+    stackDuplicates: 'Wiederholungen gruppieren',
+    stackTooltip: 'Aufeinanderfolgende identische Nachrichten desselben Absenders zusammenfassen',
+    stackedTimes: '{{count}}-mal gesendet',
   },
   observers: {
     count: '{{count}} Beobachter', active: '{{count}} aktiv',
@@ -691,6 +700,9 @@ const fr = {
     errName: 'Nom de canal requis', errKey: 'La clé doit faire 32 caractères hex', errExists: 'Existe déjà',
     derivedNote: 'Clé = SHA256(#nom)[:16 octets] — même algorithme que le firmware MeshCore.',
     loadMore: 'Charger les anciens messages', loadingMore: 'Chargement…',
+    stackDuplicates: 'Grouper les répétitions',
+    stackTooltip: 'Regrouper les messages identiques consécutifs du même expéditeur',
+    stackedTimes: 'Envoyé {{count}} fois',
   },
   observers: {
     count: '{{count}} observateurs', active: '{{count}} actifs',

@@ -6,6 +6,7 @@ export const LS_KEYS = {
   channelKeys: 'litescope-channel-keys',
   channelSeen: 'litescope-channel-seen',
   channelHashNames: 'litescope-channel-hash-names',
+  channelStackDuplicates: 'litescope-channel-stack',
   themeMode: 'litescope-theme-mode',
   themeAccent: 'litescope-theme-accent',
   cookieConsent: 'litescope-cookie-consent',
