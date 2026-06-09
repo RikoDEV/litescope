@@ -22,6 +22,7 @@ import { stream } from '../services/stream'
 import type { Node, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hasValidLocation, validLatLon } from '../utils/geo'
+import { escapeHtml } from '../utils/html'
 import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
 import { parseHops } from '../utils/packets'
 import { formatDistanceToNow } from 'date-fns'
@@ -203,7 +204,7 @@ export default function LiveMap() {
       const marker = L.circleMarker([n.lat!, n.lon!], {
         radius: 3.5, color: theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff', weight: 1,
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
-      }).bindTooltip(n.name || n.pubKey.slice(0, 12), { permanent: false, direction: 'top', offset: [0, -8] })
+      }).bindTooltip(escapeHtml(n.name || n.pubKey.slice(0, 12)), { permanent: false, direction: 'top', offset: [0, -8] })
       layer.addLayer(marker)
       latlngs.push([n.lat!, n.lon!])
     })
@@ -401,7 +402,7 @@ export default function LiveMap() {
           className: '', iconSize: [22, 22], iconAnchor: [11, 11],
         })
         L.marker([node.lat!, node.lon!], { icon })
-          .bindTooltip(node.name || node.pubKey.slice(0, 12), { permanent: true, direction: 'top', offset: [0, -12] })
+          .bindTooltip(escapeHtml(node.name || node.pubKey.slice(0, 12)), { permanent: true, direction: 'top', offset: [0, -12] })
           .addTo(replayMarkers)
       }
     }

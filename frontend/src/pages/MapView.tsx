@@ -26,6 +26,7 @@ import type { Node, NodeOverview, Packet, RFStats } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
+import { escapeHtml } from '../utils/html'
 import { passesGeo, selectedCountries } from '../utils/regions'
 import { ROLE_GLYPH, roleColor as roleColorFn, roleMarkerSvg } from '../utils/roles'
 
@@ -127,7 +128,7 @@ export default function MapView() {
     const labelBg     = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)'
     const labelBorder = isDark ? '' : `border:1px solid ${color}44;`
     const html  = label
-      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${label}</span></div>`
+      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${escapeHtml(label)}</span></div>`
       : svg
     return L.divIcon({ html, className: '', iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -13] })
   }
@@ -308,10 +309,14 @@ export default function MapView() {
 
   function makePopup(n: Node) {
     const color = roleColor(n.role)
+    const title = escapeHtml(n.name || n.pubKey.slice(0, 12))
+    const role  = escapeHtml(n.role)
+    const adverts = Number.isFinite(n.advertCount) ? n.advertCount : 0
+    const last = escapeHtml(new Date(n.lastSeen).toLocaleString())
     return `<div style="font-family:system-ui;font-size:13px;min-width:170px;color:#1D1B20">
-      <b style="font-size:14px">${n.name || n.pubKey.slice(0, 12)}</b>
-      <div style="margin:4px 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${color}22;color:${color};font-size:11px">${n.role}</div>
-      <div style="font-size:11px;color:#49454F;margin-top:4px">Adverts: ${n.advertCount}<br/>Last: ${new Date(n.lastSeen).toLocaleString()}</div>
+      <b style="font-size:14px">${title}</b>
+      <div style="margin:4px 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${color}22;color:${color};font-size:11px">${role}</div>
+      <div style="font-size:11px;color:#49454F;margin-top:4px">Adverts: ${adverts}<br/>Last: ${last}</div>
     </div>`
   }
 
