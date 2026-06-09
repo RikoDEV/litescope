@@ -170,31 +170,44 @@ func TestNodeRFStatsLivePackets(t *testing.T) {
 	}
 }
 
-func TestHashMatrixIgnoresCompanionPrefixOverlap(t *testing.T) {
+func TestHashMatrixShowsOnlyRepeaters(t *testing.T) {
 	s := New()
+	const repeater = "aa11000000000000000000000000000000000000000000000000000000000000"
+	const companion = "aa22000000000000000000000000000000000000000000000000000000000000"
+	const room = "aa33000000000000000000000000000000000000000000000000000000000000"
+	const sensor = "aa44000000000000000000000000000000000000000000000000000000000000"
 	s.Load(
 		[]*db.TxRow{
-			{ID: 1, Hash: "a", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"aa11000000000000000000000000000000000000000000000000000000000000"}`},
-			{ID: 2, Hash: "b", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 4, DecodedJSON: `{"pubKey":"aa22000000000000000000000000000000000000000000000000000000000000"}`},
+			{ID: 1, Hash: "r", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + repeater + `"}`},
+			{ID: 2, Hash: "c", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + companion + `"}`},
+			{ID: 3, Hash: "room", FirstSeen: "2024-01-01T00:00:02Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + room + `"}`},
+			{ID: 4, Hash: "s", FirstSeen: "2024-01-01T00:00:03Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + sensor + `"}`},
 		},
 		[]*db.ObsRow{
 			{ID: 1, TxID: 1, ObserverID: "obs", PathJSON: `["AA"]`},
 			{ID: 2, TxID: 2, ObserverID: "obs", PathJSON: `["AA"]`},
+			{ID: 3, TxID: 3, ObserverID: "obs", PathJSON: `["AA"]`},
+			{ID: 4, TxID: 4, ObserverID: "obs", PathJSON: `["AA"]`},
 		},
 		[]*db.NodeRow{
-			{PubKey: "aa11000000000000000000000000000000000000000000000000000000000000", Name: "Companion A", Role: "companion"},
-			{PubKey: "aa22000000000000000000000000000000000000000000000000000000000000", Name: "Companion B", Role: "companion"},
+			{PubKey: repeater, Name: "Repeater", Role: "repeater"},
+			{PubKey: companion, Name: "Companion", Role: "companion"},
+			{PubKey: room, Name: "Room", Role: "room"},
+			{PubKey: sensor, Name: "Sensor", Role: "sensor"},
 		},
 		nil,
 	)
 
 	matrix := s.HashStats(AnalyticsFilter{}).HashMatrices["1"]
-	if matrix.Collisions != 0 {
-		t.Fatalf("expected companion overlap to create no collisions, got %d", matrix.Collisions)
+	if matrix.TrackedNodes != 1 || matrix.RoutingNodes != 1 {
+		t.Fatalf("expected only one repeater in matrix, got tracked=%d routing=%d", matrix.TrackedNodes, matrix.RoutingNodes)
 	}
 	cell := matrix.Cells[0xaa]
-	if cell.State != "taken" || cell.NodeCount != 2 || cell.RoutingCount != 0 {
-		t.Fatalf("unexpected companion cell: state=%s node=%d routing=%d", cell.State, cell.NodeCount, cell.RoutingCount)
+	if cell.State != "taken" || cell.NodeCount != 1 || cell.RoutingCount != 1 {
+		t.Fatalf("unexpected repeater-only cell: state=%s node=%d routing=%d", cell.State, cell.NodeCount, cell.RoutingCount)
+	}
+	if got := cell.Groups[0].Nodes[0].Role; got != "repeater" {
+		t.Fatalf("expected repeater only, got role %q", got)
 	}
 }
 
@@ -233,7 +246,7 @@ func TestHashMatrixRoutingCollisionBySelectedByteSize(t *testing.T) {
 func TestHashMatrixUsesLatestAdvertHashAndCountsUnknownMode(t *testing.T) {
 	s := New()
 	const repeater = "aa11000000000000000000000000000000000000000000000000000000000000"
-	const room = "bb22000000000000000000000000000000000000000000000000000000000000"
+	const unknownRepeater = "bb22000000000000000000000000000000000000000000000000000000000000"
 	s.Load(
 		[]*db.TxRow{
 			{ID: 1, Hash: "old", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + repeater + `"}`},
@@ -245,17 +258,17 @@ func TestHashMatrixUsesLatestAdvertHashAndCountsUnknownMode(t *testing.T) {
 		},
 		[]*db.NodeRow{
 			{PubKey: repeater, Name: "Repeater", Role: "repeater"},
-			{PubKey: room, Name: "Room", Role: "room"},
+			{PubKey: unknownRepeater, Name: "Unknown", Role: "repeater"},
 		},
 		nil,
 	)
 
 	matrix := s.HashStats(AnalyticsFilter{}).HashMatrices["2"]
 	if matrix.RoutingNodes != 2 {
-		t.Fatalf("expected 2 routing nodes, got %d", matrix.RoutingNodes)
+		t.Fatalf("expected 2 repeaters, got %d", matrix.RoutingNodes)
 	}
 	if matrix.UnknownModeNodes != 1 {
-		t.Fatalf("expected room with no self-hash advert to be unknown, got %d", matrix.UnknownModeNodes)
+		t.Fatalf("expected repeater with no self-hash advert to be unknown, got %d", matrix.UnknownModeNodes)
 	}
 	cell := matrix.Cells[0xaa]
 	if cell.NodeCount != 1 || len(cell.Groups) != 1 || len(cell.Groups[0].Nodes) != 1 {
@@ -267,7 +280,7 @@ func TestHashMatrixUsesLatestAdvertHashAndCountsUnknownMode(t *testing.T) {
 	}
 }
 
-func TestHashMatrixDoesNotLetSensorsCreateRoutingCollisions(t *testing.T) {
+func TestHashMatrixNonRepeaterOverlapStaysHidden(t *testing.T) {
 	s := New()
 	const repeater = "cc11000000000000000000000000000000000000000000000000000000000000"
 	const sensor = "cc11010000000000000000000000000000000000000000000000000000000000"
@@ -288,7 +301,10 @@ func TestHashMatrixDoesNotLetSensorsCreateRoutingCollisions(t *testing.T) {
 	)
 
 	cell := s.HashStats(AnalyticsFilter{}).HashMatrices["2"].Cells[0xcc]
-	if cell.State != "taken" || cell.CollisionCount != 0 || cell.RoutingCount != 1 {
-		t.Fatalf("expected sensor overlap to stay non-colliding, got state=%s collision=%d routing=%d", cell.State, cell.CollisionCount, cell.RoutingCount)
+	if cell.State != "taken" || cell.NodeCount != 1 || cell.CollisionCount != 0 || cell.RoutingCount != 1 {
+		t.Fatalf("expected only repeater to be visible, got state=%s node=%d collision=%d routing=%d", cell.State, cell.NodeCount, cell.CollisionCount, cell.RoutingCount)
+	}
+	if got := cell.Groups[0].Nodes[0].PubKey; got != repeater {
+		t.Fatalf("expected only repeater pubkey, got %q", got)
 	}
 }

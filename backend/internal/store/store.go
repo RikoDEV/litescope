@@ -1922,7 +1922,7 @@ func (s *Store) computeHashMatrix(bytes int, f AnalyticsFilter) HashMatrixData {
 
 	nodes := make([]matrixNode, 0, len(s.nodes))
 	for pk, n := range s.nodes {
-		if len(pk) < bytes*2 || !f.nodeGeoOK(n) {
+		if n.Role != "repeater" || len(pk) < bytes*2 || !f.nodeGeoOK(n) {
 			continue
 		}
 		currentSize, currentHash := s.currentAdvertHash(pk, f)
@@ -2035,7 +2035,7 @@ func (s *Store) computeHashMatrix(bytes int, f AnalyticsFilter) HashMatrixData {
 }
 
 func participatesInRouting(role string) bool {
-	return role == "repeater" || role == "room"
+	return role == "repeater"
 }
 
 func (s *Store) currentAdvertHash(pubKey string, f AnalyticsFilter) (int, string) {
@@ -2104,7 +2104,7 @@ type HashMatrixData struct {
 	DistinctPrefixes int              `json:"distinctPrefixes"`
 	SpaceTotal       int              `json:"spaceTotal"`
 	SpacePct         float64          `json:"spacePct"`
-	Collisions        int              `json:"collisions"`
+	Collisions       int              `json:"collisions"`
 	Cells            []HashMatrixCell `json:"cells"`
 }
 
