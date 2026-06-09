@@ -84,7 +84,10 @@ export const api = {
     get<{ rssi: number[]; snr: number[]; totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p)}`),
 
   analyticsActivity: (hours = 24, p?: AnalyticsParams) =>
-    get<Array<{ hour: string; label: string; count: number }>>(`/api/analytics/activity${aq(p, { hours })}`),
+    get<{
+      buckets: Array<{ hour: string; label: string; count: number; activeNodes: number; avgFanout: number; payloads: Record<string, number> }>
+      payloadTypes: string[]
+    }>(`/api/analytics/activity${aq(p, { hours })}`),
 
   analyticsNodesTop: (limit = 20, sort: 'adverts' | 'retransmits' = 'adverts', p?: AnalyticsParams) =>
     get<import('../types').Node[]>(`/api/analytics/nodes-top${aq(p, { limit, sort })}`),

@@ -76,7 +76,7 @@ export default function Home() {
         setPktRate(s.packetRate)
       }
     })
-    api.analyticsActivity(24).then(d => setActivity(d ?? []))
+    api.analyticsActivity(24).then(d => setActivity(d?.buckets ?? []))
     api.observers().then(r => setObservers(r.observers ?? []))
     api.packets(6, 0).then(r => setRecent(r.packets ?? []))
     api.analyticsRF().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))

@@ -1271,8 +1271,9 @@ func summarizeFloats(vals []float64) FloatSummary {
 	return FloatSummary{Avg: sum / float64(len(vals)), Min: mn, Max: mx}
 }
 
-// ActivityBuckets returns hourly packet counts for the last windowHours hours.
-func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) []ActivityBucket {
+// ActivityBuckets returns hourly packet, node, fanout, and payload-mix activity
+// for the last windowHours hours.
+func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if windowHours <= 0 {
@@ -1280,7 +1281,14 @@ func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) []ActivityBu
 	}
 	now := time.Now().UTC()
 	start := now.Add(-time.Duration(windowHours) * time.Hour).Truncate(time.Hour)
-	buckets := make(map[int64]int)
+	type acc struct {
+		count     int
+		fanoutSum int
+		nodes     map[string]bool
+		payloads  map[string]int
+	}
+	buckets := make(map[int64]*acc)
+	payloadSeen := make(map[string]bool)
 	for _, tx := range s.packets {
 		if !f.regionOK(tx) {
 			continue
@@ -1290,25 +1298,74 @@ func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) []ActivityBu
 			continue
 		}
 		bucket := t.Truncate(time.Hour).Unix()
-		buckets[bucket]++
+		a := buckets[bucket]
+		if a == nil {
+			a = &acc{nodes: make(map[string]bool), payloads: make(map[string]int)}
+			buckets[bucket] = a
+		}
+		a.count++
+		seenObs := make(map[string]bool, len(tx.Observations))
+		for _, o := range tx.Observations {
+			if f.obsOK(o) {
+				seenObs[o.ObserverID] = true
+			}
+		}
+		if len(seenObs) == 0 && len(tx.Observations) == 0 {
+			a.fanoutSum += tx.ObsCount
+		} else {
+			a.fanoutSum += len(seenObs)
+		}
+		if tx.PayloadType == decoder.PayloadADVERT {
+			if dec := tx.Decoded(); dec != nil {
+				if pk, _ := dec["pubKey"].(string); pk != "" {
+					a.nodes[pk] = true
+				}
+			}
+		}
+		payload := decoder.PayloadName(tx.PayloadType)
+		a.payloads[payload]++
+		payloadSeen[payload] = true
 	}
 	// Fill all hours even if empty
-	var out []ActivityBucket
+	out := make([]ActivityBucket, 0, windowHours)
 	for i := 0; i < windowHours; i++ {
 		h := start.Add(time.Duration(i) * time.Hour)
-		out = append(out, ActivityBucket{
-			Hour:  h.Format(time.RFC3339),
-			Label: h.Format("15:04"),
-			Count: buckets[h.Unix()],
-		})
+		a := buckets[h.Unix()]
+		b := ActivityBucket{
+			Hour:     h.Format(time.RFC3339),
+			Label:    h.Format("15:04"),
+			Payloads: make(map[string]int),
+		}
+		if a != nil {
+			b.Count = a.count
+			b.ActiveNodes = len(a.nodes)
+			if a.count > 0 {
+				b.AvgFanout = float64(a.fanoutSum) / float64(a.count)
+			}
+			maps.Copy(b.Payloads, a.payloads)
+		}
+		out = append(out, b)
 	}
-	return out
+	payloadTypes := make([]string, 0, len(payloadSeen))
+	for p := range payloadSeen {
+		payloadTypes = append(payloadTypes, p)
+	}
+	sort.Strings(payloadTypes)
+	return ActivityStats{Buckets: out, PayloadTypes: payloadTypes}
+}
+
+type ActivityStats struct {
+	Buckets      []ActivityBucket `json:"buckets"`
+	PayloadTypes []string         `json:"payloadTypes"`
 }
 
 type ActivityBucket struct {
-	Hour  string `json:"hour"`
-	Label string `json:"label"`
-	Count int    `json:"count"`
+	Hour        string         `json:"hour"`
+	Label       string         `json:"label"`
+	Count       int            `json:"count"`
+	ActiveNodes int            `json:"activeNodes"`
+	AvgFanout   float64        `json:"avgFanout"`
+	Payloads    map[string]int `json:"payloads"`
 }
 
 func parseTimeToTime(s string) time.Time {

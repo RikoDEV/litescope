@@ -227,18 +227,20 @@ function ActivityTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const hours = params.hours ?? 24 // Activity always needs a finite range; default 24h when "All"
-  const [data, setData]   = useState<Array<{ hour: string; label: string; count: number }>>([])
+  const [data, setData]   = useState<{ buckets: Array<{ hour: string; label: string; count: number; activeNodes: number; avgFanout: number; payloads: Record<string, number> }>; payloadTypes: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { setLoading(true); api.analyticsActivity(hours, params).then(d => setData(d ?? [])).finally(() => setLoading(false)) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setLoading(true); api.analyticsActivity(hours, params).then(d => setData(d ?? { buckets: [], payloadTypes: [] })).finally(() => setLoading(false)) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const peak  = data.reduce((m, b) => b.count > m ? b.count : m, 0)
-  const total = data.reduce((s, b) => s + b.count, 0)
-  const avg   = data.length > 0 ? total / data.length : 0
+  const buckets = data?.buckets ?? []
+  const payloadTypes = data?.payloadTypes ?? []
+  const peak  = buckets.reduce((m, b) => b.count > m ? b.count : m, 0)
+  const total = buckets.reduce((s, b) => s + b.count, 0)
+  const avg   = buckets.length > 0 ? total / buckets.length : 0
   const step  = hours <= 24 ? 4 : hours <= 72 ? 12 : 24
-  const chartData = data.map((b, i) => ({ ...b, displayLabel: i % step === 0 ? b.label : '' }))
+  const chartData = buckets.map((b, i) => ({ ...b, displayLabel: i % step === 0 ? b.label : '', ...b.payloads }))
 
-  if (loading && data.length === 0) return <TabLoading />
+  if (loading && buckets.length === 0) return <TabLoading />
 
   return (
     <Box>
@@ -255,7 +257,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
         ))}
       </Box>
 
-      <ChartCard title={t('analytics.packetsPerHourWindow', { hours })} Icon={ShowChartIcon}>
+      <ChartCard title={t('analytics.packetsPerHourWindow', { hours })} Icon={ShowChartIcon} sx={{ mb: 2 }}>
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={chartData}>
             <defs>
@@ -273,6 +275,38 @@ function ActivityTab({ params, filterKey }: TabProps) {
           </AreaChart>
         </ResponsiveContainer>
       </ChartCard>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+        <ChartCard title={t('analytics.nodeFanoutActivity')} Icon={TimelineIcon}>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
+              <YAxis yAxisId="nodes" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <YAxis yAxisId="fanout" orientation="right" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line yAxisId="nodes" type="monotone" dataKey="activeNodes" name={t('analytics.uniqueActiveNodes')} stroke="#14b8a6" strokeWidth={2} dot={false} />
+              <Line yAxisId="fanout" type="monotone" dataKey="avgFanout" name={t('analytics.avgObservationFanout')} stroke="#ec4899" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title={t('analytics.payloadMixOverTime')} Icon={BarChartIcon}>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
+              <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
+              <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {payloadTypes.map((pt, i) => (
+                <Bar key={pt} dataKey={pt} stackId="payloads" fill={PALETTE[i % PALETTE.length]} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </Box>
     </Box>
   )
 }

@@ -191,6 +191,46 @@ func TestIATAsFiltersInvalidRegionSegments(t *testing.T) {
 	}
 }
 
+func TestActivityBucketsIncludeNodesFanoutAndPayloadMix(t *testing.T) {
+	s := New()
+	now := time.Now().UTC().Add(-1 * time.Hour).Truncate(time.Hour).Add(5 * time.Minute).Format(time.RFC3339)
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "adv1", FirstSeen: now, PayloadType: 4, DecodedJSON: `{"pubKey":"nodeA"}`, ObsCount: 2},
+			{ID: 2, Hash: "adv2", FirstSeen: now, PayloadType: 4, DecodedJSON: `{"pubKey":"nodeA"}`, ObsCount: 1},
+			{ID: 3, Hash: "txt", FirstSeen: now, PayloadType: 2, DecodedJSON: `{}`, ObsCount: 1},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obs1", ObserverIATA: "WAW"},
+			{ID: 2, TxID: 1, ObserverID: "obs2", ObserverIATA: "WAW"},
+			{ID: 3, TxID: 2, ObserverID: "obs1", ObserverIATA: "WAW"},
+			{ID: 4, TxID: 3, ObserverID: "obs1", ObserverIATA: "WAW"},
+		},
+		nil, nil,
+	)
+
+	stats := s.ActivityBuckets(1, AnalyticsFilter{})
+	if len(stats.Buckets) != 1 {
+		t.Fatalf("expected one bucket, got %d", len(stats.Buckets))
+	}
+	b := stats.Buckets[0]
+	if b.Count != 3 {
+		t.Fatalf("expected 3 packets, got %d", b.Count)
+	}
+	if b.ActiveNodes != 1 {
+		t.Fatalf("expected one unique advert node, got %d", b.ActiveNodes)
+	}
+	if b.AvgFanout != float64(4)/3 {
+		t.Fatalf("expected avg fanout 4/3, got %f", b.AvgFanout)
+	}
+	if b.Payloads["ADVERT"] != 2 || b.Payloads["TXT_MSG"] != 1 {
+		t.Fatalf("unexpected payload mix: %v", b.Payloads)
+	}
+	if len(stats.PayloadTypes) != 2 || stats.PayloadTypes[0] != "ADVERT" || stats.PayloadTypes[1] != "TXT_MSG" {
+		t.Fatalf("unexpected payload legend: %v", stats.PayloadTypes)
+	}
+}
+
 func TestHashMatrixShowsOnlyRepeaters(t *testing.T) {
 	s := New()
 	const repeater = "aa11000000000000000000000000000000000000000000000000000000000000"
