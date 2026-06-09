@@ -393,17 +393,23 @@ export default function Channels() {
 
   // Display rows in chat order (oldest→newest). When stacking is on, each run of
   // consecutive same-key messages collapses to one row keyed by its newest
-  // member (so time/obs/hops reflect the latest send) with a repeat count.
-  type Row = { msg: Packet; count: number; key: string }
+  // member, while obs/hops use the strongest packet seen in the whole run.
+  type Row = { msg: Packet; count: number; key: string; obsPacket: Packet; hopsPacket: Packet }
   const displayRows: Row[] = (() => {
     const ordered = [...visibleMessages].reverse()
-    if (!stackDuplicates) return ordered.map(m => ({ msg: m, count: 1, key: String(m.id) }))
+    if (!stackDuplicates) return ordered.map(m => ({ msg: m, count: 1, key: String(m.id), obsPacket: m, hopsPacket: m }))
     const rows: Row[] = []
     for (const m of ordered) {
       const k = stackKey(m)
       const last = rows[rows.length - 1]
-      if (last && last.key === k) { last.count++; last.msg = m }
-      else rows.push({ msg: m, count: 1, key: k })
+      if (last && last.key === k) {
+        last.count++
+        last.msg = m
+        if (m.obsCount > last.obsPacket.obsCount) last.obsPacket = m
+        if (m.maxHops > last.hopsPacket.maxHops) last.hopsPacket = m
+      } else {
+        rows.push({ msg: m, count: 1, key: k, obsPacket: m, hopsPacket: m })
+      }
     }
     return rows
   })()
@@ -459,7 +465,7 @@ export default function Channels() {
                   </Button>
                 </Box>
               )}
-              {displayRows.map(({ msg, count }) => {
+              {displayRows.map(({ msg, count, obsPacket, hopsPacket }) => {
                 const dec    = msg.decoded
                 const cdec   = decrypted[msg.id]
                 const noKey  = needsClientDecrypt(dec?.decryptionStatus) && !cdec
@@ -504,11 +510,11 @@ export default function Channels() {
 
                       {/* Meta row: obs · hops popover · link */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
-                        {msg.obsCount > 0 && <ObsPopover packet={msg} />}
-                        {msg.maxHops > 0 && (
+                        {obsPacket.obsCount > 0 && <ObsPopover packet={obsPacket} />}
+                        {hopsPacket.maxHops > 0 && (
                           <>
                             <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
-                            <HopsPopover packet={msg} nodes={nodes} />
+                            <HopsPopover packet={hopsPacket} nodes={nodes} />
                           </>
                         )}
                         {msg.bestScope && (
