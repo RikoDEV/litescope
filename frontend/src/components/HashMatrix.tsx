@@ -102,6 +102,8 @@ export default function HashMatrix({ matrices }: { matrices?: Matrices }) {
       default:          return t('analytics.hashMatrixAvailable')
     }
   }
+  const cellGroups = (c: Cell | null): SubGroup[] => c?.groups ?? []
+  const groupNodes = (g: SubGroup): HashMatrixNode[] => g.nodes ?? []
 
   const statCards = [
     { l: t('analytics.hashMatrixNodesTracked'), v: (matrix?.trackedNodes ?? 0).toLocaleString(), c: md3.primary },
@@ -165,7 +167,7 @@ export default function HashMatrix({ matrices }: { matrices?: Matrices }) {
                             <Box sx={{ fontWeight: 700, fontFamily: 'monospace' }}>0x{c.hex}</Box>
                             <Box sx={{ opacity: 0.85 }}>{statusText(c)}</Box>
                             {c.reserved && <Box sx={{ opacity: 0.7, mt: 0.25 }}>{t('analytics.hashMatrixReserved')}</Box>}
-                            {c.groups.flatMap(g => g.nodes).slice(0, MAX_TIP_NODES).map((n, i) => (
+                            {cellGroups(c).flatMap(g => groupNodes(g)).slice(0, MAX_TIP_NODES).map((n, i) => (
                               <Box key={i} sx={{ mt: i === 0 ? 0.5 : 0 }}>{n.name || n.pubKey.slice(0, 12)}</Box>
                             ))}
                             {c.nodeCount > MAX_TIP_NODES && (
@@ -243,14 +245,14 @@ export default function HashMatrix({ matrices }: { matrices?: Matrices }) {
                   {active.reserved && (
                     <Typography sx={{ fontSize: 11, color: md3.outline, mb: 0.5 }}>{t('analytics.hashMatrixReserved')}</Typography>
                   )}
-                  {active.groups.map(g => (
+                  {cellGroups(active).map(g => (
                     <Box key={g.prefix} sx={{ mb: 0.75 }}>
                       {bytes > 1 && (
                         <Typography sx={{ fontFamily: 'monospace', fontSize: 10, color: md3.outline }}>
                           0x{g.prefix}{g.routingCount >= 2 ? ` · ${g.routingCount}×` : ''}
                         </Typography>
                       )}
-                      {g.nodes.map(n => (
+                      {groupNodes(g).map(n => (
                         <Box
                           key={n.pubKey}
                           onClick={() => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`)}
