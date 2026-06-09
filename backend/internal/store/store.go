@@ -1979,7 +1979,10 @@ func (s *Store) computeHashMatrix(bytes int, f AnalyticsFilter) HashMatrixData {
 				groups[pfx] = append(groups[pfx], mn)
 			}
 
-			cell := HashMatrixCell{Hex: cellHex, Reserved: cellHex == "00" || cellHex == "FF"}
+			cell := HashMatrixCell{
+				Hex: cellHex, Reserved: cellHex == "00" || cellHex == "FF",
+				Groups: make([]HashMatrixGroup, 0, len(groups)),
+			}
 			for pfx, groupNodes := range groups {
 				group := HashMatrixGroup{Prefix: pfx, Nodes: make([]HashMatrixNode, 0, len(groupNodes))}
 				for _, mn := range groupNodes {
