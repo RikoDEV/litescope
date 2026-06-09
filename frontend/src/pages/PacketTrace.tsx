@@ -7,7 +7,6 @@ import Chip from '@mui/material/Chip'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
 import { alpha, useTheme } from '@mui/material/styles'
-import { useTranslation } from 'react-i18next'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { api } from '../services/api'
@@ -15,7 +14,6 @@ import type { PacketDetail } from '../types'
 import { PAYLOAD_NAMES, ROUTE_NAMES, PAYLOAD_COLORS } from '../types'
 import { parseHops, deduplicateObs, relativeTime } from '../utils/packets'
 import { IataFlag } from '../utils/flags'
-import { formatDistanceToNow } from 'date-fns'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -356,7 +354,6 @@ export default function PacketTrace() {
   const { hash } = useParams<{ hash: string }>()
   const navigate  = useNavigate()
   const theme     = useTheme(); const md3 = theme.palette.md3
-  const { t }     = useTranslation()
 
   const [pkt,     setPkt]     = useState<PacketDetail | null>(null)
   const [loading, setLoading] = useState(true)

@@ -24,7 +24,6 @@ import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hasValidLocation, validLatLon } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
 import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
-import { parseHops } from '../utils/packets'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────

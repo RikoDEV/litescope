@@ -12,10 +12,7 @@ import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
-import IconButton from '@mui/material/IconButton'
 import Button from '@mui/material/Button'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Divider from '@mui/material/Divider'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
@@ -50,7 +47,7 @@ export default function Nodes() {
     room: t('nodes.rooms'), sensor: t('nodes.sensors'),
   }
 
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
 
   const [allNodes, setAllNodes]   = useState<Node[]>([])
   const [counts, setCounts]       = useState<Record<string, number>>({})
