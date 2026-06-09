@@ -73,6 +73,7 @@ const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
 ]
 
 const PALETTE = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6','#a855f7']
+const paletteColor = (i: number) => PALETTE[i % PALETTE.length] ?? PALETTE[0]!
 
 export default function Analytics() {
   const theme = useTheme()
@@ -211,7 +212,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
                 <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
                   formatter={(v) => [`${v}%`, t('analytics.share')]} />
                 <Bar dataKey="pct" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => Number(v) > 0 ? `${v}%` : '' }}>
-                  {typeShareData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                  {typeShareData.map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -301,7 +302,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {payloadTypes.map((pt, i) => (
-                <Bar key={pt} dataKey={pt} stackId="payloads" fill={PALETTE[i % PALETTE.length]} />
+                <Bar key={pt} dataKey={pt} stackId="payloads" fill={paletteColor(i)} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -419,7 +420,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <ReferenceLine y={0} stroke={alpha(md3.error, 0.4)} strokeDasharray="4 4" />
               <ReferenceLine y={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
-              <Scatter data={scatter} shape={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: { snr: number } }) => {
+              <Scatter data={scatter} shape={({ cx, cy, payload }: { cx?: number | undefined; cy?: number | undefined; payload?: { snr: number } | undefined }) => {
                 const color = (payload?.snr ?? 0) > 6 ? '#22c55e' : (payload?.snr ?? 0) > 0 ? '#f59e0b' : md3.error
                 return <circle cx={cx} cy={cy} r={3} fill={color} fillOpacity={0.65} />
               }} />
@@ -585,7 +586,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
 
   if (!channels) return <TabLoading />
 
-  const chColor = (name: string, i: number) => name === 'Other' ? md3.outline : PALETTE[i % PALETTE.length]
+  const chColor = (name: string, i: number) => name === 'Other' ? md3.outline : paletteColor(i)
   const actChart = (analytics?.activity ?? []).map((h, i) => ({ label: h.label, displayLabel: i % 4 === 0 ? h.label : '', ...h.counts }))
 
   const total = channels.reduce((s, c) => s + c.messageCount, 0)
@@ -618,7 +619,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                {channels.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                {channels.map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -633,7 +634,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
                 label={({ name, percent }: { name?: string; percent?: number }) => (percent ?? 0) > 0.04 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
                 labelLine={false}
               >
-                {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
               </Pie>
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 11, color: md3.onSurfaceVariant }} />
@@ -692,7 +693,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
               <TableRow key={c.hash}>
                 <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: PALETTE[i % PALETTE.length], display: 'inline-block', mr: 1 }} />
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: paletteColor(i), display: 'inline-block', mr: 1 }} />
                   {c.name || '—'}
                 </TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontSize: 10, color: md3.outline }}>{c.hash.slice(0, 16)}…</TableCell>
@@ -772,7 +773,7 @@ function HashesTab({ params, filterKey }: TabProps) {
       </Box>
 
       <Box sx={{ mb: 2 }}>
-        <HashMatrix matrices={data.hashMatrices} />
+        <HashMatrix matrices={data.hashMatrices ?? undefined} />
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
@@ -1211,7 +1212,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
 
   const SCOPE_COLORS = ['#D0BCFF', '#22c55e', '#f59e0b', '#14b8a6', '#ec4899', '#a855f7', '#0ea5e9']
   const scopeColor = (scope: string, idx: number) =>
-    scope === 'unknown' ? md3.outline : SCOPE_COLORS[idx % SCOPE_COLORS.length]
+    scope === 'unknown' ? md3.outline : SCOPE_COLORS[idx % SCOPE_COLORS.length] ?? SCOPE_COLORS[0]!
 
   // Build activity chart data: each row gets one key per scope
   const activityChartData = data.activity.map(h => {

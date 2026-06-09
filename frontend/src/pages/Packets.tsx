@@ -163,13 +163,15 @@ export default function Packets() {
           const idx = prev.findIndex(p => p.id === u.id)
           if (idx < 0) return prev
           const n = [...prev]
+          const existing = n[idx]
+          if (!existing) return prev
           n[idx] = {
-            ...n[idx], obsCount: u.obsCount, maxHops: u.maxHops,
-            hopSize: u.hopSize ?? n[idx].hopSize,
-            bestScope: u.bestScope ?? n[idx].bestScope,
-            bestPath: u.bestPath ?? n[idx].bestPath,
-            bestObserver: u.bestObserver ?? n[idx].bestObserver,
-            regions: u.regions ?? n[idx].regions,
+            ...existing, obsCount: u.obsCount, maxHops: u.maxHops,
+            hopSize: u.hopSize ?? existing.hopSize,
+            bestScope: u.bestScope ?? existing.bestScope,
+            bestPath: u.bestPath ?? existing.bestPath,
+            bestObserver: u.bestObserver ?? existing.bestObserver,
+            regions: u.regions ?? existing.regions,
           }
           return n
         })

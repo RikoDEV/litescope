@@ -11,10 +11,10 @@ async function get<T>(path: string): Promise<T> {
 
 /** Shared analytics filter: time window (hours, 0/undefined = all time) + region. */
 export interface AnalyticsParams {
-  hours?: number
-  regions?: string[]   // observer IATA codes (packet/observation filtering)
-  countries?: string[] // ISO-A2 codes (geographic node filtering)
-  lock?: boolean
+  hours?: number | undefined
+  regions?: string[] | undefined   // observer IATA codes (packet/observation filtering)
+  countries?: string[] | undefined // ISO-A2 codes (geographic node filtering)
+  lock?: boolean | undefined
 }
 
 /** Builds a query string from analytics params plus any extra fixed params. */
@@ -36,7 +36,7 @@ export const api = {
   packet: (hash: string) =>
     get<PacketDetail>(`/api/packets/${hash}`),
 
-  nodes: (opts?: { iata?: string; status?: string; lastHeard?: string }) => {
+  nodes: (opts?: { iata?: string | undefined; status?: string | undefined; lastHeard?: string | undefined }) => {
     const p = new URLSearchParams()
     if (opts?.iata)      p.set('iata',      opts.iata)
     if (opts?.status)    p.set('status',    opts.status)

@@ -63,10 +63,10 @@ export default function MapView() {
   ]
 
   const ROLE_INFO: { role: 'repeater'|'companion'|'room'|'sensor'; label: string; shape: string }[] = [
-    { role: 'repeater',  label: t('map.repeaters'),   shape: ROLE_SHAPES.repeater },
-    { role: 'companion', label: t('map.companions'),  shape: ROLE_SHAPES.companion },
-    { role: 'room',      label: t('map.roomServers'), shape: ROLE_SHAPES.room },
-    { role: 'sensor',    label: t('map.sensors'),     shape: ROLE_SHAPES.sensor },
+    { role: 'repeater',  label: t('map.repeaters'),   shape: ROLE_SHAPES.repeater ?? '◆' },
+    { role: 'companion', label: t('map.companions'),  shape: ROLE_SHAPES.companion ?? '●' },
+    { role: 'room',      label: t('map.roomServers'), shape: ROLE_SHAPES.room ?? '⬡' },
+    { role: 'sensor',    label: t('map.sensors'),     shape: ROLE_SHAPES.sensor ?? '▲' },
   ]
 
   const mapDiv       = useRef<HTMLDivElement>(null)
@@ -275,21 +275,22 @@ export default function MapView() {
       const name = dec.name as string | undefined
       setNodes(prev => {
         const idx   = prev.findIndex(n => n.pubKey === pubKey)
+        const existing = idx >= 0 ? prev[idx] : undefined
         const flags = dec.flags as { type?: number } | undefined
         const role  = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
         // Merge the regions that heard this advert so live nodes stay filterable
         const regions = pkt.regions?.length
-          ? [...new Set([...(idx >= 0 ? prev[idx].regions ?? [] : []), ...pkt.regions])].sort()
-          : (idx >= 0 ? prev[idx].regions : undefined)
+          ? [...new Set([...(existing?.regions ?? []), ...pkt.regions])].sort()
+          : existing?.regions
         const updated: Node = {
           pubKey, name: name ?? pubKey.slice(0, 8), role,
-          lat: lat ?? (idx >= 0 ? prev[idx].lat : null),
-          lon: lon ?? (idx >= 0 ? prev[idx].lon : null),
+          lat: lat ?? existing?.lat ?? null,
+          lon: lon ?? existing?.lon ?? null,
           // Country resolved backend-side from the advert position (for geo-lock)
-          country: pkt.country ?? (idx >= 0 ? prev[idx].country : undefined),
+          country: pkt.country ?? existing?.country,
           lastSeen: pkt.firstSeen,
-          firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen,
-          advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1,
+          firstSeen: existing?.firstSeen ?? pkt.firstSeen,
+          advertCount: existing ? existing.advertCount + 1 : 1,
           regions,
         }
         if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n }

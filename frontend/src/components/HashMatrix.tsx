@@ -59,11 +59,11 @@ const COLLISION_STOPS: Record<number, [number, number, number]> = {
 }
 function collisionColor(maxGroup: number): string {
   const c = Math.max(2, Math.min(6, maxGroup))
-  const [r, g, b] = COLLISION_STOPS[c]
+  const [r, g, b] = COLLISION_STOPS[c] ?? COLLISION_STOPS[6]!
   return `rgb(${r}, ${g}, ${b})`
 }
 
-export default function HashMatrix({ matrices }: { matrices?: Matrices }) {
+export default function HashMatrix({ matrices }: { matrices?: Matrices | undefined }) {
   const theme = useTheme()
   const md3 = theme.palette.md3
   const { t } = useTranslation()
@@ -157,6 +157,7 @@ export default function HashMatrix({ matrices }: { matrices?: Matrices }) {
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', pr: 0.5, fontSize: 11, fontWeight: 700, color: md3.outline }}>{rh}</Box>
                   {HEX.map((_, ci) => {
                     const c = cells[ri * 16 + ci]
+                    if (!c) return null
                     const clickable = c.nodeCount > 0
                     return (
                       <Tooltip

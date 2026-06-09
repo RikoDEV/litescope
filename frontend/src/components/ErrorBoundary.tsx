@@ -148,19 +148,19 @@ interface State {
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, key: 0 }
+  override state: State = { error: null, key: 0 }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
     return { error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack)
   }
 
   reset = () => this.setState(s => ({ error: null, key: s.key + 1 }))
 
-  render() {
+  override render() {
     const { error, key } = this.state
     const { level = 'page' } = this.props
 

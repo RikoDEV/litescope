@@ -102,7 +102,7 @@ export default function Layout() {
     wsStatus === 'connecting' ? '#4caf5088' :
                                  md3.error
 
-  const currentLang = LANGUAGES.find(l => i18n.language?.startsWith(l.code)) ?? LANGUAGES[0]
+  const currentLang = LANGUAGES.find(l => i18n.language?.startsWith(l.code)) ?? LANGUAGES[0]!
 
   const isActive = (to: string, exact: boolean) =>
     exact ? loc.pathname === to : (loc.pathname === to || loc.pathname.startsWith(to + '/'))

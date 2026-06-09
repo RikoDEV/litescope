@@ -247,8 +247,8 @@ function PropagationTimeline({ pkt }: { pkt: PacketDetail }) {
 
   if (obs.length === 0) return null
 
-  const t0   = obs[0].ms
-  const tMax = obs[obs.length - 1].ms
+  const t0   = obs[0]?.ms ?? 0
+  const tMax = obs[obs.length - 1]?.ms ?? t0
   const span = tMax - t0 || 1
 
   return (
@@ -383,8 +383,8 @@ export default function PacketTrace() {
 
   const obs    = deduplicateObs(pkt.observations)
   const sorted = [...obs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-  const t0     = sorted.length ? new Date(sorted[0].timestamp).getTime() : 0
-  const tLast  = sorted.length ? new Date(sorted[sorted.length - 1].timestamp).getTime() : 0
+  const t0     = sorted.length ? new Date(sorted[0]?.timestamp ?? 0).getTime() : 0
+  const tLast  = sorted.length ? new Date(sorted[sorted.length - 1]?.timestamp ?? 0).getTime() : 0
   const spreadMs = tLast - t0
 
   const uniqueObservers = new Set(obs.map(o => o.observerId)).size
@@ -407,7 +407,8 @@ export default function PacketTrace() {
       })
     } else {
       const idx = seen.get(key)!
-      pathRows[idx].obsCount++
+      const row = pathRows[idx]
+      if (row) row.obsCount++
     }
   }
 

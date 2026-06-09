@@ -100,7 +100,7 @@ export default function Nodes() {
     const el = sentinelRef.current
     if (!el) return
     const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) setVisibleCount(v => v + PAGE)
+      if (entries[0]?.isIntersecting) setVisibleCount(v => v + PAGE)
     }, { threshold: 0 })
     observer.observe(el)
     return () => observer.disconnect()

@@ -292,13 +292,14 @@ export default function LiveMap() {
       if (lat != null && lon != null) {
         setNodes(prev => {
           const idx = prev.findIndex(n => n.pubKey === pubKey)
+          const existing = idx >= 0 ? prev[idx] : undefined
           const flags = dec.flags as { type?: number } | undefined
           const role  = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
           const updated: Node = {
             pubKey, name: name ?? pubKey.slice(0, 8), role,
             lat, lon, lastSeen: pkt.firstSeen,
-            firstSeen: idx >= 0 ? prev[idx].firstSeen : pkt.firstSeen,
-            advertCount: idx >= 0 ? prev[idx].advertCount + 1 : 1,
+            firstSeen: existing?.firstSeen ?? pkt.firstSeen,
+            advertCount: existing ? existing.advertCount + 1 : 1,
           }
           if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n }
           return [...prev, updated]
@@ -378,8 +379,9 @@ export default function LiveMap() {
 
     // Zoom to fit all involved points
     if (mapRef.current && points.length > 0) {
-      if (points.length === 1) {
-        mapRef.current.flyTo(points[0], Math.max(mapRef.current.getZoom(), 11), { duration: 1.2 })
+      const firstPoint = points[0]
+      if (points.length === 1 && firstPoint) {
+        mapRef.current.flyTo(firstPoint, Math.max(mapRef.current.getZoom(), 11), { duration: 1.2 })
       } else {
         mapRef.current.flyToBounds(L.latLngBounds(points), { padding: [80, 80], maxZoom: 13, duration: 1.2 })
       }
@@ -458,7 +460,8 @@ export default function LiveMap() {
     replayTimer.current = setInterval(() => {
       if (vcrPlayhead.current >= buf.length - 1) { skipToLive(); return }
       vcrPlayhead.current++
-      processPacket(buf[vcrPlayhead.current])
+      const pkt = buf[vcrPlayhead.current]
+      if (pkt) processPacket(pkt)
       drawTimeline()
     }, 1000 / vcrSpeed.current)
   }, [processPacket, skipToLive]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -476,8 +479,8 @@ export default function LiveMap() {
     ctx.clearRect(0, 0, W, H)
     ctx.fillStyle = md3.surfaceContainerHighest; ctx.fillRect(0, 0, W, H)
     const buf = vcrBuffer.current; if (!buf.length) return
-    const minTs = new Date(buf[0].firstSeen).getTime()
-    const maxTs = new Date(buf[buf.length - 1].firstSeen).getTime()
+    const minTs = new Date(buf[0]?.firstSeen ?? 0).getTime()
+    const maxTs = new Date(buf[buf.length - 1]?.firstSeen ?? 0).getTime()
     const range = maxTs - minTs || 1; const BUCKETS = 80
     const counts = new Array(BUCKETS).fill(0)
     for (const p of buf) {
@@ -487,7 +490,7 @@ export default function LiveMap() {
     const maxC = Math.max(...counts, 1); const bw = W / BUCKETS
     ctx.fillStyle = alpha(md3.primary, 0.45)
     for (let i = 0; i < BUCKETS; i++) {
-      const h = (counts[i] / maxC) * (H - 2)
+      const h = ((counts[i] ?? 0) / maxC) * (H - 2)
       ctx.fillRect(i * bw, H - h, bw - 0.5, h)
     }
     const ph = vcrPlayhead.current < 0 ? W : (vcrPlayhead.current / Math.max(buf.length - 1, 1)) * W
@@ -541,7 +544,9 @@ export default function LiveMap() {
           const pt = map.latLngToContainerPoint([p.lat, p.lon])
           return { x: pt.x, y: pt.y }
         })
-        const { x: cx, y: cy } = canvasPts[0]
+        const originPt = canvasPts[0]
+        if (!originPt) continue
+        const { x: cx, y: cy } = originPt
 
         if (trace.points.length > 1) {
           // ── Multi-point: growing trail + segment-by-segment dot ─────────────
@@ -557,8 +562,10 @@ export default function LiveMap() {
           const ep      = rawSegT < 0.5 ? 2*rawSegT*rawSegT : -1+(4-2*rawSegT)*rawSegT
           const from    = canvasPts[segIdx]
           const to      = canvasPts[segIdx + 1]
-          const dotX    = travelling ? from.x + (to.x - from.x) * ep : canvasPts[numSegs].x
-          const dotY    = travelling ? from.y + (to.y - from.y) * ep : canvasPts[numSegs].y
+          const lastPt  = canvasPts[numSegs]
+          if (!from || !to || !lastPt) continue
+          const dotX    = travelling ? from.x + (to.x - from.x) * ep : lastPt.x
+          const dotY    = travelling ? from.y + (to.y - from.y) * ep : lastPt.y
 
           // Tail fade after travel completes
           const tailFade = travelling ? 1 : Math.max(0, 1 - (elapsed - travelMs) / TAIL_MS)
@@ -584,7 +591,8 @@ export default function LiveMap() {
           for (let i = 0; i < segIdx; i++) {
             const a0 = snakeAlpha(elapsed - i * HOP_MS)        // age at segment start
             const a1 = snakeAlpha(elapsed - (i + 1) * HOP_MS)  // age at segment end
-            drawSeg(canvasPts[i], canvasPts[i + 1], a0, a1)
+            const p0 = canvasPts[i], p1 = canvasPts[i + 1]
+            if (p0 && p1) drawSeg(p0, p1, a0, a1)
           }
 
           // Active segment: from `from` to current dot position
@@ -607,6 +615,7 @@ export default function LiveMap() {
             const bt = arrivalAge / BURST_MS
             const ba = (1 - bt * bt) * tailFade
             const pt = canvasPts[i]
+            if (!pt) continue
             const isLast = i === canvasPts.length - 1
             drawRing(ctx, pt.x, pt.y, 4 + bt * (isLast ? 30 : 22), trace.color, ba * 0.9, isLast ? 2.5 : 1.5)
             drawDot(ctx, pt.x, pt.y, isLast ? 4 : 3, trace.color, ba)

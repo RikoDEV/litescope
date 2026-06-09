@@ -49,46 +49,47 @@ function parseHexSections(rawHex: string, routeType: number, payloadType: number
   if (bytes.length === 0) return []
   const result: { section: HexSection; byte: string }[] = []
   let i = 0
-  result.push({ section: 'header', byte: bytes[i++] })
+  const take = () => bytes[i++] ?? '00'
+  result.push({ section: 'header', byte: take() })
   const isTransport = routeType === 0 || routeType === 3
   if (isTransport) {
-    for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'transport', byte: bytes[i++] })
+    for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'transport', byte: take() })
   }
   if (i < bytes.length) {
-    const pathByte = parseInt(bytes[i], 16)
+    const pathByte = parseInt(bytes[i] ?? '00', 16)
     const hashSize = ((pathByte >> 6) & 3) + 1
     const hopCount = pathByte & 0x3F
-    result.push({ section: 'pathLen', byte: bytes[i++] })
+    result.push({ section: 'pathLen', byte: take() })
     const pathEnd = i + hopCount * hashSize
-    while (i < pathEnd && i < bytes.length) result.push({ section: 'path', byte: bytes[i++] })
+    while (i < pathEnd && i < bytes.length) result.push({ section: 'path', byte: take() })
   }
   if (payloadType === 4) {
-    for (let j = 0; j < 32 && i < bytes.length; j++) result.push({ section: 'pubKey', byte: bytes[i++] })
-    for (let j = 0; j < 4  && i < bytes.length; j++) result.push({ section: 'timestamp', byte: bytes[i++] })
-    for (let j = 0; j < 64 && i < bytes.length; j++) result.push({ section: 'signature', byte: bytes[i++] })
+    for (let j = 0; j < 32 && i < bytes.length; j++) result.push({ section: 'pubKey', byte: take() })
+    for (let j = 0; j < 4  && i < bytes.length; j++) result.push({ section: 'timestamp', byte: take() })
+    for (let j = 0; j < 64 && i < bytes.length; j++) result.push({ section: 'signature', byte: take() })
     if (i < bytes.length) {
-      const flagsByte = parseInt(bytes[i], 16)
-      result.push({ section: 'flags', byte: bytes[i++] })
+      const flagsByte = parseInt(bytes[i] ?? '00', 16)
+      result.push({ section: 'flags', byte: take() })
       const hasLocation = (flagsByte & 0x10) !== 0
       const hasFeat1    = (flagsByte & 0x20) !== 0
       const hasFeat2    = (flagsByte & 0x40) !== 0
       const hasName     = (flagsByte & 0x80) !== 0
       if (hasLocation) {
-        for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'latitude',  byte: bytes[i++] })
-        for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'longitude', byte: bytes[i++] })
+        for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'latitude',  byte: take() })
+        for (let j = 0; j < 4 && i < bytes.length; j++) result.push({ section: 'longitude', byte: take() })
       }
-      if (hasFeat1) { for (let j = 0; j < 2 && i < bytes.length; j++) result.push({ section: 'payload', byte: bytes[i++] }) }
-      if (hasFeat2) { for (let j = 0; j < 2 && i < bytes.length; j++) result.push({ section: 'payload', byte: bytes[i++] }) }
+      if (hasFeat1) { for (let j = 0; j < 2 && i < bytes.length; j++) result.push({ section: 'payload', byte: take() }) }
+      if (hasFeat2) { for (let j = 0; j < 2 && i < bytes.length; j++) result.push({ section: 'payload', byte: take() }) }
       if (hasName) {
         while (i < bytes.length) {
-          const b = bytes[i]
-          result.push({ section: 'name', byte: bytes[i++] })
+          const b = bytes[i] ?? '00'
+          result.push({ section: 'name', byte: take() })
           if (parseInt(b, 16) === 0) break
         }
       }
     }
   }
-  while (i < bytes.length) result.push({ section: 'payload', byte: bytes[i++] })
+  while (i < bytes.length) result.push({ section: 'payload', byte: take() })
   return result
 }
 
@@ -96,7 +97,7 @@ function parseHexSections(rawHex: string, routeType: number, payloadType: number
 
 type FieldRow =
   | { kind: 'section'; label: string; section: HexSection }
-  | { kind: 'field'; offset: number | null; field: string; value: string; description: string; section: HexSection; hopLink?: string }
+  | { kind: 'field'; offset: number | null; field: string; value: string; description: string; section: HexSection; hopLink?: string | undefined }
 
 function buildFieldRows(
   rawHex: string,
@@ -108,7 +109,7 @@ function buildFieldRows(
   const byteStr = rawHex.match(/.{1,2}/g) ?? []
   if (byteStr.length === 0) return []
   const b = (idx: number) => parseInt(byteStr[idx] ?? '0', 16)
-  const hexU = (s: string) => s.toUpperCase()
+  const hexU = (s: string | undefined) => (s ?? '00').toUpperCase()
   const sliceHex = (start: number, len: number) => byteStr.slice(start, start + len).map(hexU).join('')
 
   const rows: FieldRow[] = []
@@ -441,7 +442,7 @@ interface PacketDetailPanelProps {
   /** Override Paper sx — e.g. for full-page layout */
   paperSx?: SxProps<Theme>
   /** Highlight a specific observer's perspective */
-  selectedObserverId?: string
+  selectedObserverId?: string | undefined
   onObserverSelect?: (observerId: string | null) => void
 }
 
@@ -466,7 +467,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
 
   const obs = deduplicateObs(selected.observations ?? [])
   const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))
-  const longestObs  = obsWithHops.reduce((best, o) => o.hops.length > best.hops.length ? o : best, obsWithHops[0] ?? { hops: [] })
+  const longestObs  = obsWithHops.reduce<typeof obsWithHops[number] | undefined>((best, o) => !best || o.hops.length > best.hops.length ? o : best, undefined)
   const focusedObs  = selectedObserverId ? (obsWithHops.find(o => o.observerId === selectedObserverId) ?? longestObs) : longestObs
 
   const times = obs.map(o => new Date(o.timestamp).getTime()).filter(Boolean)
@@ -541,7 +542,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
           {[
             { l: t('common.firstSeen'), v: relativeTime(selected.firstSeen) },
             { l: t('packets.propagation'), v: propagationMs > 0 ? `${(propagationMs / 1000).toFixed(1)}s` : '—' },
-            { l: t('packets.maxHops'), v: focusedObs.hops.length > 0 ? `${focusedObs.hops.length}` : '—' },
+            { l: t('packets.maxHops'), v: focusedObs?.hops.length ? `${focusedObs.hops.length}` : '—' },
           ].map(({ l, v }) => (
             <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75, textAlign: 'center' }}>
               <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
@@ -577,7 +578,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
         })()}
 
         {/* Path (focused observer or longest) */}
-        {focusedObs.hops.length > 0 && (
+        {focusedObs && focusedObs.hops.length > 0 && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.longestPath', { count: focusedObs.hops.length })}</Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center', mt: 0.5 }}>

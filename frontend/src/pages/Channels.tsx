@@ -79,7 +79,7 @@ async function aesEcbDecrypt(ct: Uint8Array, key: Uint8Array): Promise<Uint8Arra
   const ek = await crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['encrypt'])
   const lastBlock = ct.slice(ct.length - 16)
   const target = new Uint8Array(16)
-  for (let j = 0; j < 16; j++) target[j] = lastBlock[j] ^ 0x10
+  for (let j = 0; j < 16; j++) target[j] = (lastBlock[j] ?? 0) ^ 0x10
   // E(target) = first block of CBC-encrypt(IV=0) of target.
   const extra = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, ek, ab(target))).slice(0, 16)
   const feed = new Uint8Array(ct.length + 16); feed.set(ct); feed.set(extra, ct.length)
@@ -87,7 +87,7 @@ async function aesEcbDecrypt(ct: Uint8Array, key: Uint8Array): Promise<Uint8Arra
   const out = new Uint8Array(ct.length)
   out.set(dec.slice(0, 16)) // block 0: D(B0) XOR IV(0) = D(B0)
   for (let i = 16; i < ct.length; i += 16)
-    for (let j = 0; j < 16; j++) out[i + j] = dec[i + j] ^ ct[i - 16 + j]
+    for (let j = 0; j < 16; j++) out[i + j] = (dec[i + j] ?? 0) ^ (ct[i - 16 + j] ?? 0)
   return out
 }
 
@@ -179,7 +179,7 @@ export default function Channels() {
   // channel list so client-side names survive refetches and reloads.
   const hashNames = useRef<Record<string, string>>(loadChannelHashNames())
   const applyNames = (chs: Channel[]) =>
-    chs.map(ch => hashNames.current[ch.hash] ? { ...ch, name: hashNames.current[ch.hash] } : ch)
+    chs.map(ch => hashNames.current[ch.hash] ? { ...ch, name: hashNames.current[ch.hash] ?? ch.name } : ch)
 
   useEffect(() => {
     if (skipAutoScroll.current) { skipAutoScroll.current = false; return }
@@ -292,7 +292,7 @@ export default function Channels() {
       // refetches and reloads, not just in this render's channel list.
       hashNames.current = { ...hashNames.current, ...nameMap }
       saveChannelHashNames(hashNames.current)
-      setChannels(prev => prev.map(ch => nameMap[ch.hash] ? { ...ch, name: nameMap[ch.hash] } : ch))
+      setChannels(prev => prev.map(ch => nameMap[ch.hash] ? { ...ch, name: nameMap[ch.hash] ?? ch.name } : ch))
     }
   }
 
@@ -320,13 +320,15 @@ export default function Channels() {
           const idx = prev.findIndex(m => m.id === u.id)
           if (idx < 0) return prev
           const n = [...prev]
+          const existing = n[idx]
+          if (!existing) return prev
           n[idx] = {
-            ...n[idx], obsCount: u.obsCount, maxHops: u.maxHops,
-            hopSize: u.hopSize ?? n[idx].hopSize,
-            bestScope: u.bestScope ?? n[idx].bestScope,
-            bestPath: u.bestPath ?? n[idx].bestPath,
-            bestObserver: u.bestObserver ?? n[idx].bestObserver,
-            regions: u.regions ?? n[idx].regions,
+            ...existing, obsCount: u.obsCount, maxHops: u.maxHops,
+            hopSize: u.hopSize ?? existing.hopSize,
+            bestScope: u.bestScope ?? existing.bestScope,
+            bestPath: u.bestPath ?? existing.bestPath,
+            bestObserver: u.bestObserver ?? existing.bestObserver,
+            regions: u.regions ?? existing.regions,
           }
           return n
         })
@@ -340,7 +342,13 @@ export default function Channels() {
       }
       setChannels(prev => {
         const idx = prev.findIndex(c => c.hash === msg.data.channelHash)
-        if (idx >= 0) { const n = [...prev]; n[idx] = { ...n[idx], messageCount: n[idx].messageCount + 1 }; return n }
+        if (idx >= 0) {
+          const n = [...prev]
+          const existing = n[idx]
+          if (!existing) return prev
+          n[idx] = { ...existing, messageCount: existing.messageCount + 1 }
+          return n
+        }
         const h = msg.data.channelHash ?? ''
         return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
       })
@@ -738,7 +746,7 @@ function InlineText({ text, onMentionClick, channels, onChannelClick }: {
       )
     } else {
       // #channel
-      const tag = m[3]
+      const tag = m[3] ?? ''
       const ch = channels.find(c => c.name.toLowerCase() === tag.toLowerCase() ||
         c.name.toLowerCase() === '#' + tag.toLowerCase())
       parts.push(

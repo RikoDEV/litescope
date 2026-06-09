@@ -212,7 +212,7 @@ export default function Observers() {
                         <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
                         <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} cursor={{ fill: 'transparent' }} />
                         <Bar dataKey="value" radius={[0, 3, 3, 0]}>
-                          {typePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                          {typePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length] ?? COLORS[0]!} />)}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>

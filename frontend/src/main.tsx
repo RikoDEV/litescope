@@ -8,7 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { getEnv } from './env'
 
 // Keep <html lang> in sync with the active i18n language
-const syncLang = (lng: string) => { document.documentElement.lang = lng.split('-')[0] }
+const syncLang = (lng: string) => { document.documentElement.lang = lng.split('-')[0] ?? 'en' }
 syncLang(i18n.language)
 i18n.on('languageChanged', syncLang)
 

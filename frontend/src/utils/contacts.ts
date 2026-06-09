@@ -44,9 +44,9 @@ export function parseMessageSegments(text: string): MessageSegment[] {
   while ((m = RICH_RE.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index))
     if (m[1] !== undefined) {
-      out.push({ raw: m[0], pubKey: m[1].toLowerCase(), type: parseInt(m[2], 10), name: m[3].trim() })
+      out.push({ raw: m[0], pubKey: m[1].toLowerCase(), type: parseInt(m[2] ?? '0', 10), name: (m[3] ?? '').trim() })
     } else {
-      const lat = parseFloat(m[4]); const lon = parseFloat(m[5])
+      const lat = parseFloat(m[4] ?? 'NaN'); const lon = parseFloat(m[5] ?? 'NaN')
       if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
         out.push({ raw: m[0], lat, lon })
       } else {

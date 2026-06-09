@@ -86,7 +86,7 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
 }
 
 // ── stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string | undefined; color?: string | undefined }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   return (
     <Box sx={{ background: md3.surfaceContainerHighest, borderRadius: 3, px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>

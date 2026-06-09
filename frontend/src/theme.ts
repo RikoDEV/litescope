@@ -226,7 +226,7 @@ function tintedNeutrals(mode: ThemeMode, accentHex: string): NeutralRoles {
 
 function paletteFor(mode: ThemeMode, accent: AccentKey): Md3Palette {
   const base = mode === 'dark' ? md3Dark : md3Light
-  const def = ACCENTS.find(a => a.key === accent) ?? ACCENTS[0]
+  const def = ACCENTS.find(a => a.key === accent) ?? ACCENTS[0]!
   return {
     ...base,
     ...tintedNeutrals(mode, def.swatch),

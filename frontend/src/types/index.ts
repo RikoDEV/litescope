@@ -22,15 +22,15 @@ export interface Packet {
   payloadType: number
   obsCount: number
   maxHops: number
-  hopSize?: number
-  bestScope?: string
-  bestPath?: string[]
-  bestObserver?: string
-  regions?: string[]
-  country?: string
+  hopSize?: number | undefined
+  bestScope?: string | undefined
+  bestPath?: string[] | undefined
+  bestObserver?: string | undefined
+  regions?: string[] | undefined
+  country?: string | undefined
   byteSize: number
-  channelHash?: string
-  decoded?: DecodedPayload
+  channelHash?: string | undefined
+  decoded?: DecodedPayload | undefined
 }
 
 export interface PacketDetail extends Packet {
@@ -48,7 +48,7 @@ export interface Observation {
   direction: string
   pathJson: string
   timestamp: string
-  rawHex?: string
+  rawHex?: string | undefined
 }
 
 export interface Node {
@@ -60,11 +60,11 @@ export interface Node {
   lastSeen: string
   firstSeen: string
   advertCount: number
-  regions?: string[]
-  country?: string
-  retransmitCount?: number
-  batteryMv?: number
-  temperatureC?: number
+  regions?: string[] | undefined
+  country?: string | undefined
+  retransmitCount?: number | undefined
+  batteryMv?: number | undefined
+  temperatureC?: number | undefined
 }
 
 export interface Observer {
@@ -74,11 +74,11 @@ export interface Observer {
   lastSeen: string
   firstSeen: string
   packetCount: number
-  model?: string
-  firmware?: string
-  batteryMv?: number
-  uptimeSecs?: number
-  noiseFloor?: number
+  model?: string | undefined
+  firmware?: string | undefined
+  batteryMv?: number | undefined
+  uptimeSecs?: number | undefined
+  noiseFloor?: number | undefined
 }
 
 export interface Channel {
@@ -104,22 +104,22 @@ export interface ObserverStat {
   observerName: string
   observerIata: string
   count: number
-  avgSnr?: number
-  avgRssi?: number
+  avgSnr?: number | undefined
+  avgRssi?: number | undefined
 }
 
 export interface RichPacket extends Packet {
   bestObserver: string
-  bestIata?: string
-  bestSnr?: number
-  bestRssi?: number
+  bestIata?: string | undefined
+  bestSnr?: number | undefined
+  bestRssi?: number | undefined
 }
 
 export interface NodeOverview extends Node {
   packetsToday: number
   totalPackets: number
   avgHops: number
-  avgSnr?: number
+  avgSnr?: number | undefined
   heardBy: ObserverStat[]
   recentPackets: RichPacket[]
 }
@@ -130,11 +130,11 @@ export interface PacketUpdate {
   hash: string
   obsCount: number
   maxHops: number
-  hopSize?: number
-  bestScope?: string
-  bestPath?: string[]
-  bestObserver?: string
-  regions?: string[]
+  hopSize?: number | undefined
+  bestScope?: string | undefined
+  bestPath?: string[] | undefined
+  bestObserver?: string | undefined
+  regions?: string[] | undefined
 }
 
 export type WSMessage =
