@@ -1,4 +1,4 @@
-import { iataCountry } from './flags'
+import { iataCountry, isIataCode } from './flags'
 
 export interface CountryGroup {
   cc: string       // ISO country code, or 'XX' for IATA codes with no known country
@@ -13,9 +13,11 @@ export interface CountryGroup {
 export function groupCountries(iatas: string[]): CountryGroup[] {
   const map = new Map<string, string[]>()
   for (const code of iatas) {
-    const cc = iataCountry(code) || 'XX'
+    if (!isIataCode(code)) continue
+    const iata = code.toUpperCase()
+    const cc = iataCountry(iata) || 'XX'
     const arr = map.get(cc) ?? []
-    arr.push(code)
+    arr.push(iata)
     map.set(cc, arr)
   }
   return [...map.entries()]

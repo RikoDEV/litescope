@@ -169,7 +169,7 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 	if len(parts) >= 4 && parts[3] == "status" {
 		obsID := parts[2]
 		name, _ := msg["origin"].(string)
-		iata := parts[1]
+		iata := normalizeRegion(parts[1])
 		meta := extractObsMeta(msg)
 		now := time.Now().UTC().Format(time.RFC3339)
 		if err := database.UpsertObserver(obsID, name, iata, now, meta); err != nil {
@@ -185,12 +185,14 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 	}
 
 	observerID := ""
-	region := src.Region
+	region := normalizeRegion(src.Region)
 	if len(parts) > 2 {
 		observerID = parts[2]
 	}
-	if len(parts) > 1 && parts[1] != "" {
-		region = parts[1]
+	if len(parts) > 1 {
+		if topicRegion := normalizeRegion(parts[1]); topicRegion != "" {
+			region = topicRegion
+		}
 	}
 
 	dec, err := decoder.DecodePacket(rawHex, channelKeys)
@@ -395,6 +397,19 @@ func strField(msg map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeRegion(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if len(s) != 3 {
+		return ""
+	}
+	for _, c := range s {
+		if c < 'A' || c > 'Z' {
+			return ""
+		}
+	}
+	return s
 }
 
 func toFloat64(v any) (float64, bool) {

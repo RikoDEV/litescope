@@ -170,6 +170,27 @@ func TestNodeRFStatsLivePackets(t *testing.T) {
 	}
 }
 
+func TestIATAsFiltersInvalidRegionSegments(t *testing.T) {
+	s := New()
+	s.Load(
+		nil,
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obs1", ObserverIATA: "packets"},
+			{ID: 2, TxID: 2, ObserverID: "obs2", ObserverIATA: "waw"},
+		},
+		nil,
+		[]*db.ObserverRow{
+			{ID: "obs3", IATA: "meshcore"},
+			{ID: "obs4", IATA: "krk"},
+		},
+	)
+
+	got := s.IATAs()
+	if len(got) != 2 || got[0] != "KRK" || got[1] != "WAW" {
+		t.Fatalf("expected only normalized IATA codes [KRK WAW], got %v", got)
+	}
+}
+
 func TestHashMatrixShowsOnlyRepeaters(t *testing.T) {
 	s := New()
 	const repeater = "aa11000000000000000000000000000000000000000000000000000000000000"

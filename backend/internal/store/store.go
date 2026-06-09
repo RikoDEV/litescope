@@ -596,15 +596,15 @@ func (s *Store) IATAs() []string {
 	defer s.mu.RUnlock()
 	seen := make(map[string]bool)
 	for _, o := range s.observers {
-		if o.IATA != "" {
-			seen[o.IATA] = true
+		if iata := normalizeIATA(o.IATA); iata != "" {
+			seen[iata] = true
 		}
 	}
 	// also collect from observations
 	for _, obsList := range s.byObserver {
 		for _, obs := range obsList {
-			if obs.ObserverIATA != "" {
-				seen[obs.ObserverIATA] = true
+			if iata := normalizeIATA(obs.ObserverIATA); iata != "" {
+				seen[iata] = true
 			}
 		}
 	}
@@ -612,7 +612,21 @@ func (s *Store) IATAs() []string {
 	for k := range seen {
 		out = append(out, k)
 	}
+	sort.Strings(out)
 	return out
+}
+
+func normalizeIATA(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if len(s) != 3 {
+		return ""
+	}
+	for _, c := range s {
+		if c < 'A' || c > 'Z' {
+			return ""
+		}
+	}
+	return s
 }
 
 // NodesFiltered returns nodes matching iata/status/lastHeard filters.

@@ -166,6 +166,10 @@ export function iataCountry(iata: string | null | undefined): string {
   return IATA_CC[iata.toUpperCase()] ?? ''
 }
 
+export function isIataCode(iata: string | null | undefined): boolean {
+  return !!iata && /^[A-Za-z]{3}$/.test(iata)
+}
+
 const FLAGS = FlagComponents as Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>>
 
 function renderFlag(cc: string, size: number, style?: React.CSSProperties) {
