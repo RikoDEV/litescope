@@ -132,6 +132,30 @@ export const api = {
       overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
       multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
       inconsistentHashes: Array<{ pubKey: string; name: string; role: string; currentHash: string; currentSize: number; sizesSeen: number[] }>
+      hashMatrices: Record<string, {
+        bytes: number
+        trackedNodes: number
+        routingNodes: number
+        unknownModeNodes: number
+        distinctPrefixes: number
+        spaceTotal: number
+        spacePct: number
+        collisions: number
+        cells: Array<{
+          hex: string
+          reserved: boolean
+          state: 'empty' | 'taken' | 'collision'
+          nodeCount: number
+          routingCount: number
+          maxGroup: number
+          collisionCount: number
+          groups: Array<{
+            prefix: string
+            routingCount: number
+            nodes: Array<{ pubKey: string; name: string; role: string; currentHash?: string; currentSize?: number }>
+          }>
+        }>
+      }>
     }>(`/api/analytics/hashes${aq(p)}`),
 
   analyticsChannels: (p?: AnalyticsParams) =>

@@ -1821,6 +1821,7 @@ func (s *Store) computeHashStats(f AnalyticsFilter) HashStatsData {
 		OverTime:           overTime,
 		MultiByteAdopters:  adopterList,
 		InconsistentHashes: s.computeInconsistentHashes(now),
+		HashMatrices:       s.computeHashMatrices(f),
 	}
 }
 
@@ -1900,12 +1901,173 @@ func advertSelfHashSize(tx *Tx, pubKey string) int {
 	return 0
 }
 
+// computeHashMatrices builds CoreScope-style routing-prefix occupancy grids.
+// All known nodes can occupy a cell for inspection, but only roles that actually
+// participate in routing are allowed to create collisions.
+func (s *Store) computeHashMatrices(f AnalyticsFilter) map[string]HashMatrixData {
+	out := make(map[string]HashMatrixData, 3)
+	for _, bytes := range []int{1, 2, 3} {
+		out[strconv.Itoa(bytes)] = s.computeHashMatrix(bytes, f)
+	}
+	return out
+}
+
+func (s *Store) computeHashMatrix(bytes int, f AnalyticsFilter) HashMatrixData {
+	type matrixNode struct {
+		node        *Node
+		currentSize int
+		currentHash string
+		routing     bool
+	}
+
+	nodes := make([]matrixNode, 0, len(s.nodes))
+	for pk, n := range s.nodes {
+		if len(pk) < bytes*2 || !f.nodeGeoOK(n) {
+			continue
+		}
+		currentSize, currentHash := s.currentAdvertHash(pk, f)
+		mn := matrixNode{
+			node: n, currentSize: currentSize, currentHash: currentHash,
+			routing: participatesInRouting(n.Role),
+		}
+		nodes = append(nodes, mn)
+	}
+
+	spaceTotal := 1
+	for range bytes {
+		spaceTotal *= 256
+	}
+
+	prefixes := make(map[string]bool)
+	for _, mn := range nodes {
+		if mn.routing {
+			prefixes[strings.ToUpper(mn.node.PubKey[:bytes*2])] = true
+		}
+	}
+
+	data := HashMatrixData{
+		Bytes:            bytes,
+		TrackedNodes:     len(nodes),
+		DistinctPrefixes: len(prefixes),
+		SpaceTotal:       spaceTotal,
+	}
+	if spaceTotal > 0 {
+		data.SpacePct = (float64(data.DistinctPrefixes) / float64(spaceTotal)) * 100
+	}
+
+	byFirst := make(map[string][]matrixNode)
+	for _, mn := range nodes {
+		if mn.routing {
+			data.RoutingNodes++
+			if mn.currentSize == 0 {
+				data.UnknownModeNodes++
+			}
+		}
+		first := strings.ToUpper(mn.node.PubKey[:2])
+		byFirst[first] = append(byFirst[first], mn)
+	}
+
+	const hex = "0123456789ABCDEF"
+	data.Cells = make([]HashMatrixCell, 0, 256)
+	for hi := range 16 {
+		for lo := range 16 {
+			cellHex := string([]byte{hex[hi], hex[lo]})
+			cellNodes := byFirst[cellHex]
+			groups := make(map[string][]matrixNode)
+			for _, mn := range cellNodes {
+				pfx := strings.ToUpper(mn.node.PubKey[:bytes*2])
+				groups[pfx] = append(groups[pfx], mn)
+			}
+
+			cell := HashMatrixCell{Hex: cellHex, Reserved: cellHex == "00" || cellHex == "FF"}
+			for pfx, groupNodes := range groups {
+				group := HashMatrixGroup{Prefix: pfx, Nodes: make([]HashMatrixNode, 0, len(groupNodes))}
+				for _, mn := range groupNodes {
+					if mn.routing {
+						group.RoutingCount++
+					}
+					group.Nodes = append(group.Nodes, HashMatrixNode{
+						PubKey: mn.node.PubKey, Name: mn.node.Name, Role: mn.node.Role,
+						CurrentHash: mn.currentHash, CurrentSize: mn.currentSize,
+					})
+				}
+				sort.Slice(group.Nodes, func(i, j int) bool {
+					if group.Nodes[i].Role != group.Nodes[j].Role {
+						return group.Nodes[i].Role < group.Nodes[j].Role
+					}
+					return group.Nodes[i].Name < group.Nodes[j].Name
+				})
+				if group.RoutingCount > cell.MaxGroup {
+					cell.MaxGroup = group.RoutingCount
+				}
+				if group.RoutingCount >= 2 {
+					cell.CollisionCount += group.RoutingCount
+				}
+				cell.Groups = append(cell.Groups, group)
+			}
+			sort.Slice(cell.Groups, func(i, j int) bool {
+				if cell.Groups[i].RoutingCount != cell.Groups[j].RoutingCount {
+					return cell.Groups[i].RoutingCount > cell.Groups[j].RoutingCount
+				}
+				if len(cell.Groups[i].Nodes) != len(cell.Groups[j].Nodes) {
+					return len(cell.Groups[i].Nodes) > len(cell.Groups[j].Nodes)
+				}
+				return cell.Groups[i].Prefix < cell.Groups[j].Prefix
+			})
+
+			for _, g := range cell.Groups {
+				cell.NodeCount += len(g.Nodes)
+				cell.RoutingCount += g.RoutingCount
+			}
+			switch {
+			case cell.MaxGroup >= 2:
+				cell.State = "collision"
+				data.Collisions++
+			case cell.NodeCount > 0:
+				cell.State = "taken"
+			default:
+				cell.State = "empty"
+			}
+			data.Cells = append(data.Cells, cell)
+		}
+	}
+	return data
+}
+
+func participatesInRouting(role string) bool {
+	return role == "repeater" || role == "room"
+}
+
+func (s *Store) currentAdvertHash(pubKey string, f AnalyticsFilter) (int, string) {
+	var currentSeen time.Time
+	currentSize := 0
+	for _, tx := range s.byNode[pubKey] {
+		if tx.PayloadType != 4 || !f.txOK(tx) {
+			continue
+		}
+		t := parseTimeToTime(tx.FirstSeen)
+		if t.IsZero() || t.Before(currentSeen) {
+			continue
+		}
+		size := advertSelfHashSize(tx, pubKey)
+		if size == 0 {
+			continue
+		}
+		currentSeen, currentSize = t, size
+	}
+	if currentSize == 0 {
+		return 0, ""
+	}
+	return currentSize, strings.ToUpper(pubKey[:min(currentSize*2, len(pubKey))])
+}
+
 type HashStatsData struct {
 	SizeDistribution   map[string]int            `json:"sizeDistribution"`
 	ByRole             map[string]map[string]int `json:"byRole"`
 	OverTime           []HashTimeBucket          `json:"overTime"`
 	MultiByteAdopters  []HashAdopter             `json:"multiByteAdopters"`
 	InconsistentHashes []InconsistentHashNode    `json:"inconsistentHashes"`
+	HashMatrices       map[string]HashMatrixData `json:"hashMatrices"`
 }
 
 // InconsistentHashNode is a repeater/room server that advertised its routing
@@ -1932,6 +2094,43 @@ type HashAdopter struct {
 	Name    string `json:"name"`
 	Count   int    `json:"count"`
 	MaxSize int    `json:"maxSize"`
+}
+
+type HashMatrixData struct {
+	Bytes            int              `json:"bytes"`
+	TrackedNodes     int              `json:"trackedNodes"`
+	RoutingNodes     int              `json:"routingNodes"`
+	UnknownModeNodes int              `json:"unknownModeNodes"`
+	DistinctPrefixes int              `json:"distinctPrefixes"`
+	SpaceTotal       int              `json:"spaceTotal"`
+	SpacePct         float64          `json:"spacePct"`
+	Collisions        int              `json:"collisions"`
+	Cells            []HashMatrixCell `json:"cells"`
+}
+
+type HashMatrixCell struct {
+	Hex            string            `json:"hex"`
+	Reserved       bool              `json:"reserved"`
+	State          string            `json:"state"`
+	NodeCount      int               `json:"nodeCount"`
+	RoutingCount   int               `json:"routingCount"`
+	MaxGroup       int               `json:"maxGroup"`
+	CollisionCount int               `json:"collisionCount"`
+	Groups         []HashMatrixGroup `json:"groups"`
+}
+
+type HashMatrixGroup struct {
+	Prefix       string           `json:"prefix"`
+	Nodes        []HashMatrixNode `json:"nodes"`
+	RoutingCount int              `json:"routingCount"`
+}
+
+type HashMatrixNode struct {
+	PubKey      string `json:"pubKey"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	CurrentHash string `json:"currentHash,omitempty"`
+	CurrentSize int    `json:"currentSize,omitempty"`
 }
 
 // ── Scope Analytics ───────────────────────────────────────────────────────────

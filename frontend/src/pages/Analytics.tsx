@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ComponentProps } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
@@ -688,6 +689,7 @@ function HashesTab({ params, filterKey }: TabProps) {
     overTime: Array<{ label: string; size1: number; size2: number; size3: number; sizeN: number }>
     multiByteAdopters: Array<{ pubKey: string; name: string; count: number; maxSize: number }>
     inconsistentHashes: Array<{ pubKey: string; name: string; role: string; currentHash: string; currentSize: number; sizesSeen: number[] }>
+    hashMatrices: ComponentProps<typeof HashMatrix>['matrices']
   }
 
   const [data, setData] = useState<HashStats | null>(null)
@@ -736,7 +738,7 @@ function HashesTab({ params, filterKey }: TabProps) {
       </Box>
 
       <Box sx={{ mb: 2 }}>
-        <HashMatrix />
+        <HashMatrix matrices={data.hashMatrices} />
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>

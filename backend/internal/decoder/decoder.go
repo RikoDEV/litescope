@@ -385,16 +385,25 @@ func normalizeName(name string) string {
 	return name
 }
 
-func decodeEncryptedPayload(typeName string, buf []byte) Payload {
-	if len(buf) < 4 {
+func payloadHashSize(pathHashSize int) int {
+	if pathHashSize >= 1 && pathHashSize <= 3 {
+		return pathHashSize
+	}
+	return 1
+}
+
+func decodeEncryptedPayload(typeName string, buf []byte, hashSize int) Payload {
+	hs := payloadHashSize(hashSize)
+	need := hs*2 + 2
+	if len(buf) < need {
 		return Payload{Type: typeName, Error: "too short", RawHex: hex.EncodeToString(buf)}
 	}
 	return Payload{
 		Type:          typeName,
-		DestHash:      hex.EncodeToString(buf[0:1]),
-		SrcHash:       hex.EncodeToString(buf[1:2]),
-		MAC:           hex.EncodeToString(buf[2:4]),
-		EncryptedData: hex.EncodeToString(buf[4:]),
+		DestHash:      hex.EncodeToString(buf[0:hs]),
+		SrcHash:       hex.EncodeToString(buf[hs : hs*2]),
+		MAC:           hex.EncodeToString(buf[hs*2 : need]),
+		EncryptedData: hex.EncodeToString(buf[need:]),
 	}
 }
 
@@ -405,18 +414,34 @@ func decodeAck(buf []byte) Payload {
 	return Payload{Type: "ACK", ExtraHash: fmt.Sprintf("%08x", binary.LittleEndian.Uint32(buf[0:4]))}
 }
 
-func decodeAnonReq(buf []byte) Payload {
-	if len(buf) < 35 {
+func decodeAnonReq(buf []byte, hashSize int) Payload {
+	hs := payloadHashSize(hashSize)
+	need := hs + 32 + 2
+	if len(buf) < need {
 		return Payload{Type: "ANON_REQ", Error: "too short", RawHex: hex.EncodeToString(buf)}
 	}
-	return Payload{Type: "ANON_REQ", DestHash: hex.EncodeToString(buf[0:1]), EphemeralPubKey: hex.EncodeToString(buf[1:33]), MAC: hex.EncodeToString(buf[33:35]), EncryptedData: hex.EncodeToString(buf[35:])}
+	return Payload{
+		Type:            "ANON_REQ",
+		DestHash:        hex.EncodeToString(buf[0:hs]),
+		EphemeralPubKey: hex.EncodeToString(buf[hs : hs+32]),
+		MAC:             hex.EncodeToString(buf[hs+32 : need]),
+		EncryptedData:   hex.EncodeToString(buf[need:]),
+	}
 }
 
-func decodePathPayload(buf []byte) Payload {
-	if len(buf) < 4 {
+func decodePathPayload(buf []byte, hashSize int) Payload {
+	hs := payloadHashSize(hashSize)
+	need := hs*2 + 2
+	if len(buf) < need {
 		return Payload{Type: "PATH", Error: "too short", RawHex: hex.EncodeToString(buf)}
 	}
-	return Payload{Type: "PATH", DestHash: hex.EncodeToString(buf[0:1]), SrcHash: hex.EncodeToString(buf[1:2]), MAC: hex.EncodeToString(buf[2:4]), PathData: hex.EncodeToString(buf[4:])}
+	return Payload{
+		Type:     "PATH",
+		DestHash: hex.EncodeToString(buf[0:hs]),
+		SrcHash:  hex.EncodeToString(buf[hs : hs*2]),
+		MAC:      hex.EncodeToString(buf[hs*2 : need]),
+		PathData: hex.EncodeToString(buf[need:]),
+	}
 }
 
 func decodeTrace(buf []byte) Payload {
@@ -459,14 +484,14 @@ func decodeControl(buf []byte) Payload {
 	return Payload{Type: "CONTROL", CtrlFlags: fmt.Sprintf("%02x", buf[0]), CtrlZeroHop: &zeroHop, CtrlLength: &l, RawHex: hex.EncodeToString(buf)}
 }
 
-func decodePayload(pt int, buf []byte, keys map[string]string) Payload {
+func decodePayload(pt int, buf []byte, keys map[string]string, hashSize int) Payload {
 	switch pt {
 	case PayloadREQ:
-		return decodeEncryptedPayload("REQ", buf)
+		return decodeEncryptedPayload("REQ", buf, hashSize)
 	case PayloadRESPONSE:
-		return decodeEncryptedPayload("RESPONSE", buf)
+		return decodeEncryptedPayload("RESPONSE", buf, hashSize)
 	case PayloadTXTMSG:
-		return decodeEncryptedPayload("TXT_MSG", buf)
+		return decodeEncryptedPayload("TXT_MSG", buf, hashSize)
 	case PayloadACK:
 		return decodeAck(buf)
 	case PayloadADVERT:
@@ -474,9 +499,9 @@ func decodePayload(pt int, buf []byte, keys map[string]string) Payload {
 	case PayloadGRPTXT:
 		return decodeGrpTxt(buf, keys)
 	case PayloadANONREQ:
-		return decodeAnonReq(buf)
+		return decodeAnonReq(buf, hashSize)
 	case PayloadPATH:
-		return decodePathPayload(buf)
+		return decodePathPayload(buf, hashSize)
 	case PayloadTRACE:
 		return decodeTrace(buf)
 	case PayloadMULTI:
@@ -535,13 +560,47 @@ func DecodePacket(hexStr string, channelKeys map[string]string) (*DecodedPacket,
 	if len(payloadBuf) > maxPacketPayload {
 		return nil, fmt.Errorf("payload too large")
 	}
-	payload := decodePayload(hdr.PayloadType, payloadBuf, channelKeys)
+	payload := decodePayload(hdr.PayloadType, payloadBuf, channelKeys, path.HashSize)
+	var anomaly string
+	if hdr.PayloadType == PayloadTRACE && payload.Error != "" {
+		anomaly = fmt.Sprintf("TRACE payload decode failed: %s", payload.Error)
+	}
+	if hdr.PayloadType == PayloadTRACE && payload.PathData != "" {
+		if hdr.RouteType != RouteDirect && hdr.RouteType != RouteTransportDirect {
+			anomaly = "TRACE packet with non-DIRECT routing (expected DIRECT or TRANSPORT_DIRECT)"
+		}
+		hopsCompleted := path.HashCount
+		if hopsCompleted > 0 && len(path.Hops) >= hopsCompleted {
+			snrVals := make([]float64, 0, hopsCompleted)
+			for i := 0; i < hopsCompleted; i++ {
+				b, err := hex.DecodeString(path.Hops[i])
+				if err == nil && len(b) == 1 {
+					snrVals = append(snrVals, float64(int8(b[0]))/4.0)
+				}
+			}
+			if len(snrVals) > 0 {
+				payload.SNRValues = snrVals
+			}
+		}
+		pathBytes, err := hex.DecodeString(payload.PathData)
+		if err == nil && payload.TraceFlags != nil {
+			pathSz := 1 << (*payload.TraceFlags & 0x03)
+			hops := make([]string, 0, len(pathBytes)/pathSz)
+			for i := 0; i+pathSz <= len(pathBytes); i += pathSz {
+				hops = append(hops, strings.ToUpper(hex.EncodeToString(pathBytes[i:i+pathSz])))
+			}
+			path.Hops = hops
+			path.HashCount = len(hops)
+			path.HashSize = pathSz
+			path.HopsCompleted = &hopsCompleted
+		}
+	}
 	if (hdr.RouteType == RouteDirect || hdr.RouteType == RouteTransportDirect) && pb&0x3F == 0 && hdr.PayloadType != PayloadTRACE {
 		path.HashSize = 0
 	}
 	return &DecodedPacket{
 		Header: hdr, TransportCodes: tc, Path: path, Payload: payload,
-		Raw: strings.ToUpper(hexStr), PayloadRaw: payloadBuf,
+		Raw: strings.ToUpper(hexStr), Anomaly: anomaly, PayloadRaw: payloadBuf,
 	}, nil
 }
 
