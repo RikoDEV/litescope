@@ -69,12 +69,13 @@ export default function RegionFilter({ iatas, value, onChange, lock, onLockChang
           const state = countryState(codes)
           const active = state !== 'none'
           const open = expanded === cc
+          const unknownLabel = codes.length === 1 ? codes[0] : t('common.unknown')
           return (
             <Chip key={cc} size="small" clickable onClick={() => toggleCountry(cc, codes)}
               label={
                 <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   {cc === 'XX' ? <Box component="span" sx={{ fontSize: 11 }}>🌐</Box> : <FlagByCC cc={cc} size={12} />}
-                  {cc === 'XX' ? '?' : cc}
+                  {cc === 'XX' ? unknownLabel : cc}
                   {codes.length > 1 && <Box component="span" sx={{ opacity: 0.7, fontSize: 10 }}>· {state === 'some' ? `${selCount(codes)}/${codes.length}` : codes.length}</Box>}
                   {codes.length > 1 && (open ? <ExpandLessIcon sx={{ fontSize: 13, ml: -0.25 }} /> : <ExpandMoreIcon sx={{ fontSize: 13, ml: -0.25 }} />)}
                 </Box>
