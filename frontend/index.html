@@ -36,10 +36,6 @@
     <!-- Preconnect for map tiles -->
     <link rel="preconnect"  href="https://tile.openstreetmap.org" crossorigin />
     <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
-    <link rel="preconnect"  href="https://unpkg.com" crossorigin />
-
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
     <!-- Structured data -->
     <script type="application/ld+json">
@@ -63,7 +59,9 @@
   </head>
   <body>
     <div id="root"></div>
-    <script src="/env-config.js"></script>
+    <!-- defer keeps execution order ahead of the module script below while not
+         blocking HTML parsing -->
+    <script src="/env-config.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -426,7 +426,13 @@ func (s *Server) getPacketsByType(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.GlobalRFStats(analyticsFilter(r)))
+	rf := s.Store.GlobalRFStats(analyticsFilter(r))
+	// summary=1 drops the raw per-observation arrays — they grow with history
+	// (easily hundreds of KB) and dashboard callers only need the aggregates.
+	if v := r.URL.Query().Get("summary"); v == "1" || v == "true" {
+		rf.RSSI, rf.SNR = nil, nil // rf is a copy; the cached value keeps its arrays
+	}
+	writeJSON(w, rf)
 }
 
 func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {

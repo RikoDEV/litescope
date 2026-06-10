@@ -79,7 +79,7 @@ export default function Home() {
     api.analyticsActivity(24).then(d => setActivity(d?.buckets ?? []))
     api.observers().then(r => setObservers(r.observers ?? []))
     api.packets(6, 0).then(r => setRecent(r.packets ?? []))
-    api.analyticsRF().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
+    api.analyticsRFSummary().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [])
 
   // top nodes — refetch when the ranking metric changes. Guard against stale

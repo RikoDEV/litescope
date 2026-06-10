@@ -159,7 +159,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
   useEffect(() => {
     api.overview(params).then(setStats)
     api.packetsByType(params).then(d => setByType(d ?? {}))
-    api.analyticsRF(params).then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
+    api.analyticsRFSummary(params).then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
   }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!stats) return <TabLoading />

@@ -83,6 +83,11 @@ export const api = {
   analyticsRF: (p?: AnalyticsParams) =>
     get<{ rssi: number[]; snr: number[]; totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p)}`),
 
+  // Aggregates only — the raw rssi/snr arrays grow with history (hundreds of
+  // KB); use this wherever the histograms aren't rendered.
+  analyticsRFSummary: (p?: AnalyticsParams) =>
+    get<{ totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p, { summary: 1 })}`),
+
   analyticsActivity: (hours = 24, p?: AnalyticsParams) =>
     get<{
       buckets: Array<{ hour: string; label: string; count: number; activeNodes: number; avgFanout: number; payloads: Record<string, number> }>
