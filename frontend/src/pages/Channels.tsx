@@ -36,6 +36,8 @@ import QrCode2Icon from '@mui/icons-material/QrCode2'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
+import RegionFilter from '../components/RegionFilter'
+import { passesRegion } from '../utils/regions'
 import type { Channel, Packet, PacketDetail } from '../types'
 import { deduplicateObs } from '../utils/packets'
 import { hashColor } from '../utils/colors'
@@ -163,6 +165,9 @@ export default function Channels() {
   const [storedKeys, setStoredKeys] = useState<StoredKey[]>(loadKeys)
   const [seenCounts, setSeenCounts] = useState<Record<string, number>>(loadSeen)
   const [nodes, setNodes]           = useState<{ pubKey: string; name: string }[]>([])
+  const [iatas, setIatas]           = useState<string[]>([])
+  const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
+  const [regionLock, setRegionLock]     = useState(false)
   const [hasMore, setHasMore]       = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
@@ -189,9 +194,20 @@ export default function Channels() {
     initialLoad.current = false
     bottomRef.current?.scrollIntoView({ behavior })
   }, [messages])
-  useEffect(() => { api.channels().then(chs => setChannels(applyNames(chs))) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Server-side region filter shared with the map/packets pages: the channel
+  // list (and its message counts) reflects only packets heard in the selected
+  // regions. Empty selection = no params = the unfiltered list.
+  const channelParams = () =>
+    regionFilter.size > 0 ? { regions: [...regionFilter], lock: regionLock } : undefined
+
+  useEffect(() => {
+    api.channelsFiltered(channelParams()).then(chs => setChannels(applyNames(chs)))
+    // Reload the open chat too — its history is filtered server-side as well.
+    if (selected) selectChannelData(selected)
+  }, [regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     api.nodes().then(res => setNodes((res.nodes ?? []).map(n => ({ pubKey: n.pubKey, name: n.name }))))
+    api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {})
   }, [])
 
   // Sync selected channel with URL path param
@@ -209,7 +225,7 @@ export default function Channels() {
   const selectChannelData = async (ch: Channel) => {
     setSelected(ch); setDecrypted({})
     document.title = `${ch.name} — liteScope`
-    const msgs = await api.channelMessages(ch.hash, PAGE_SIZE)
+    const msgs = await api.channelMessages(ch.hash, PAGE_SIZE, 0, channelParams())
     initialLoad.current = true
     setMessages(msgs)
     setHasMore(msgs.length >= PAGE_SIZE)
@@ -228,7 +244,7 @@ export default function Channels() {
     const container = scrollRef.current
     const prevHeight = container?.scrollHeight ?? 0
     try {
-      const older = await api.channelMessages(selected.hash, PAGE_SIZE, messages.length)
+      const older = await api.channelMessages(selected.hash, PAGE_SIZE, messages.length, channelParams())
       if (older.length > 0) {
         skipAutoScroll.current = true
         setMessages(prev => [...prev, ...older]) // older messages render at the top
@@ -303,12 +319,12 @@ export default function Channels() {
       const hiddenMs = hiddenAt ? Date.now() - hiddenAt : 0
       hiddenAt = null
       if (hiddenMs < 5000) return
-      api.channels().then(chs => setChannels(applyNames(chs)))
+      api.channelsFiltered(channelParams()).then(chs => setChannels(applyNames(chs)))
       if (selected) selectChannelData(selected)
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const unsub = stream.subscribe(async msg => {
@@ -337,21 +353,29 @@ export default function Channels() {
       if (msg.type !== 'packet') return
       const d = msg.data.decoded
       if (!d || (d.decryptionStatus !== 'decrypted' && !needsClientDecrypt(d.decryptionStatus))) return
-      if (selected && msg.data.channelHash === selected.hash) {
+      // Keep the filtered view consistent live: packets heard outside the
+      // selected regions must not appear in the open chat (its history is
+      // filtered server-side), bump counts, or surface new channels. Only the
+      // decryption attempt below stays ungated so keyed channels still unlock
+      // and get named regardless of region.
+      const inRegion = passesRegion(msg.data.regions, regionFilter, regionLock)
+      if (inRegion && selected && msg.data.channelHash === selected.hash) {
         setMessages(p => [msg.data, ...p])
       }
-      setChannels(prev => {
-        const idx = prev.findIndex(c => c.hash === msg.data.channelHash)
-        if (idx >= 0) {
-          const n = [...prev]
-          const existing = n[idx]
-          if (!existing) return prev
-          n[idx] = { ...existing, messageCount: existing.messageCount + 1 }
-          return n
-        }
-        const h = msg.data.channelHash ?? ''
-        return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
-      })
+      if (inRegion) {
+        setChannels(prev => {
+          const idx = prev.findIndex(c => c.hash === msg.data.channelHash)
+          if (idx >= 0) {
+            const n = [...prev]
+            const existing = n[idx]
+            if (!existing) return prev
+            n[idx] = { ...existing, messageCount: existing.messageCount + 1 }
+            return n
+          }
+          const h = msg.data.channelHash ?? ''
+          return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
+        })
+      }
       // Attempt client-side decryption for every incoming encrypted message —
       // not just the open channel — so a channel we hold a key for gets named
       // and promoted out of the collapsed "Encrypted" group as soon as a message
@@ -359,7 +383,7 @@ export default function Channels() {
       if (needsClientDecrypt(d.decryptionStatus)) decryptBatch([msg.data], storedKeys)
     })
     return unsub
-  }, [selected, storedKeys]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, storedKeys, regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-attempt decryption of already-loaded messages whenever the key set
   // changes (e.g. the user just added a key in the Key Manager) so the channel
@@ -434,6 +458,12 @@ export default function Channels() {
               </IconButton>
             </Tooltip>
           </Box>
+          {iatas.length > 0 && (
+            <Box sx={{ px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+              <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter}
+                lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
+            </Box>
+          )}
           <ChannelList channels={channels} selected={selected} onSelect={selectChannel} seenCounts={seenCounts} />
         </Paper>
       )}

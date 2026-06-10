@@ -71,8 +71,8 @@ export const api = {
   channels: () =>
     get<Channel[]>('/api/channels'),
 
-  channelMessages: (hash: string, limit = 100, offset = 0) =>
-    get<Packet[]>(`/api/channels/${encodeURIComponent(hash)}/messages?limit=${limit}&offset=${offset}`),
+  channelMessages: (hash: string, limit = 100, offset = 0, p?: AnalyticsParams) =>
+    get<Packet[]>(`/api/channels/${encodeURIComponent(hash)}/messages${aq(p, { limit, offset })}`),
 
   overview: (p?: AnalyticsParams) =>
     get<OverviewStats>(`/api/analytics/overview${aq(p)}`),

@@ -409,7 +409,7 @@ func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	limit := min(queryInt(r, "limit", 100), 500)
 	offset := queryInt(r, "offset", 0)
-	msgs := s.Store.ChannelMessages(hash, limit, offset)
+	msgs := s.Store.ChannelMessages(hash, limit, offset, analyticsFilter(r))
 	out := make([]packetSummary, 0, len(msgs))
 	for _, tx := range msgs {
 		out = append(out, summarizeTx(tx))
