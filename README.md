@@ -374,13 +374,13 @@ Migrations run automatically on startup; existing databases are upgraded in plac
 
 | Layer | Technology |
 |---|---|
-| Backend language | Go 1.22 |
+| Backend language | Go 1.26 |
 | HTTP router | gorilla/mux |
 | WebSocket | gorilla/websocket |
 | MQTT client | paho.mqtt.golang |
 | Database | SQLite (modernc.org/sqlite — pure Go, no CGO) |
 | Frontend framework | React 19 + TypeScript |
-| Build tool | Vite 6 |
+| Build tool | Vite 8 |
 | UI library | MUI v9 (Material 3 Expressive) |
 | Charts | Recharts |
 | Map | Leaflet 1.9 + leaflet.markercluster |
