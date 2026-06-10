@@ -3,6 +3,8 @@
 }
 
 :80 {
+    encode zstd gzip
+
     @api path /api/* /ws
     reverse_proxy @api backend:3000
 

@@ -6,6 +6,8 @@
 # HTTPS. Caddy will obtain and renew a Let's Encrypt certificate automatically.
 
 :80 {
+    encode zstd gzip
+
     # Health check endpoint
     respond /health 200
 
