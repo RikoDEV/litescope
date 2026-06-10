@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import CircularProgress from '@mui/material/CircularProgress'
 import { useTranslation } from 'react-i18next'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -282,7 +283,13 @@ export default function Layout() {
         {/* ── Page content ── */}
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           <ErrorBoundary level="page">
-            <Outlet />
+            <Suspense fallback={
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <CircularProgress size={28} />
+              </Box>
+            }>
+              <Outlet />
+            </Suspense>
           </ErrorBoundary>
         </Box>
 

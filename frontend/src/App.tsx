@@ -1,17 +1,23 @@
+import { lazy } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
-import Home from './pages/Home'
-import Packets from './pages/Packets'
-import MapView from './pages/MapView'
-import LiveMap from './pages/LiveMap'
-import Nodes from './pages/Nodes'
-import NodePage from './pages/NodePage'
-import Channels from './pages/Channels'
-import Observers from './pages/Observers'
-import Analytics from './pages/Analytics'
-import Decoder from './pages/Decoder'
-import NotFound from './pages/NotFound'
-import PacketTrace from './pages/PacketTrace'
+
+// Route-level code splitting: each page becomes its own chunk, so heavy
+// dependencies load only when their page is visited (leaflet/markercluster on
+// the map pages, recharts on the chart pages). The Suspense boundary lives in
+// Layout around the Outlet, keeping the nav shell mounted while a chunk loads.
+const Home        = lazy(() => import('./pages/Home'))
+const Packets     = lazy(() => import('./pages/Packets'))
+const MapView     = lazy(() => import('./pages/MapView'))
+const LiveMap     = lazy(() => import('./pages/LiveMap'))
+const Nodes       = lazy(() => import('./pages/Nodes'))
+const NodePage    = lazy(() => import('./pages/NodePage'))
+const Channels    = lazy(() => import('./pages/Channels'))
+const Observers   = lazy(() => import('./pages/Observers'))
+const Analytics   = lazy(() => import('./pages/Analytics'))
+const Decoder     = lazy(() => import('./pages/Decoder'))
+const NotFound    = lazy(() => import('./pages/NotFound'))
+const PacketTrace = lazy(() => import('./pages/PacketTrace'))
 
 export default function App() {
   return (
