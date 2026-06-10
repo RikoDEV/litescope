@@ -5,6 +5,7 @@ import * as FlagComponents from 'country-flag-icons/react/3x2'
 const IATA_CC: Record<string, string> = {
   // Poland
   WAW:'PL', KRK:'PL', GDN:'PL', KTW:'PL', WRO:'PL', POZ:'PL', LCJ:'PL', RZE:'PL', BZG:'PL', SZZ:'PL',
+  WMI:'PL', LUZ:'PL', RDO:'PL', SZY:'PL', IEG:'PL', OSZ:'PL', OSP:'PL', CZW:'PL',
   // UK
   LHR:'GB', LGW:'GB', STN:'GB', LTN:'GB', MAN:'GB', BHX:'GB', EDI:'GB', GLA:'GB', BRS:'GB', NCL:'GB', LBA:'GB', LPL:'GB', ABZ:'GB', BFS:'GB',
   // Germany
