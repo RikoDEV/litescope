@@ -75,7 +75,11 @@ type ObserverMeta struct {
 }
 
 func Open(path string) (*DB, error) {
-	connStr := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", path)
+	// modernc.org/sqlite only honors `_pragma=name(value)` DSN params (the
+	// `_journal_mode=...` form is mattn/go-sqlite3 syntax and is silently
+	// ignored). WAL + busy_timeout are load-bearing here: the ingestor writes
+	// while the server polls the same file every second.
+	connStr := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", path)
 	db, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		return nil, err

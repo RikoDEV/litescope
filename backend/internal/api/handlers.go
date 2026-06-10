@@ -86,6 +86,7 @@ func corsMiddleware(allowed []string) func(http.Handler) http.Handler {
 	wildcard := isWildcard(allowed)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
 			origin := r.Header.Get("Origin")
 			if wildcard {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -109,9 +110,12 @@ func writeJSON(w http.ResponseWriter, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// queryInt parses a non-negative integer query parameter. Every caller uses it
+// for counts/offsets/time windows, where a negative value is meaningless and —
+// passed through to the store — could panic (negative slice cap or bound).
 func queryInt(r *http.Request, key string, def int) int {
 	if v := r.URL.Query().Get(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			return n
 		}
 	}
@@ -476,6 +480,9 @@ func (s *Server) getObserverAnalytics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {
+	// A MeshCore packet is at most ~256 bytes; 1 MiB leaves generous slack for
+	// the JSON envelope and a large client key set while bounding memory.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var body struct {
 		Hex         string            `json:"hex"`
 		ChannelKeys map[string]string `json:"channelKeys,omitempty"`

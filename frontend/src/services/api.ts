@@ -34,7 +34,7 @@ export const api = {
     get<{ total: number; packets: Packet[] }>(`/api/packets?limit=${limit}&offset=${offset}`),
 
   packet: (hash: string) =>
-    get<PacketDetail>(`/api/packets/${hash}`),
+    get<PacketDetail>(`/api/packets/${encodeURIComponent(hash)}`),
 
   nodes: (opts?: { iata?: string | undefined; status?: string | undefined; lastHeard?: string | undefined }) => {
     const p = new URLSearchParams()
@@ -72,7 +72,7 @@ export const api = {
     get<Channel[]>('/api/channels'),
 
   channelMessages: (hash: string, limit = 100, offset = 0) =>
-    get<Packet[]>(`/api/channels/${hash}/messages?limit=${limit}&offset=${offset}`),
+    get<Packet[]>(`/api/channels/${encodeURIComponent(hash)}/messages?limit=${limit}&offset=${offset}`),
 
   overview: (p?: AnalyticsParams) =>
     get<OverviewStats>(`/api/analytics/overview${aq(p)}`),

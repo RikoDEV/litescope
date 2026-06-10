@@ -503,8 +503,16 @@ func (s *Store) LastIDs() (int64, int64) {
 	return s.lastTxID, s.lastObsID
 }
 
-// Packets returns a page of packets (newest first).
+// Packets returns a page of packets (newest first). Negative limit/offset are
+// treated as zero (a negative offset would index past the slice end, a negative
+// limit would panic the capacity hint below).
 func (s *Store) Packets(limit, offset int) ([]*Tx, int) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := len(s.packets)
@@ -1381,6 +1389,9 @@ func parseTimeToTime(s string) time.Time {
 // retransmit count when by == "retransmits", capped at limit. The second return
 // value maps the returned nodes' pubKeys to their retransmit count for display.
 func (s *Store) TopNodes(limit int, by string, f AnalyticsFilter) ([]*Node, map[string]int) {
+	if limit < 0 {
+		limit = 0
+	}
 	// Retransmit counts require a full packet scan, so only pay that cost when
 	// the caller actually sorts by (or needs) them. Computed first — it takes its
 	// own read lock — so we don't nest RLocks.
@@ -1520,6 +1531,9 @@ func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
 
 // TopObservers returns observers sorted by packet count descending, capped at limit.
 func (s *Store) TopObservers(limit int, f AnalyticsFilter) []*Observer {
+	if limit < 0 {
+		limit = 0
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

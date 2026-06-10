@@ -520,9 +520,18 @@ func decodePayload(pt int, buf []byte, keys map[string]string, hashSize int) Pay
 	}
 }
 
+// maxPacketHexLen bounds DecodePacket input. A MeshCore packet is at most
+// header(1) + transport(4) + path(64) + payload(184) = 253 bytes (506 hex
+// chars); 2048 leaves ample slack while rejecting pathological input before the
+// full buffer is allocated.
+const maxPacketHexLen = 2048
+
 // DecodePacket decodes a hex-encoded MeshCore packet.
 func DecodePacket(hexStr string, channelKeys map[string]string) (*DecodedPacket, error) {
 	hexStr = strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(hexStr, " ", ""), "\n", ""), "\r", "")
+	if len(hexStr) > maxPacketHexLen {
+		return nil, fmt.Errorf("packet too large (%d hex chars)", len(hexStr))
+	}
 	buf, err := hex.DecodeString(hexStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid hex: %w", err)

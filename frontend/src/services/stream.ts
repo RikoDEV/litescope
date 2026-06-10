@@ -37,7 +37,7 @@ class StreamService {
 
   private forceReconnect() {
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
-    this.ws?.close()
+    if (this.ws) { this.ws.onclose = null; this.ws.close() }
     this.ws = null
     this.connect()
   }
@@ -89,8 +89,9 @@ class StreamService {
   isPaused() { return this.paused }
 
   disconnect() {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.ws?.close()
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
+    // Detach onclose first: a deliberate disconnect must not schedule a reconnect.
+    if (this.ws) { this.ws.onclose = null; this.ws.close() }
     this.ws = null
   }
 
