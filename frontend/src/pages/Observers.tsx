@@ -23,6 +23,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import CheckIcon from '@mui/icons-material/Check'
 import WifiIcon from '@mui/icons-material/Wifi'
@@ -317,8 +318,18 @@ function ObserverSetupCard() {
               <CopyField label={t('observers.port')}     value="1883" />
               <CopyField label={t('observers.username')} value={MQTT_USERNAME || 'litescope'} />
               <CopyField label={t('observers.password')} value={MQTT_PASSWORD || '—'} />
-              <CopyField label={t('observers.topic')}    value="meshcore/#" />
+              <CopyField label={t('observers.topic')}    value="meshcore/<region>/<observer-id>" />
             </Box>
+          </Box>
+          <Box sx={{
+            mt: 2, px: 1.5, py: 1, borderRadius: 1.5, display: 'flex', gap: 1,
+            background: alpha(md3.primary, 0.06),
+            border: `1px solid ${alpha(md3.primary, 0.2)}`,
+          }}>
+            <InfoOutlinedIcon sx={{ fontSize: 15, color: md3.primary, flexShrink: 0, mt: 0.2 }} />
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, lineHeight: 1.55 }}>
+              {t('observers.iataNote')}
+            </Typography>
           </Box>
         </CardContent>
       </Collapse>

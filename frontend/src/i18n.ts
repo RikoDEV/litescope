@@ -162,6 +162,7 @@ const en = {
     step2: 'Install the observer integration script on the host (meshcore-packet-capture or meshcore-ha).',
     step3: 'Configure the script with the MQTT connection details shown on the right.',
     step4: 'Run the script — it will read packets from the device and forward them to this liteScope instance.',
+    iataNote: 'The region segment of the publish topic — meshcore/<region>/<observer-id>/… — must be a real 3-letter IATA airport or city code near your observer (e.g. WAW, BER, JFK). It tags the observer\'s location for region filtering and flags; codes that are not assigned IATA codes are ignored.',
   },
   decoder: {
     title: 'Packet Decoder',
@@ -358,6 +359,7 @@ const pl: typeof en = {
     step2: 'Zainstaluj skrypt integracyjny na hoście (meshcore-packet-capture lub meshcore-ha).',
     step3: 'Skonfiguruj skrypt z danymi połączenia MQTT pokazanymi po prawej.',
     step4: 'Uruchom skrypt — odczyta pakiety z urządzenia i przekaże je do tej instancji liteScope.',
+    iataNote: 'Segment regionu w temacie publikacji — meshcore/<region>/<id-obserwatora>/… — musi być prawdziwym 3-literowym kodem IATA lotniska lub miasta w pobliżu obserwatora (np. WAW, BER, JFK). Określa on lokalizację obserwatora dla filtrowania regionów i flag; kody niebędące przydzielonymi kodami IATA są ignorowane.',
   },
   decoder: {
     title: 'Dekoder pakietów',
@@ -554,6 +556,7 @@ const de: typeof en = {
     step2: 'Installieren Sie das Observer-Integrationsskript auf dem Host (meshcore-packet-capture oder meshcore-ha).',
     step3: 'Konfigurieren Sie das Skript mit den rechts angezeigten MQTT-Verbindungsdetails.',
     step4: 'Starten Sie das Skript — es liest Pakete vom Gerät und leitet sie an diese liteScope-Instanz weiter.',
+    iataNote: 'Das Regionssegment im Publish-Topic — meshcore/<region>/<observer-id>/… — muss ein echter 3-buchstabiger IATA-Flughafen- oder Stadtcode in der Nähe des Beobachters sein (z. B. WAW, BER, JFK). Es ordnet den Beobachter für Regionsfilter und Flaggen zu; nicht vergebene IATA-Codes werden ignoriert.',
   },
   decoder: {
     title: 'Paket-Dekoder',
@@ -737,6 +740,7 @@ const fr = {
     step2: 'Installez le script d\'intégration sur l\'hôte.',
     step3: 'Configurez le script avec les détails MQTT affichés.',
     step4: 'Lancez le script — il lira les paquets et les transmettra à cette instance.',
+    iataNote: 'Le segment région du topic de publication — meshcore/<région>/<id-observateur>/… — doit être un vrai code IATA à 3 lettres d\'un aéroport ou d\'une ville proche de l\'observateur (p. ex. WAW, BER, JFK). Il situe l\'observateur pour le filtrage par région et les drapeaux ; les codes IATA non attribués sont ignorés.',
   },
   decoder: {
     title: 'Décodeur de paquets',
@@ -911,6 +915,7 @@ const uk = {
     step2: 'Встановіть скрипт інтеграції на хості.',
     step3: 'Налаштуйте скрипт із деталями MQTT.',
     step4: 'Запустіть скрипт — він читатиме пакети і передаватиме їх до цього екземпляра.',
+    iataNote: 'Сегмент регіону в топіку публікації — meshcore/<регіон>/<id-спостерігача>/… — має бути справжнім 3-літерним кодом IATA аеропорту чи міста поблизу спостерігача (напр. WAW, BER, JFK). Він визначає розташування спостерігача для фільтрації за регіоном і прапорів; коди, що не є призначеними кодами IATA, ігноруються.',
   },
   decoder: {
     title: 'Декодер пакетів',
@@ -1085,6 +1090,7 @@ const ru = {
     step2: 'Установите скрипт интеграции на хосте.',
     step3: 'Настройте скрипт с деталями MQTT.',
     step4: 'Запустите скрипт — он будет читать пакеты и передавать их в этот экземпляр.',
+    iataNote: 'Сегмент региона в топике публикации — meshcore/<регион>/<id-наблюдателя>/… — должен быть настоящим 3-буквенным кодом IATA аэропорта или города рядом с наблюдателем (напр. WAW, BER, JFK). Он определяет расположение наблюдателя для фильтрации по регионам и флагов; коды, не являющиеся назначенными кодами IATA, игнорируются.',
   },
   decoder: {
     title: 'Декодер пакетов',
@@ -1259,6 +1265,7 @@ const nl = {
     step2: 'Installeer het integratiescript op de host.',
     step3: 'Configureer het script met de MQTT-verbindingsdetails.',
     step4: 'Start het script — het leest pakketten en stuurt ze door.',
+    iataNote: 'Het regiosegment in het publish-topic — meshcore/<regio>/<observer-id>/… — moet een echte 3-letterige IATA-luchthaven- of stadscode in de buurt van de waarnemer zijn (bijv. WAW, BER, JFK). Het koppelt de waarnemer aan een regio voor filtering en vlaggen; niet-toegewezen IATA-codes worden genegeerd.',
   },
   decoder: {
     title: 'Pakketdecoder',
@@ -1433,6 +1440,7 @@ const es = {
     step2: 'Instale el script de integración en el host.',
     step3: 'Configure el script con los detalles MQTT.',
     step4: 'Ejecute el script — leerá paquetes y los reenviará a esta instancia.',
+    iataNote: 'El segmento de región del topic de publicación — meshcore/<región>/<id-observador>/… — debe ser un código IATA real de 3 letras de un aeropuerto o ciudad cercana al observador (p. ej. WAW, BER, JFK). Ubica al observador para el filtrado por región y las banderas; los códigos IATA no asignados se ignoran.',
   },
   decoder: {
     title: 'Decodificador de paquetes',
@@ -1607,6 +1615,7 @@ const cs = {
     step2: 'Nainstalujte integrační skript na hostiteli.',
     step3: 'Nakonfigurujte skript s detaily MQTT.',
     step4: 'Spusťte skript — bude číst pakety a přeposílat je do této instance.',
+    iataNote: 'Segment regionu v publikačním tématu — meshcore/<region>/<id-pozorovatele>/… — musí být skutečný 3písmenný IATA kód letiště nebo města poblíž pozorovatele (např. WAW, BER, JFK). Určuje polohu pozorovatele pro filtrování podle regionů a vlajky; kódy, které nejsou přidělenými IATA kódy, se ignorují.',
   },
   decoder: {
     title: 'Dekodér paketů',
@@ -1781,6 +1790,7 @@ const sk = {
     step2: 'Nainštalujte integračný skript na hostiteľovi.',
     step3: 'Nakonfigurujte skript s detailmi MQTT.',
     step4: 'Spustite skript — bude čítať pakety a preposielať ich do tejto inštancie.',
+    iataNote: 'Segment regiónu v publikačnej téme — meshcore/<región>/<id-pozorovateľa>/… — musí byť skutočný 3-písmenový IATA kód letiska alebo mesta v blízkosti pozorovateľa (napr. WAW, BER, JFK). Určuje polohu pozorovateľa pre filtrovanie podľa regiónov a vlajky; kódy, ktoré nie sú pridelenými IATA kódmi, sa ignorujú.',
   },
   decoder: {
     title: 'Dekodér paketov',
@@ -1955,6 +1965,7 @@ const it = {
     step2: 'Installa lo script di integrazione sull\'host.',
     step3: 'Configura lo script con i dettagli MQTT.',
     step4: 'Avvia lo script — leggerà i pacchetti e li inoltrerà a questa istanza.',
+    iataNote: 'Il segmento regione del topic di pubblicazione — meshcore/<regione>/<id-osservatore>/… — deve essere un vero codice IATA di 3 lettere di un aeroporto o città vicino all\'osservatore (es. WAW, BER, JFK). Colloca l\'osservatore per il filtro per regione e le bandiere; i codici IATA non assegnati vengono ignorati.',
   },
   decoder: {
     title: 'Decoder pacchetti',
