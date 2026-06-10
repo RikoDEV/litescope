@@ -16,6 +16,7 @@ import (
 	"github.com/litescope/backend/internal/db"
 	"github.com/litescope/backend/internal/decoder"
 	"github.com/litescope/backend/internal/geo"
+	"github.com/litescope/backend/internal/iata"
 )
 
 func nowMillis() int64 { return time.Now().UnixMilli() }
@@ -624,6 +625,10 @@ func (s *Store) IATAs() []string {
 	return out
 }
 
+// normalizeIATA returns the uppercase IATA code, or "" when the value is not a
+// real assigned IATA location code. New data is validated at ingest, but rows
+// written before validation existed can still carry junk — this keeps them out
+// of the region filter list.
 func normalizeIATA(s string) string {
 	s = strings.ToUpper(strings.TrimSpace(s))
 	if len(s) != 3 {
@@ -633,6 +638,9 @@ func normalizeIATA(s string) string {
 		if c < 'A' || c > 'Z' {
 			return ""
 		}
+	}
+	if !iata.Valid(s) {
+		return ""
 	}
 	return s
 }

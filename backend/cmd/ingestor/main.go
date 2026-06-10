@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/litescope/backend/internal/config"
 	"github.com/litescope/backend/internal/db"
 	"github.com/litescope/backend/internal/decoder"
+	"github.com/litescope/backend/internal/iata"
 	"github.com/litescope/backend/internal/version"
 )
 
@@ -399,6 +401,10 @@ func strField(msg map[string]any, keys ...string) string {
 	return ""
 }
 
+// rejectedRegions remembers codes already warned about so a misconfigured
+// observer doesn't flood the log (handleMsg runs concurrently per source).
+var rejectedRegions sync.Map
+
 func normalizeRegion(s string) string {
 	s = strings.ToUpper(strings.TrimSpace(s))
 	if len(s) != 3 {
@@ -408,6 +414,12 @@ func normalizeRegion(s string) string {
 		if c < 'A' || c > 'Z' {
 			return ""
 		}
+	}
+	if !iata.Valid(s) {
+		if _, seen := rejectedRegions.LoadOrStore(s, struct{}{}); !seen {
+			log.Printf("region %q is not an assigned IATA code — ignoring (observations keep flowing without a region tag)", s)
+		}
+		return ""
 	}
 	return s
 }
