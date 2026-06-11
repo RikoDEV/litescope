@@ -31,7 +31,7 @@ const pageContracts: Record<string, {
   },
   LiveMap: {
     route: 'path="live" element={<LiveMap />}',
-    snippets: ["import 'leaflet/dist/leaflet.css'", "localStorage.getItem('livemap-legend')", 'api.nodes()', 'api.packets(300, 0)', 'stream.subscribe'],
+    snippets: ["import 'leaflet/dist/leaflet.css'", "localStorage.getItem('livemap-legend')", 'api.nodes()', 'api.packets(300, 0)', 'stream.subscribe', 'marker.on(\'click\', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))'],
   },
   Nodes: {
     route: 'path="nodes" element={<Nodes />}',
@@ -47,11 +47,11 @@ const pageContracts: Record<string, {
   },
   Observers: {
     route: 'path="observers" element={<Observers />}',
-    snippets: ['useSearchParams()', 'api.observers()', 'api.observerAnalytics(id, d)', "getEnv('VITE_MQTT_HOST')"],
+    snippets: ['useSearchParams()', 'api.observers()', 'api.observerAnalytics(id, d)', "getEnv('VITE_MQTT_HOST')", 'navigate(`/observers?id=${encodeURIComponent(selected.id)}`)'],
   },
   Analytics: {
     route: 'path="analytics/:tab" element={<Analytics />}',
-    snippets: ['useParams<{ tab?: string }>()', 'api.overview(params)', 'api.analyticsActivity(hours, params)', 'api.analyticsDistance(params)', 'api.analyticsScope(params)'],
+    snippets: ['useParams<{ tab?: string }>()', 'api.overview(params)', 'api.analyticsActivity(hours, params)', 'api.analyticsDistance(params)', 'api.analyticsScope(params)', 'navigate(`/nodes/${encodeURIComponent(n.pubKey)}`)', 'navigate(`/observers?id=${encodeURIComponent(o.id)}`)', 'navigate(`/observers?id=${encodeURIComponent(o.observerId)}`)', 'navigate(`/nodes/${encodeURIComponent(p.nodeAPubKey)}`)', 'navigate(`/nodes/${encodeURIComponent(p.nodeBPubKey)}`)'],
   },
   Decoder: {
     route: 'path="decode" element={<Decoder />}',

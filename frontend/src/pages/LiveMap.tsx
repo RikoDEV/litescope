@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Box from '@mui/material/Box'
@@ -112,6 +112,7 @@ export default function LiveMap() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const [replayBanner, setReplayBanner] = useState<string | null>(null)
 
   // DOM refs
@@ -205,13 +206,14 @@ export default function LiveMap() {
         radius: 3.5, color: theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff', weight: 1,
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
       }).bindTooltip(escapeHtml(n.name || n.pubKey.slice(0, 12)), { permanent: false, direction: 'top', offset: [0, -8] })
+      marker.on('click', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))
       layer.addLayer(marker)
       latlngs.push([n.lat!, n.lon!])
     })
     if (map && latlngs.length > 0 && map.getZoom() === 2) {
       map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, theme.palette.mode, navigate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Create trace from packet ─────────────────────────────────────────────
   const createTrace = useCallback((pkt: Packet) => {

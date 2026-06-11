@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getEnv } from '../env'
 import { IataFlag } from '../utils/flags'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -48,33 +48,38 @@ export default function Observers() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const dateLocale = useDateLocale()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [observers, setObservers] = useState<Observer[]>([])
   const [selected, setSelected]   = useState<Observer | null>(null)
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [days, setDays]           = useState(7)
   const [loadingA, setLoadingA]   = useState(false)
+  const observerIdParam = searchParams.get('id')
 
   useEffect(() => { api.observers().then(res => setObservers(res.observers ?? [])) }, [])
-
-  // Auto-select from URL param
-  useEffect(() => {
-    const id = searchParams.get('id')
-    if (!id || !observers.length) return
-    const o = observers.find(x => x.id === id)
-    if (o) { select(o); setSearchParams({}, { replace: true }) }
-  }, [observers]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const select = async (o: Observer) => {
-    if (selected?.id === o.id) { setSelected(null); setAnalytics(null); return }
-    setSelected(o); setAnalytics(null); loadA(o.id, days)
-  }
 
   const loadA = async (id: string, d: number) => {
     setLoadingA(true)
     try { setAnalytics(await api.observerAnalytics(id, d)) }
     finally { setLoadingA(false) }
   }
+
+  const openObserver = (o: Observer) => {
+    setSelected(o); setAnalytics(null); loadA(o.id, days)
+  }
+
+  const select = async (o: Observer) => {
+    if (selected?.id === o.id) { setSelected(null); setAnalytics(null); return }
+    openObserver(o)
+  }
+
+  // Auto-select from URL param. This must open the panel, not toggle it.
+  useEffect(() => {
+    if (!observerIdParam || !observers.length) return
+    const o = observers.find(x => x.id === observerIdParam)
+    if (o) { openObserver(o); setSearchParams({}, { replace: true }) }
+  }, [observerIdParam, observers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeDays = (d: number) => { setDays(d); if (selected) loadA(selected.id, d) }
   const isActive = (o: Observer) => Date.now() - new Date(o.lastSeen).getTime() < 5 * 60e3
@@ -134,7 +139,10 @@ export default function Observers() {
           <Box sx={{ p: 2, borderBottom: `1px solid ${md3.outlineVariant}` }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{selected.name || t('nav.observers')}</Typography>
+                <Typography variant="subtitle1" onClick={() => navigate(`/observers?id=${encodeURIComponent(selected.id)}`)}
+                  sx={{ fontWeight: 700, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
+                  {selected.name || t('nav.observers')}
+                </Typography>
                 {selected.iata && <Chip label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={selected.iata} size={13} />{selected.iata}</Box>} size="small" sx={{ background: alpha(md3.tertiary, 0.2), color: md3.tertiary, fontWeight: 700 }} />}
               </Box>
               <IconButton size="small" onClick={() => { setSelected(null); setAnalytics(null) }} sx={{ alignSelf: 'flex-start', color: md3.onSurfaceVariant }}>

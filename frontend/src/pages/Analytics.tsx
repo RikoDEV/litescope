@@ -436,6 +436,7 @@ function RFTab({ params, filterKey }: TabProps) {
 function NodesTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [nodes, setNodes] = useState<Node[] | null>(null)
   const [topSort, setTopSort] = useState<'adverts' | 'retransmits'>('adverts')
   useEffect(() => { api.analyticsNodesTop(25, topSort, params).then(d => setNodes(d ?? [])) }, [filterKey, topSort]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -496,7 +497,12 @@ function NodesTab({ params, filterKey }: TabProps) {
             {nodes.map((n, i) => (
               <TableRow key={n.pubKey}>
                 <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>{n.name || n.pubKey.slice(0, 12) + '…'}</TableCell>
+                <TableCell>
+                  <Typography component="span" variant="body2" sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}
+                    onClick={() => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`)}>
+                    {n.name || n.pubKey.slice(0, 12) + '…'}
+                  </Typography>
+                </TableCell>
                 <TableCell><Chip label={n.role} size="small" sx={{ background: alpha(roleColor(n.role), 0.15), color: roleColor(n.role), fontSize: 11, height: 20 }} /></TableCell>
                 <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{metric(n).toLocaleString()}</TableCell>
                 <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{new Date(n.lastSeen).toLocaleDateString()}</TableCell>
@@ -515,6 +521,7 @@ function NodesTab({ params, filterKey }: TabProps) {
 function ObserversTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [observers, setObservers] = useState<Observer[] | null>(null)
   useEffect(() => { api.analyticsObserversTop(20, params).then(d => setObservers(d ?? [])) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -548,9 +555,12 @@ function ObserversTab({ params, filterKey }: TabProps) {
               return (
                 <TableRow key={o.id}>
                   <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>
+                  <TableCell>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#22c55e' : md3.outline, display: 'inline-block', mr: 1 }} />
-                    {o.name || o.id.slice(0, 14) + '…'}
+                    <Typography component="span" variant="body2" sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}
+                      onClick={() => navigate(`/observers?id=${encodeURIComponent(o.id)}`)}>
+                      {o.name || o.id.slice(0, 14) + '…'}
+                    </Typography>
                   </TableCell>
                   <TableCell sx={{ color: md3.tertiary, fontWeight: 700 }}>{o.iata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={13} />{o.iata}</Box> : '—'}</TableCell>
                   <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{o.packetCount.toLocaleString()}</TableCell>
@@ -1160,11 +1170,17 @@ function DistanceTab({ params, filterKey }: TabProps) {
                     <TableRow key={`${p.nodeAPubKey}-${p.nodeBPubKey}`}>
                       <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
                       <TableCell>
-                        <Typography variant="caption" sx={{ fontWeight: 600, color: md3.onSurface, display: 'block' }}>{p.nodeAName || '—'}</Typography>
+                        <Typography variant="caption" onClick={() => navigate(`/nodes/${encodeURIComponent(p.nodeAPubKey)}`)}
+                          sx={{ fontWeight: 600, color: md3.onSurface, display: 'block', cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
+                          {p.nodeAName || '—'}
+                        </Typography>
                         <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10 }}>{p.nodeAPubKey.slice(0, 12)}…</Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="caption" sx={{ fontWeight: 600, color: md3.onSurface, display: 'block' }}>{p.nodeBName || '—'}</Typography>
+                        <Typography variant="caption" onClick={() => navigate(`/nodes/${encodeURIComponent(p.nodeBPubKey)}`)}
+                          sx={{ fontWeight: 600, color: md3.onSurface, display: 'block', cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
+                          {p.nodeBName || '—'}
+                        </Typography>
                         <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', fontSize: 10 }}>{p.nodeBPubKey.slice(0, 12)}…</Typography>
                       </TableCell>
                       <TableCell>
@@ -1187,6 +1203,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
 function ScopeTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const navigate = useNavigate()
 
   type ScopeData = {
     distribution: Array<{ scope: string; pktCount: number; obsCount: number }>
@@ -1320,7 +1337,12 @@ function ScopeTab({ params, filterKey }: TabProps) {
                         fontWeight: 700 }} />
                   </TableCell>
                 ) : null}
-                <TableCell sx={{ fontWeight: idx === 0 ? 600 : 400, color: md3.onSurface }}>{o.observerName || o.observerId.slice(0, 8)}</TableCell>
+                <TableCell>
+                  <Typography component="span" variant="body2" onClick={() => navigate(`/observers?id=${encodeURIComponent(o.observerId)}`)}
+                    sx={{ fontWeight: idx === 0 ? 600 : 400, color: md3.onSurface, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
+                    {o.observerName || o.observerId.slice(0, 8)}
+                  </Typography>
+                </TableCell>
                 <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.observerIata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.observerIata} size={12} />{o.observerIata}</Box> : '—'}</TableCell>
                 <TableCell sx={{ color: '#f59e0b', fontWeight: 700 }}>{o.count.toLocaleString()}</TableCell>
               </TableRow>
