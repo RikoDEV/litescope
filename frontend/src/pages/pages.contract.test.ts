@@ -39,7 +39,7 @@ const pageContracts: Record<string, {
   },
   NodePage: {
     route: 'path="nodes/:pubkey" element={<NodePage />}',
-    snippets: ["import 'leaflet/dist/leaflet.css'", 'api.nodes()', 'api.nodeOverview(pubkey)', 'api.nodeRF(pubkey)', 'api.nodePackets(pubkey, 50)'],
+    snippets: ["import 'leaflet/dist/leaflet.css'", 'api.nodes()', 'pubkey.toLowerCase()', 'x.pubKey.toLowerCase() === routePubKey', 'api.nodeOverview(n.pubKey)', 'api.nodeRF(n.pubKey)', 'api.nodePackets(n.pubKey, 50)'],
   },
   Channels: {
     route: 'path="channels/:hash" element={<Channels />}',
@@ -47,7 +47,7 @@ const pageContracts: Record<string, {
   },
   Observers: {
     route: 'path="observers" element={<Observers />}',
-    snippets: ['useSearchParams()', 'api.observers()', 'api.observerAnalytics(id, d)', "getEnv('VITE_MQTT_HOST')", 'navigate(`/observers?id=${encodeURIComponent(selected.id)}`)'],
+    snippets: ['useSearchParams()', 'api.observers()', 'api.observerAnalytics(id, d)', "getEnv('VITE_MQTT_HOST')", 'o.id.toLowerCase().slice(0, 22)', 'navigate(`/nodes/${encodeURIComponent(selected.id.toLowerCase())}`)'],
   },
   Analytics: {
     route: 'path="analytics/:tab" element={<Analytics />}',

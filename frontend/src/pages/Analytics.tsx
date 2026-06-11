@@ -531,7 +531,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
     <Box>
       <ChartCard title={t('analytics.topObserversByPacket')} Icon={BarChartIcon}>
         <ResponsiveContainer width="100%" height={Math.max(160, observers.length * 30)}>
-          <BarChart data={observers.map(o => ({ name: o.name || o.id.slice(0, 12), count: o.packetCount, iata: o.iata }))} layout="vertical">
+          <BarChart data={observers.map(o => ({ name: o.name || o.id.toLowerCase().slice(0, 12), count: o.packetCount, iata: o.iata }))} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
             <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
             <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
@@ -559,7 +559,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#22c55e' : md3.outline, display: 'inline-block', mr: 1 }} />
                     <Typography component="span" variant="body2" sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}
                       onClick={() => navigate(`/observers?id=${encodeURIComponent(o.id)}`)}>
-                      {o.name || o.id.slice(0, 14) + '…'}
+                      {o.name || o.id.toLowerCase().slice(0, 14) + '…'}
                     </Typography>
                   </TableCell>
                   <TableCell sx={{ color: md3.tertiary, fontWeight: 700 }}>{o.iata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={13} />{o.iata}</Box> : '—'}</TableCell>
@@ -1340,7 +1340,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
                 <TableCell>
                   <Typography component="span" variant="body2" onClick={() => navigate(`/observers?id=${encodeURIComponent(o.observerId)}`)}
                     sx={{ fontWeight: idx === 0 ? 600 : 400, color: md3.onSurface, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
-                    {o.observerName || o.observerId.slice(0, 8)}
+                    {o.observerName || o.observerId.toLowerCase().slice(0, 8)}
                   </Typography>
                 </TableCell>
                 <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>{o.observerIata ? <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.observerIata} size={12} />{o.observerIata}</Box> : '—'}</TableCell>

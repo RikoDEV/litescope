@@ -147,15 +147,17 @@ export default function NodePage() {
 
   useEffect(() => {
     if (!pubkey) return
+    const routePubKey = pubkey.toLowerCase()
+    setLoading(true); setError(false)
     api.nodes().then(res => {
-      const n = (res.nodes ?? []).find(x => x.pubKey === pubkey)
+      const n = (res.nodes ?? []).find(x => x.pubKey.toLowerCase() === routePubKey)
       if (!n) { setError(true); setLoading(false); return }
       setNode(n)
       document.title = `${n.name || n.pubKey.slice(0, 16)} — liteScope`
       Promise.all([
-        api.nodeOverview(pubkey),
-        api.nodeRF(pubkey),
-        api.nodePackets(pubkey, 50),
+        api.nodeOverview(n.pubKey),
+        api.nodeRF(n.pubKey),
+        api.nodePackets(n.pubKey, 50),
       ]).then(([ov, rfData, pkts]) => {
         setOverview(ov)
         setRF(rfData)

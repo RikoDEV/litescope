@@ -115,7 +115,7 @@ export default function Observers() {
                       <Box sx={{ width: 7, height: 7, borderRadius: '50%', background: isActive(o) ? '#22c55e' : md3.outline, flexShrink: 0 }} />
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>{o.name || '—'}</Typography>
                     </Box>
-                    <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', pl: 1.5 }}>{o.id.slice(0, 22)}…</Typography>
+                    <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace', pl: 1.5 }}>{o.id.toLowerCase().slice(0, 22)}…</Typography>
                   </TableCell>
                   <TableCell>
                     {o.iata && <Chip label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={12} />{o.iata}</Box>} size="small" sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, fontWeight: 700, fontSize: 12, height: 22 }} />}
@@ -139,7 +139,7 @@ export default function Observers() {
           <Box sx={{ p: 2, borderBottom: `1px solid ${md3.outlineVariant}` }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Box>
-                <Typography variant="subtitle1" onClick={() => navigate(`/observers?id=${encodeURIComponent(selected.id)}`)}
+                <Typography variant="subtitle1" onClick={() => navigate(`/nodes/${encodeURIComponent(selected.id.toLowerCase())}`)}
                   sx={{ fontWeight: 700, cursor: 'pointer', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
                   {selected.name || t('nav.observers')}
                 </Typography>
