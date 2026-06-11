@@ -20,6 +20,7 @@ import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
 import { roleColor as roleColorFn } from '../utils/roles'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: string }) {
   const divRef = useRef<HTMLDivElement>(null)

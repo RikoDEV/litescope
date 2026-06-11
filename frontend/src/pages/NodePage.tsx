@@ -21,6 +21,7 @@ import { formatDistanceToNow, format, subHours } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { useRef } from 'react'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { api } from '../services/api'
 import type { Node, NodeOverview, Packet, RFStats, RichPacket } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
@@ -76,13 +77,24 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
     })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
     L.circleMarker([lat, lon], { radius: 9, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5 }).addTo(map)
-    // The map fills a flex container whose height depends on a sibling card that
-    // loads asynchronously — re-measure when the container is resized.
-    const ro = new ResizeObserver(() => map.invalidateSize())
-    ro.observe(divRef.current)
-    return () => { ro.disconnect(); map.remove() }
+    const frame = requestAnimationFrame(() => map.invalidateSize({ pan: false }))
+    return () => {
+      cancelAnimationFrame(frame)
+      map.remove()
+    }
   }, [lat, lon, color])
-  return <div ref={divRef} style={{ height: '100%', minHeight: 200, borderRadius: 8, overflow: 'hidden' }} />
+  return (
+    <Box
+      ref={divRef}
+      sx={{
+        width: '100%',
+        height: { xs: 220, sm: 260, md: 300 },
+        maxHeight: 320,
+        borderRadius: 2,
+        overflow: 'hidden',
+      }}
+    />
+  )
 }
 
 // ── stat card ─────────────────────────────────────────────────────────────────
@@ -112,7 +124,7 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 function Card({ children, sx }: { children: React.ReactNode; sx?: object }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   return (
-    <Box sx={{ background: md3.surfaceContainerLow, borderRadius: 3, border: `1px solid ${md3.outlineVariant}`, p: 2, ...sx }}>
+    <Box sx={{ minWidth: 0, background: md3.surfaceContainerLow, borderRadius: 3, border: `1px solid ${md3.outlineVariant}`, p: 2, ...sx }}>
       {children}
     </Box>
   )
@@ -177,6 +189,14 @@ export default function NodePage() {
   const activityData = buildActivityChart(packets)
   const typeData     = buildTypeChart(packets)
   const snrTrend     = buildSnrTrend(allPackets)
+  const hasMap       = node.lat != null && node.lon != null
+  const hasHeardBy   = !!overview?.heardBy?.length
+  const heardByChart = (overview?.heardBy ?? []).slice(0, 8).map(o => ({
+    name: (o.observerName || o.observerId.slice(0, 10)) + (o.observerIata ? ` · ${o.observerIata}` : ''),
+    pkts: o.count,
+    snr: o.avgSnr != null ? parseFloat(o.avgSnr.toFixed(1)) : null,
+    rssi: o.avgRssi != null ? parseFloat(o.avgRssi.toFixed(0)) : null,
+  }))
 
   const CHART_STYLE = {
     contentStyle: { background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, borderRadius: 8, fontSize: 11 },
@@ -250,14 +270,16 @@ export default function NodePage() {
             <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📦</Box>} label="Payload types" />
             {typeData.length > 0 ? (
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <ResponsiveContainer width={120} height={120}>
-                  <PieChart>
-                    <Pie data={typeData} dataKey="value" cx="50%" cy="50%" innerRadius={28} outerRadius={52}>
-                      {typeData.map((_, i) => <Cell key={i} fill={`hsl(${(i * 57) % 360}, 60%, 55%)`} />)}
-                    </Pie>
-                    <ReTooltip {...CHART_STYLE} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <Box sx={{ width: 120, height: 120, flexShrink: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={typeData} dataKey="value" cx="50%" cy="50%" innerRadius={28} outerRadius={52}>
+                        {typeData.map((_, i) => <Cell key={i} fill={`hsl(${(i * 57) % 360}, 60%, 55%)`} />)}
+                      </Pie>
+                      <ReTooltip {...CHART_STYLE} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Box>
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   {typeData.map((d, i) => (
                     <Box key={d.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -328,21 +350,23 @@ export default function NodePage() {
           </Box>
         )}
 
-        {/* ── Row: heard by + map ── */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: overview?.heardBy?.length ? '1fr 1fr' : '1fr' }, gap: 2, mb: 2 }}>
+        {/* ── Lower content ── */}
+        <Box sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: hasHeardBy && hasMap ? '1fr 1fr' : '1fr' },
+          alignItems: 'start',
+          gap: 2,
+          mb: 2,
+        }}>
 
           {/* Heard by observers */}
-          {overview?.heardBy && overview.heardBy.length > 0 && (
-            <Card>
+          {hasHeardBy && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <Card>
               <SectionHeader icon={<Box sx={{ fontSize: 14 }}>👁</Box>} label={t('nodes.heardBy', { count: overview.heardBy.length })} />
               {/* Observer SNR bar chart */}
-              <ResponsiveContainer width="100%" height={Math.min(overview.heardBy.length * 32, 200)}>
-                <BarChart data={overview.heardBy.slice(0, 8).map(o => ({
-                  name: (o.observerName || o.observerId.slice(0, 10)) + (o.observerIata ? ` · ${o.observerIata}` : ''),
-                  pkts: o.count,
-                  snr: o.avgSnr != null ? parseFloat(o.avgSnr.toFixed(1)) : null,
-                  rssi: o.avgRssi != null ? parseFloat(o.avgRssi.toFixed(0)) : null,
-                }))} layout="vertical" barSize={12}>
+              <ResponsiveContainer width="100%" height={Math.min(heardByChart.length * 32, 200)}>
+                <BarChart data={heardByChart} layout="vertical" barSize={12}>
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} width={100} />
@@ -370,57 +394,58 @@ export default function NodePage() {
                   </Box>
                 ))}
               </Box>
-            </Card>
-          )}
-
-          {/* Mini map */}
-          {node.lat != null && node.lon != null && (
-            <Card sx={{ minHeight: 260, display: 'flex', flexDirection: 'column' }}>
-              <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📍</Box>} label={`${node.lat.toFixed(5)}, ${node.lon?.toFixed(5)}`} />
-              <Box sx={{ flex: 1, minHeight: 200 }}>
-                <NodeMiniMap lat={node.lat} lon={node.lon} color={color} />
-              </Box>
-            </Card>
-          )}
-        </Box>
-
-        {/* ── Recent packets ── */}
-        {allPackets.length > 0 && (
-          <Card>
-            <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📡</Box>} label={t('nodes.recentPackets', { count: allPackets.length })} />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              {allPackets.map(p => (
-                <Box key={p.id} onClick={() => navigate(`/packets?hash=${p.hash}`)} sx={{
-                  display: 'flex', alignItems: 'center', gap: 1.5,
-                  px: 1.25, py: 0.75, borderRadius: 2, cursor: 'pointer',
-                  '&:hover': { background: alpha(md3.primary, 0.06) },
-                }}>
-                  <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, flexShrink: 0, minWidth: 80 }}>
-                    {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true, locale: dateLocale })}
-                  </Typography>
-                  <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
-                    sx={{ fontSize: 10, height: 18, background: alpha(PAYLOAD_COLORS[p.payloadType] ?? md3.primary, 0.15), color: PAYLOAD_COLORS[p.payloadType] ?? md3.primary }} />
-                  {p.obsCount > 0 && (
-                    <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>👁 {p.obsCount}</Typography>
-                  )}
-                  {p.maxHops > 0 && (
-                    <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{p.maxHops} hops</Typography>
-                  )}
-                  {p.bestObserver && (
-                    <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      via {p.bestObserver}
-                      {p.bestSnr  != null && ` · SNR ${p.bestSnr.toFixed(1)} dB`}
-                      {p.bestRssi != null && ` · ${p.bestRssi.toFixed(0)} dBm`}
-                    </Typography>
-                  )}
-                  <Tooltip title="View packet">
-                    <OpenInNewIcon sx={{ fontSize: 13, color: md3.outline, ml: 'auto', flexShrink: 0 }} />
-                  </Tooltip>
-                </Box>
-              ))}
+              </Card>
             </Box>
-          </Card>
-        )}
+          )}
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            {/* Mini map */}
+            {hasMap && (
+              <Card>
+                <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📍</Box>} label={`${node.lat!.toFixed(5)}, ${node.lon!.toFixed(5)}`} />
+                <NodeMiniMap lat={node.lat!} lon={node.lon!} color={color} />
+              </Card>
+            )}
+
+            {/* Recent packets */}
+            {allPackets.length > 0 && (
+              <Card>
+                <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📡</Box>} label={t('nodes.recentPackets', { count: allPackets.length })} />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {allPackets.map(p => (
+                    <Box key={p.id} onClick={() => navigate(`/packets?hash=${p.hash}`)} sx={{
+                      display: 'flex', alignItems: 'center', gap: 1.5,
+                      px: 1.25, py: 0.75, borderRadius: 2, cursor: 'pointer',
+                      '&:hover': { background: alpha(md3.primary, 0.06) },
+                    }}>
+                      <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, flexShrink: 0, minWidth: 80 }}>
+                        {formatDistanceToNow(new Date(p.firstSeen), { addSuffix: true, locale: dateLocale })}
+                      </Typography>
+                      <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
+                        sx={{ fontSize: 10, height: 18, background: alpha(PAYLOAD_COLORS[p.payloadType] ?? md3.primary, 0.15), color: PAYLOAD_COLORS[p.payloadType] ?? md3.primary }} />
+                      {p.obsCount > 0 && (
+                        <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>👁 {p.obsCount}</Typography>
+                      )}
+                      {p.maxHops > 0 && (
+                        <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{p.maxHops} hops</Typography>
+                      )}
+                      {p.bestObserver && (
+                        <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          via {p.bestObserver}
+                          {p.bestSnr  != null && ` · SNR ${p.bestSnr.toFixed(1)} dB`}
+                          {p.bestRssi != null && ` · ${p.bestRssi.toFixed(0)} dBm`}
+                        </Typography>
+                      )}
+                      <Tooltip title="View packet">
+                        <OpenInNewIcon sx={{ fontSize: 13, color: md3.outline, ml: 'auto', flexShrink: 0 }} />
+                      </Tooltip>
+                    </Box>
+                  ))}
+                </Box>
+              </Card>
+            )}
+          </Box>
+        </Box>
 
       </Box>
     </Box>
