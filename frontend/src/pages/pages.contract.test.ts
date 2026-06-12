@@ -19,7 +19,7 @@ const pageContracts: Record<string, {
   },
   Packets: {
     route: 'path="packets" element={<Packets />}',
-    snippets: ['useSearchParams()', 'api.packets(PAGE, offset)', 'api.packet(hash)', 'stream.subscribe', 'stream.setPaused(paused)'],
+    snippets: ['useSearchParams()', 'api.packets(PAGE, offset, packetQuery)', 'api.packet(hash)', 'stream.subscribe', 'stream.setPaused(paused)'],
   },
   PacketTrace: {
     route: 'path="packets/:hash/trace" element={<PacketTrace />}',

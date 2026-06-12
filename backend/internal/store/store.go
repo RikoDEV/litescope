@@ -504,26 +504,191 @@ func (s *Store) LastIDs() (int64, int64) {
 	return s.lastTxID, s.lastObsID
 }
 
+// PacketQuery describes the filtered /api/packets read path. Filters are applied
+// before pagination so searching and narrowing the packet list does not depend on
+// how many pages the browser has already fetched.
+type PacketQuery struct {
+	Limit        int
+	Offset       int
+	Search       string
+	PayloadTypes map[int]bool
+	RouteType    *int
+	MinObs       int
+	SinceMs      int64
+	RegionFilter AnalyticsFilter
+	SortCol      string // id, payloadType, routeType, obsCount, firstSeen
+	SortDesc     bool
+}
+
 // Packets returns a page of packets (newest first). Negative limit/offset are
 // treated as zero (a negative offset would index past the slice end, a negative
 // limit would panic the capacity hint below).
 func (s *Store) Packets(limit, offset int) ([]*Tx, int) {
-	if limit < 0 {
-		limit = 0
-	}
-	if offset < 0 {
-		offset = 0
-	}
+	return s.PacketsFiltered(PacketQuery{Limit: limit, Offset: offset, SortCol: "firstSeen", SortDesc: true})
+}
+
+// PacketsFiltered returns a page of packets after applying the supplied filters
+// and sort order. The returned total is the filtered total, not the full store
+// size, so clients can page filtered searches directly.
+func (s *Store) PacketsFiltered(q PacketQuery) ([]*Tx, int) {
+	q = normalizePacketQuery(q)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	total := len(s.packets)
-	// newest first: reverse index
-	start := total - 1 - offset
-	out := make([]*Tx, 0, limit)
-	for i := start; i >= 0 && len(out) < limit; i-- {
-		out = append(out, s.packets[i])
+
+	if q.SortCol == "firstSeen" && q.SortDesc {
+		return s.packetsFilteredNewest(q)
+	}
+
+	matches := make([]*Tx, 0, min(len(s.packets), q.Limit))
+	for _, tx := range s.packets {
+		if packetMatchesQuery(tx, q) {
+			matches = append(matches, tx)
+		}
+	}
+	sortPackets(matches, q)
+	total := len(matches)
+	if q.Offset >= total {
+		return nil, total
+	}
+	end := min(q.Offset+q.Limit, total)
+	return append([]*Tx(nil), matches[q.Offset:end]...), total
+}
+
+func (s *Store) packetsFilteredNewest(q PacketQuery) ([]*Tx, int) {
+	total := 0
+	skipped := 0
+	out := make([]*Tx, 0, q.Limit)
+	for _, tx := range slices.Backward(s.packets) {
+		if !packetMatchesQuery(tx, q) {
+			continue
+		}
+		total++
+		if skipped < q.Offset {
+			skipped++
+			continue
+		}
+		if len(out) < q.Limit {
+			out = append(out, tx)
+		}
 	}
 	return out, total
+}
+
+func normalizePacketQuery(q PacketQuery) PacketQuery {
+	if q.Limit < 0 {
+		q.Limit = 0
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	q.Search = strings.ToLower(strings.TrimSpace(q.Search))
+	switch q.SortCol {
+	case "id", "payloadType", "routeType", "obsCount", "firstSeen":
+	default:
+		q.SortCol = "firstSeen"
+	}
+	return q
+}
+
+func packetMatchesQuery(tx *Tx, q PacketQuery) bool {
+	if q.SinceMs > 0 && parseTimeMillis(tx.FirstSeen) < q.SinceMs {
+		return false
+	}
+	if !q.RegionFilter.regionOK(tx) {
+		return false
+	}
+	if len(q.PayloadTypes) > 0 && !q.PayloadTypes[tx.PayloadType] {
+		return false
+	}
+	if q.RouteType != nil && tx.RouteType != *q.RouteType {
+		return false
+	}
+	if q.MinObs > 1 {
+		if packetObsCount(tx) < q.MinObs {
+			return false
+		}
+	}
+	if q.Search != "" && !packetSearchMatch(tx, q.Search) {
+		return false
+	}
+	return true
+}
+
+func packetSearchMatch(tx *Tx, q string) bool {
+	if strings.Contains(strings.ToLower(tx.Hash), q) || strings.Contains(strconv.FormatInt(tx.ID, 10), q) {
+		return true
+	}
+	dec := tx.Decoded()
+	if dec == nil {
+		return false
+	}
+	for _, key := range []string{"name", "sender", "text", "pubKey", "channel", "type"} {
+		if v, ok := dec[key].(string); ok && strings.Contains(strings.ToLower(v), q) {
+			return true
+		}
+	}
+	return false
+}
+
+func sortPackets(packets []*Tx, q PacketQuery) {
+	firstSeen := map[int64]int64(nil)
+	if q.SortCol == "firstSeen" {
+		firstSeen = make(map[int64]int64, len(packets))
+		for _, tx := range packets {
+			firstSeen[tx.ID] = parseTimeMillis(tx.FirstSeen)
+		}
+	}
+	sort.Slice(packets, func(i, j int) bool {
+		a, b := packets[i], packets[j]
+		cmp := 0
+		switch q.SortCol {
+		case "payloadType":
+			cmp = compareInt(a.PayloadType, b.PayloadType)
+		case "routeType":
+			cmp = compareInt(a.RouteType, b.RouteType)
+		case "obsCount":
+			cmp = compareInt(packetObsCount(a), packetObsCount(b))
+		case "id":
+			cmp = compareInt64(a.ID, b.ID)
+		default:
+			cmp = compareInt64(firstSeen[a.ID], firstSeen[b.ID])
+		}
+		if cmp == 0 {
+			cmp = compareInt64(a.ID, b.ID)
+		}
+		if q.SortDesc {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+}
+
+func packetObsCount(tx *Tx) int {
+	obsCount := tx.BestObservation().UniqueObs
+	if obsCount == 0 {
+		return tx.ObsCount
+	}
+	return obsCount
+}
+
+func compareInt(a, b int) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+func compareInt64(a, b int64) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // PacketByHash returns a single packet by hash.

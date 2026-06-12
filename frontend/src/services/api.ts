@@ -17,6 +17,18 @@ export interface AnalyticsParams {
   lock?: boolean | undefined
 }
 
+export interface PacketParams {
+  search?: string | undefined
+  payloadTypes?: number[] | undefined
+  routeType?: number | null | undefined
+  regions?: string[] | undefined
+  lock?: boolean | undefined
+  minObs?: number | undefined
+  sinceMs?: number | undefined
+  sort?: 'id' | 'payloadType' | 'routeType' | 'obsCount' | 'firstSeen' | undefined
+  dir?: 'asc' | 'desc' | undefined
+}
+
 /** Builds a query string from analytics params plus any extra fixed params. */
 function aq(p?: AnalyticsParams, extra?: Record<string, string | number>): string {
   const sp = new URLSearchParams()
@@ -29,9 +41,24 @@ function aq(p?: AnalyticsParams, extra?: Record<string, string | number>): strin
   return q ? `?${q}` : ''
 }
 
+function packetQuery(limit: number, offset: number, p?: PacketParams): string {
+  const sp = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  const search = p?.search?.trim()
+  if (search) sp.set('search', search)
+  if (p?.payloadTypes?.length) sp.set('types', p.payloadTypes.join(','))
+  if (p?.routeType !== null && p?.routeType !== undefined) sp.set('routeType', String(p.routeType))
+  if (p?.regions?.length) sp.set('regions', p.regions.join(','))
+  if (p?.lock) sp.set('lock', '1')
+  if (p?.minObs && p.minObs > 1) sp.set('minObs', String(p.minObs))
+  if (p?.sinceMs && p.sinceMs > 0) sp.set('sinceMs', String(Math.floor(p.sinceMs)))
+  if (p?.sort) sp.set('sort', p.sort)
+  if (p?.dir) sp.set('dir', p.dir)
+  return sp.toString()
+}
+
 export const api = {
-  packets: (limit = 50, offset = 0) =>
-    get<{ total: number; packets: Packet[] }>(`/api/packets?limit=${limit}&offset=${offset}`),
+  packets: (limit = 50, offset = 0, params?: PacketParams) =>
+    get<{ total: number; packets: Packet[] }>(`/api/packets?${packetQuery(limit, offset, params)}`),
 
   packet: (hash: string) =>
     get<PacketDetail>(`/api/packets/${encodeURIComponent(hash)}`),

@@ -122,6 +122,15 @@ func queryInt(r *http.Request, key string, def int) int {
 	return def
 }
 
+func queryInt64(r *http.Request, key string, def int64) int64 {
+	if v := r.URL.Query().Get(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return def
+}
+
 // analyticsFilter builds a store.AnalyticsFilter from shared query params used by
 // every analytics endpoint: hours (time window, 0/absent = all time), regions
 // (comma-separated IATA codes) and lock (exclusive region matching).
@@ -140,13 +149,78 @@ func analyticsFilter(r *http.Request) store.AnalyticsFilter {
 	return store.NewAnalyticsFilter(hours, regions, countries, lock)
 }
 
+func csvParam(q map[string][]string, keys ...string) []string {
+	for _, key := range keys {
+		if vals, ok := q[key]; ok {
+			var out []string
+			for _, v := range vals {
+				for part := range strings.SplitSeq(v, ",") {
+					if s := strings.TrimSpace(part); s != "" {
+						out = append(out, s)
+					}
+				}
+			}
+			return out
+		}
+	}
+	return nil
+}
+
+func intSetParam(q map[string][]string, keys ...string) map[int]bool {
+	vals := csvParam(q, keys...)
+	if len(vals) == 0 {
+		return nil
+	}
+	out := make(map[int]bool, len(vals))
+	for _, v := range vals {
+		if n, err := strconv.Atoi(v); err == nil {
+			out[n] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func packetQuery(r *http.Request, limit, offset int) store.PacketQuery {
+	q := r.URL.Query()
+	var regions []string
+	if v := q.Get("regions"); v != "" {
+		regions = strings.Split(v, ",")
+	}
+	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
+
+	pq := store.PacketQuery{
+		Limit:        limit,
+		Offset:       offset,
+		Search:       q.Get("search"),
+		PayloadTypes: intSetParam(q, "types", "payloadTypes"),
+		MinObs:       queryInt(r, "minObs", 1),
+		SinceMs:      queryInt64(r, "sinceMs", 0),
+		RegionFilter: store.NewAnalyticsFilter(0, regions, nil, lock),
+		SortCol:      q.Get("sort"),
+		SortDesc:     q.Get("dir") != "asc",
+	}
+	if v := q.Get("routeType"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			pq.RouteType = &n
+		}
+	} else if v := q.Get("route"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			pq.RouteType = &n
+		}
+	}
+	return pq
+}
+
 func (s *Server) listPackets(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 50)
 	offset := queryInt(r, "offset", 0)
 	if limit > 500 {
 		limit = 500
 	}
-	txs, total := s.Store.Packets(limit, offset)
+	txs, total := s.Store.PacketsFiltered(packetQuery(r, limit, offset))
 	type response struct {
 		Total   int             `json:"total"`
 		Packets []packetSummary `json:"packets"`

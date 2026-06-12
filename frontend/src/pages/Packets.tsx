@@ -26,7 +26,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import LockIcon from '@mui/icons-material/Lock'
-import { api } from '../services/api'
+import { api, type PacketParams } from '../services/api'
 import { stream } from '../services/stream'
 import type { Packet, PacketDetail } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
@@ -87,25 +87,40 @@ export default function Packets() {
   const countrySelCount = (codes: string[]) => codes.filter(c => regionFilter.has(c)).length
   const clearRegions = () => { setRegionFilter(new Set()); setRegionLock(false) }
 
-  const filtered = useMemo(() => {
+  const packetQuery = useMemo<PacketParams>(() => ({
+    search: search.trim() || undefined,
+    payloadTypes: typeFilter.size > 0 ? [...typeFilter].sort((a, b) => a - b) : undefined,
+    routeType: routeFilter,
+    regions: regionFilter.size > 0 ? [...regionFilter].sort() : undefined,
+    lock: regionLock,
+    minObs,
+    sinceMs: windowMs > 0 ? Date.now() - windowMs : undefined,
+    sort: sortCol,
+    dir: sortDir,
+  }), [search, typeFilter, routeFilter, regionFilter, regionLock, minObs, windowMs, sortCol, sortDir])
+
+  const packetMatchesCurrentFilters = useCallback((p: Packet) => {
     const q = search.trim().toLowerCase()
     const cutoff = windowMs > 0 ? Date.now() - windowMs : 0
-    let list = packets.filter(p => {
-      if (windowMs > 0 && new Date(p.firstSeen).getTime() < cutoff) return false
-      if (typeFilter.size > 0 && !typeFilter.has(p.payloadType)) return false
-      if (routeFilter !== null && p.routeType !== routeFilter) return false
-      if (!passesRegion(p.regions, regionFilter, regionLock)) return false
-      if (p.obsCount < minObs) return false
-      if (q) {
-        const d = p.decoded
-        return p.hash.includes(q)
-          || (d?.name as string | undefined)?.toLowerCase().includes(q)
-          || (d?.sender as string | undefined)?.toLowerCase().includes(q)
-          || (d?.text as string | undefined)?.toLowerCase().includes(q)
-          || (d?.pubKey as string | undefined)?.includes(q)
-      }
-      return true
-    })
+    if (windowMs > 0 && new Date(p.firstSeen).getTime() < cutoff) return false
+    if (typeFilter.size > 0 && !typeFilter.has(p.payloadType)) return false
+    if (routeFilter !== null && p.routeType !== routeFilter) return false
+    if (!passesRegion(p.regions, regionFilter, regionLock)) return false
+    if (p.obsCount < minObs) return false
+    if (!q) return true
+    const d = p.decoded
+    return p.hash.toLowerCase().includes(q)
+      || String(p.id).includes(q)
+      || (d?.name as string | undefined)?.toLowerCase().includes(q)
+      || (d?.sender as string | undefined)?.toLowerCase().includes(q)
+      || (d?.text as string | undefined)?.toLowerCase().includes(q)
+      || (d?.pubKey as string | undefined)?.toLowerCase().includes(q)
+      || (d?.channel as string | undefined)?.toLowerCase().includes(q)
+      || (d?.type as string | undefined)?.toLowerCase().includes(q)
+  }, [typeFilter, routeFilter, regionFilter, regionLock, minObs, search, windowMs])
+
+  const filtered = useMemo(() => {
+    const list = packets.filter(packetMatchesCurrentFilters)
     const sorted = [...list]
     // Precompute firstSeen → epoch once (keyed by id) instead of parsing Date
     // inside the comparator, which would re-parse O(n log n) times per sort.
@@ -122,23 +137,28 @@ export default function Packets() {
       return sortDir === 'asc' ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0)
     })
     return sorted
-  }, [packets, typeFilter, routeFilter, regionFilter, regionLock, minObs, search, windowMs, sortCol, sortDir])
+  }, [packets, packetMatchesCurrentFilters, sortCol, sortDir])
 
   const toggleSort = (col: SortCol) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir(col === 'firstSeen' ? 'desc' : 'asc') }
   }
 
+  const loadSeq = useRef(0)
   const load = useCallback(async (offset = 0) => {
+    const seq = ++loadSeq.current
     setLoading(true)
     try {
-      const res = await api.packets(PAGE, offset)
+      const res = await api.packets(PAGE, offset, packetQuery)
+      if (seq !== loadSeq.current) return
       setTotal(res.total)
       if (offset === 0) setPackets(res.packets ?? [])
       else setPackets(p => [...p, ...(res.packets ?? [])])
       offsetRef.current = offset + (res.packets?.length ?? 0)
-    } finally { setLoading(false) }
-  }, [])
+    } finally {
+      if (seq === loadSeq.current) setLoading(false)
+    }
+  }, [packetQuery])
 
   useEffect(() => { load(0) }, [load])
 
@@ -154,6 +174,7 @@ export default function Packets() {
   useEffect(() => {
     return stream.subscribe(msg => {
       if (msg.type === 'packet') {
+        if (!packetMatchesCurrentFilters(msg.data)) return
         setPackets(prev => [msg.data, ...prev.slice(0, 999)])
         setTotal(t => t + 1)
       } else if (msg.type === 'packetUpdate') {
@@ -177,7 +198,7 @@ export default function Packets() {
         })
       }
     })
-  }, [])
+  }, [packetMatchesCurrentFilters])
 
   useEffect(() => { stream.setPaused(paused) }, [paused])
 

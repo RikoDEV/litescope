@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -39,6 +40,65 @@ func TestDecodedConcurrentReads(t *testing.T) {
 	}
 	if s.byHash["c"].Decoded() != nil {
 		t.Fatalf("expected nil decoded map for empty JSON")
+	}
+}
+
+func TestPacketsFilteredSearchesBeforePagination(t *testing.T) {
+	s := New()
+	txs := []*db.TxRow{
+		{ID: 1, Hash: "target", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"name":"Needle Node","pubKey":"AA11","type":"ADVERT"}`},
+	}
+	for i := 2; i <= 121; i++ {
+		txs = append(txs, &db.TxRow{
+			ID: int64(i), Hash: "pkt" + strconv.Itoa(i), RawHex: "00",
+			FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 2, DecodedJSON: `{}`,
+		})
+	}
+	s.Load(txs, nil, nil, nil)
+
+	firstPage, _ := s.Packets(10, 0)
+	if firstPage[0].Hash == "target" {
+		t.Fatalf("test setup expected target outside the newest unfiltered page")
+	}
+
+	found, total := s.PacketsFiltered(PacketQuery{Limit: 10, Offset: 0, Search: "needle", SortCol: "firstSeen", SortDesc: true})
+	if total != 1 || len(found) != 1 || found[0].Hash != "target" {
+		t.Fatalf("expected search to find target before pagination, total=%d packets=%v", total, found)
+	}
+}
+
+func TestPacketsFilteredAppliesPacketFiltersBeforePagination(t *testing.T) {
+	s := New()
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "target", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", RouteType: 2, PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
+			{ID: 2, Hash: "wrong-type", RawHex: "00", FirstSeen: "2024-01-01T00:00:01Z", RouteType: 2, PayloadType: 2, DecodedJSON: `{}`},
+			{ID: 3, Hash: "wrong-region", RawHex: "00", FirstSeen: "2024-01-01T00:00:02Z", RouteType: 2, PayloadType: 4, DecodedJSON: `{}`},
+			{ID: 4, Hash: "wrong-route", RawHex: "00", FirstSeen: "2024-01-01T00:00:03Z", RouteType: 1, PayloadType: 4, DecodedJSON: `{}`},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obs1", ObserverIATA: "WAW"},
+			{ID: 2, TxID: 1, ObserverID: "obs2", ObserverIATA: "WAW"},
+			{ID: 3, TxID: 2, ObserverID: "obs1", ObserverIATA: "WAW"},
+			{ID: 4, TxID: 3, ObserverID: "obs1", ObserverIATA: "LUZ"},
+			{ID: 5, TxID: 4, ObserverID: "obs1", ObserverIATA: "WAW"},
+			{ID: 6, TxID: 4, ObserverID: "obs2", ObserverIATA: "WAW"},
+		},
+		nil, nil,
+	)
+
+	route := 2
+	got, total := s.PacketsFiltered(PacketQuery{
+		Limit: 1, Offset: 0,
+		PayloadTypes: map[int]bool{4: true},
+		RouteType:    &route,
+		MinObs:       2,
+		RegionFilter: NewAnalyticsFilter(0, []string{"WAW"}, nil, false),
+		SortCol:      "firstSeen",
+		SortDesc:     true,
+	})
+	if total != 1 || len(got) != 1 || got[0].Hash != "target" {
+		t.Fatalf("expected only target after filters, total=%d packets=%v", total, got)
 	}
 }
 

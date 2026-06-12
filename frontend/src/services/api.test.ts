@@ -26,6 +26,24 @@ describe('api service', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://litescope.example/api/packets?limit=25&offset=50')
   })
 
+  it('serializes packet filters before pagination', async () => {
+    const { api, fetchMock } = await loadApi('/base')
+
+    await api.packets(100, 200, {
+      search: '  relay  ',
+      payloadTypes: [4, 2],
+      routeType: 1,
+      regions: ['WAW', 'LUZ'],
+      lock: true,
+      minObs: 3,
+      sinceMs: 1710000000123.9,
+      sort: 'obsCount',
+      dir: 'asc',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/base/api/packets?limit=100&offset=200&search=relay&types=4%2C2&routeType=1&regions=WAW%2CLUZ&lock=1&minObs=3&sinceMs=1710000000123&sort=obsCount&dir=asc')
+  })
+
   it('URL-encodes route parameters', async () => {
     const { api, fetchMock } = await loadApi()
 
