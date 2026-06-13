@@ -186,7 +186,7 @@ const NEUTRAL_LIGHT: NeutralRoles = {
   surfaceVariant: '#E4E1E6', onSurfaceVariant: '#48474A',
   surfaceContainerLowest: '#FFFFFF', surfaceContainerLow: '#F5F5F6', surfaceContainer: '#F0EFF1',
   surfaceContainerHigh: '#EAE9EB', surfaceContainerHighest: '#E4E3E5',
-  outline: '#797679', outlineVariant: '#C9C7CC',
+  outline: '#625F64', outlineVariant: '#C9C7CC',
   inverseSurface: '#303031', inverseOnSurface: '#F3F0F2', scrim: '#000000',
 }
 

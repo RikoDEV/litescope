@@ -230,6 +230,7 @@ export default function Layout() {
             <Box key={to} component={NavLink} to={to} sx={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
               textDecoration: 'none', width: '100%', py: 0.5,
+              color: active ? md3.primary : md3.onSurfaceVariant,
               '&:hover .nav-pill': { background: active ? md3.secondaryContainer : alpha(md3.onSurface, 0.08) },
             }}>
               <Box className="nav-pill" sx={{

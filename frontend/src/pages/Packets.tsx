@@ -386,7 +386,7 @@ export default function Packets() {
         {!showFilters && activeFilters > 0 && (
           <Box sx={{ display: 'flex', gap: 0.75, px: 2, py: 0.75, background: md3.surfaceContainerHighest, borderBottom: `1px solid ${md3.outlineVariant}`, flexWrap: 'wrap', flexShrink: 0 }}>
             {search && <Chip label={`"${search}"`} size="small" onDelete={() => setSearch('')} sx={{ color: md3.primary, borderColor: md3.primaryContainer }} variant="outlined" />}
-            {[...typeFilter].map(t => <Chip key={t} label={PAYLOAD_NAMES[t] ?? t} size="small" onDelete={() => setTypeFilter(p => { const n = new Set(p); n.delete(t); return n })} sx={{ color: typeColor(t) }} variant="outlined" />)}
+            {[...typeFilter].map(t => <Chip key={t} label={PAYLOAD_NAMES[t] ?? t} size="small" onDelete={() => setTypeFilter(p => { const n = new Set(p); n.delete(t); return n })} sx={{ color: md3.onSurface, borderColor: alpha(typeColor(t), 0.45) }} variant="outlined" />)}
             {routeFilter !== null && <Chip label={ROUTE_LABELS[routeFilter]} size="small" onDelete={() => setRouteFilter(null)} sx={{ color: md3.secondary }} variant="outlined" />}
             {regionFilter.size > 0 && regionLock && (
               <Chip size="small" variant="outlined" icon={<LockIcon sx={{ fontSize: 13 }} />} label={t('packets.localOnly')}
@@ -469,7 +469,7 @@ export default function Packets() {
                     </TableCell>
                     <TableCell>
                       <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
-                        sx={{ background: alpha(color, 0.15), color, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
+                        sx={{ background: alpha(color, 0.15), color: md3.onSurface, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
                     </TableCell>
                     <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
                       {ROUTE_NAMES[p.routeType] ?? p.routeType}
