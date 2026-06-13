@@ -109,8 +109,9 @@ func TestAnalyticsCacheInvalidation(t *testing.T) {
 	defer withCacheTTL(0)()
 
 	s := New()
+	now := time.Now().UTC().Format(time.RFC3339)
 	s.Load([]*db.TxRow{
-		{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
+		{ID: 1, Hash: "a", RawHex: "00", FirstSeen: now, PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
 	}, nil, nil, nil)
 
 	first := s.PacketsByType(AnalyticsFilter{})
@@ -152,6 +153,85 @@ func TestAnalyticsCacheTTL(t *testing.T) {
 	}, nil)
 	if got := s.PacketsByType(AnalyticsFilter{}); got["ADVERT"] != 1 {
 		t.Fatalf("expected throttled cache to still report 1 ADVERT, got %v", got)
+	}
+}
+
+func TestFilteredAnalyticsCacheTTL(t *testing.T) {
+	defer withCacheTTL(time.Hour)()
+
+	s := New()
+	now := time.Now().UTC().Format(time.RFC3339)
+	s.Load([]*db.TxRow{
+		{ID: 1, Hash: "a", RawHex: "00", FirstSeen: now, PayloadType: 4, DecodedJSON: `{"type":"ADVERT"}`},
+	}, nil, nil, nil)
+
+	first := s.PacketsByType(NewAnalyticsFilter(24, nil, nil, false))
+	if first["ADVERT"] != 1 {
+		t.Fatalf("expected 1 ADVERT, got %v", first)
+	}
+	s.AddTxBatch([]*db.TxRow{
+		{ID: 2, Hash: "b", RawHex: "01", FirstSeen: now, PayloadType: 2, DecodedJSON: `{"type":"TEXT"}`},
+	}, nil)
+	if got := s.PacketsByType(NewAnalyticsFilter(24, nil, nil, false)); got["TEXT"] != 0 {
+		t.Fatalf("expected filtered cache to reuse recent 24h result, got %v", got)
+	}
+}
+
+func TestAddTxBatchDoesNotBumpVersionWithoutMutation(t *testing.T) {
+	s := New()
+	s.Load(
+		[]*db.TxRow{{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{}`}},
+		[]*db.ObsRow{{ID: 1, TxID: 1, ObserverID: "obs1"}},
+		nil, nil,
+	)
+
+	before := s.version.Load()
+	added, updated := s.AddTxBatch(nil, []*db.ObsRow{
+		{ID: 1, TxID: 1, ObserverID: "obs1"}, // duplicate
+		{ID: 2, TxID: 99, ObserverID: "obs2"}, // tx gap: should break without advancing
+	})
+	if len(added) != 0 || len(updated) != 0 {
+		t.Fatalf("expected no packet changes, added=%d updated=%d", len(added), len(updated))
+	}
+	if after := s.version.Load(); after != before {
+		t.Fatalf("version bumped without mutation: before=%d after=%d", before, after)
+	}
+	_, lastObsID := s.LastIDs()
+	if lastObsID != 1 {
+		t.Fatalf("gap observation advanced lastObsID: got %d", lastObsID)
+	}
+}
+
+func TestMetadataRefreshBumpsVersionOnlyOnChange(t *testing.T) {
+	s := New()
+	lat, lon := 52.0, 21.0
+	battery := 3700
+	uptime := int64(42)
+	noise := -118.5
+	nodes := []*db.NodeRow{{PubKey: "abc", Name: "node", Role: "repeater", Lat: &lat, Lon: &lon, LastSeen: "2024-01-01T00:00:00Z", FirstSeen: "2024-01-01T00:00:00Z", AdvertCount: 1, BatteryMv: &battery}}
+	observers := []*db.ObserverRow{{ID: "obs", Name: "observer", IATA: "WAW", LastSeen: "2024-01-01T00:00:00Z", FirstSeen: "2024-01-01T00:00:00Z", PktCount: 1, UptimeSecs: &uptime, NoiseFloor: &noise}}
+
+	s.UpdateNodes(nodes)
+	s.UpdateObservers(observers)
+	version := s.version.Load()
+	nodeVersion := s.nodeVersion.Load()
+
+	s.UpdateNodes(nodes)
+	s.UpdateObservers(observers)
+	if got := s.version.Load(); got != version {
+		t.Fatalf("unchanged metadata bumped version: before=%d after=%d", version, got)
+	}
+	if got := s.nodeVersion.Load(); got != nodeVersion {
+		t.Fatalf("unchanged nodes bumped node version: before=%d after=%d", nodeVersion, got)
+	}
+
+	nodes[0].Name = "renamed"
+	s.UpdateNodes(nodes)
+	if got := s.version.Load(); got == version {
+		t.Fatalf("changed node did not bump store version")
+	}
+	if got := s.nodeVersion.Load(); got == nodeVersion {
+		t.Fatalf("changed node did not bump node version")
 	}
 }
 

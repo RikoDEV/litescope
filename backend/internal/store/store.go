@@ -175,9 +175,10 @@ type Store struct {
 
 	// version bumps on every mutation; the analytics cache keys off it so a
 	// result is reused only while the underlying data is unchanged.
-	version atomic.Uint64
-	cacheMu sync.Mutex
-	cache   map[string]cacheEntry
+	version     atomic.Uint64
+	nodeVersion atomic.Uint64
+	cacheMu     sync.Mutex
+	cache       map[string]cacheEntry
 }
 
 type cacheEntry struct {
@@ -193,6 +194,10 @@ type cacheEntry struct {
 // (distance/geo O(N²), hashes, scope, …) from recomputing on every request.
 // Overridden to 0 in tests that assert immediate invalidation.
 var analyticsCacheTTL = 10 * time.Second
+
+// analyticsCacheMaxEntries bounds filtered analytics key growth from many
+// distinct region/country query combinations.
+const analyticsCacheMaxEntries = 128
 
 func New() *Store {
 	return &Store{
@@ -212,11 +217,30 @@ func New() *Store {
 // bumpVersion invalidates the analytics cache. Caller must hold the write lock.
 func (s *Store) bumpVersion() { s.version.Add(1) }
 
+// bumpNodeVersion invalidates node-derived caches. Caller must hold the write lock.
+func (s *Store) bumpNodeVersion() { s.nodeVersion.Add(1) }
+
 // cachedAnalytics memoizes a no-arg analytics computation by store version.
 // compute() is run outside the cache lock (it takes the store read lock itself),
 // so concurrent callers never serialize on the cache and at worst recompute once.
 func cachedAnalytics[T any](s *Store, key string, compute func() T) T {
-	cur := s.version.Load()
+	return cachedByVersion(s, key, s.version.Load(), compute)
+}
+
+// cachedNodeAnalytics memoizes work that depends only on node metadata, not on
+// packet/observation churn.
+func cachedNodeAnalytics[T any](s *Store, key string, compute func() T) T {
+	return cachedByVersion(s, key, s.nodeVersion.Load(), compute)
+}
+
+func cachedAnalyticsForFilter[T any](s *Store, key string, f AnalyticsFilter, compute func() T) T {
+	if f.Active() {
+		key += "|" + f.cacheKey()
+	}
+	return cachedByVersion(s, key, s.version.Load(), compute)
+}
+
+func cachedByVersion[T any](s *Store, key string, cur uint64, compute func() T) T {
 	s.cacheMu.Lock()
 	e, ok := s.cache[key]
 	s.cacheMu.Unlock()
@@ -228,8 +252,22 @@ func cachedAnalytics[T any](s *Store, key string, compute func() T) T {
 	val := compute()
 	s.cacheMu.Lock()
 	s.cache[key] = cacheEntry{version: cur, at: time.Now(), value: val}
+	s.trimAnalyticsCacheLocked()
 	s.cacheMu.Unlock()
 	return val
+}
+
+func (s *Store) trimAnalyticsCacheLocked() {
+	for len(s.cache) > analyticsCacheMaxEntries {
+		var oldestKey string
+		var oldestAt time.Time
+		for k, e := range s.cache {
+			if oldestKey == "" || e.at.Before(oldestAt) {
+				oldestKey, oldestAt = k, e.at
+			}
+		}
+		delete(s.cache, oldestKey)
+	}
 }
 
 // Load populates the store from DB rows loaded at startup.
@@ -300,6 +338,7 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		addedIDs[t.ID] = true
 	}
 	updatedSet := make(map[int64]*Tx)
+	mutated := len(added) > 0
 	for _, r := range obss {
 		if _, ok := s.byObsID[r.ID]; ok {
 			continue
@@ -318,6 +357,7 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		s.byObsID[o.ID] = o
 		s.byObserver[o.ObserverID] = append(s.byObserver[o.ObserverID], o)
 		tx.Observations = append(tx.Observations, o)
+		mutated = true
 		s.indexByNode(tx)
 		s.indexRelayHops(tx, o)
 		// Existing packet (not first seen in this batch) gained an observation.
@@ -331,7 +371,7 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 	for _, tx := range updatedSet {
 		updated = append(updated, tx)
 	}
-	if len(added) > 0 || len(obss) > 0 {
+	if mutated {
 		s.bumpVersion()
 	}
 	return added, updated
@@ -477,11 +517,17 @@ func (s *Store) indexRelayHops(tx *Tx, o *Obs) {
 func (s *Store) UpdateNodes(rows []*db.NodeRow) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	changed := false
 	for _, r := range rows {
+		if existing := s.nodes[r.PubKey]; existing != nil && nodeMatchesRow(existing, r) {
+			continue
+		}
 		s.nodes[r.PubKey] = nodeFromRow(r)
+		changed = true
 	}
-	if len(rows) > 0 {
+	if changed {
 		s.bumpVersion()
+		s.bumpNodeVersion()
 	}
 }
 
@@ -489,10 +535,15 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) {
 func (s *Store) UpdateObservers(rows []*db.ObserverRow) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	changed := false
 	for _, r := range rows {
+		if existing := s.observers[r.ID]; existing != nil && observerMatchesRow(existing, r) {
+			continue
+		}
 		s.observers[r.ID] = observerFromRow(r)
+		changed = true
 	}
-	if len(rows) > 0 {
+	if changed {
 		s.bumpVersion()
 	}
 }
@@ -969,6 +1020,10 @@ func (s *Store) ObserverByID(id string) *Observer {
 // channel. Hashes we never decrypted (no key on the server) fall back to the raw
 // count, since we can't tell the colliding channels apart.
 func (s *Store) Channels(f AnalyticsFilter) []ChannelSummary {
+	return cachedAnalyticsForFilter(s, "channels", f, func() []ChannelSummary { return s.computeChannels(f) })
+}
+
+func (s *Store) computeChannels(f AnalyticsFilter) []ChannelSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	type acc struct {
@@ -1055,10 +1110,7 @@ func (s *Store) ChannelMessages(chHash string, limit, offset int, f AnalyticsFil
 // ChannelAnalytics returns per-channel hourly message activity (last 24 h) and
 // an all-time leaderboard of top senders, derived from GRP_TXT packets.
 func (s *Store) ChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData {
-	if f.Active() {
-		return s.computeChannelAnalytics(f)
-	}
-	return cachedAnalytics(s, "channelAnalytics", func() ChannelAnalyticsData { return s.computeChannelAnalytics(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "channelAnalytics", f, func() ChannelAnalyticsData { return s.computeChannelAnalytics(f) })
 }
 
 func (s *Store) computeChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData {
@@ -1206,6 +1258,7 @@ type ChannelSender struct {
 // AnalyticsFilter scopes analytics to a time window and/or a set of observer
 // regions (IATA codes). The zero value matches everything.
 type AnalyticsFilter struct {
+	hours     int             // original rolling window, 0 = all time
 	sinceMs   int64           // 0 = all time
 	regions   map[string]bool // observer IATA set; nil/empty = all (packet/observation filtering)
 	countries map[string]bool // ISO-A2 set for geographic node filtering; nil/empty = all
@@ -1218,6 +1271,7 @@ type AnalyticsFilter struct {
 func NewAnalyticsFilter(hours int, regions, countries []string, lock bool) AnalyticsFilter {
 	f := AnalyticsFilter{lock: lock}
 	if hours > 0 {
+		f.hours = hours
 		f.sinceMs = nowMillis() - int64(hours)*3_600_000
 	}
 	if len(regions) > 0 {
@@ -1243,6 +1297,35 @@ func NewAnalyticsFilter(hours int, regions, countries []string, lock bool) Analy
 // cached fast path when it doesn't.
 func (f AnalyticsFilter) Active() bool {
 	return f.sinceMs > 0 || len(f.regions) > 0 || len(f.countries) > 0
+}
+
+func (f AnalyticsFilter) cacheKey() string {
+	var b strings.Builder
+	b.WriteString("h=")
+	if f.hours > 0 {
+		b.WriteString(strconv.Itoa(f.hours))
+	} else {
+		b.WriteString(strconv.FormatInt(f.sinceMs, 10))
+	}
+	if f.lock {
+		b.WriteString("|lock=1")
+	}
+	appendSetKey(&b, "|r=", f.regions)
+	appendSetKey(&b, "|c=", f.countries)
+	return b.String()
+}
+
+func appendSetKey(b *strings.Builder, prefix string, vals map[string]bool) {
+	if len(vals) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(vals))
+	for v := range vals {
+		keys = append(keys, v)
+	}
+	sort.Strings(keys)
+	b.WriteString(prefix)
+	b.WriteString(strings.Join(keys, ","))
 }
 
 // nodeGeoOK reports whether a node passes the geographic country filter. Strict:
@@ -1296,9 +1379,9 @@ func (f AnalyticsFilter) obsOK(o *Obs) bool {
 
 // Overview returns aggregate stats.
 func (s *Store) Overview(f AnalyticsFilter) OverviewStats {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	if !f.Active() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
 		return OverviewStats{
 			TotalPackets:   len(s.packets),
 			TotalNodes:     len(s.nodes),
@@ -1306,6 +1389,13 @@ func (s *Store) Overview(f AnalyticsFilter) OverviewStats {
 			PacketRate:     s.packetRate(),
 		}
 	}
+	return cachedAnalyticsForFilter(s, "overview", f, func() OverviewStats { return s.computeOverview(f) })
+}
+
+func (s *Store) computeOverview(f AnalyticsFilter) OverviewStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	pkts, rate := 0, 0
 	rateCut := nowMillis() - 60_000
 	nodes := make(map[string]bool)
@@ -1390,10 +1480,7 @@ type RFStats struct {
 
 // GlobalRFStats scans all observations and returns SNR/RSSI arrays plus summary stats.
 func (s *Store) GlobalRFStats(f AnalyticsFilter) GlobalRF {
-	if f.Active() {
-		return s.computeGlobalRFStats(f)
-	}
-	return cachedAnalytics(s, "globalRF", func() GlobalRF { return s.computeGlobalRFStats(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "globalRF", f, func() GlobalRF { return s.computeGlobalRFStats(f) })
 }
 
 func (s *Store) computeGlobalRFStats(f AnalyticsFilter) GlobalRF {
@@ -1459,6 +1546,11 @@ func summarizeFloats(vals []float64) FloatSummary {
 // ActivityBuckets returns hourly packet, node, fanout, and payload-mix activity
 // for the last windowHours hours.
 func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStats {
+	key := "activity:" + strconv.Itoa(windowHours)
+	return cachedAnalyticsForFilter(s, key, f, func() ActivityStats { return s.computeActivityBuckets(windowHours, f) })
+}
+
+func (s *Store) computeActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if windowHours <= 0 {
@@ -1566,6 +1658,19 @@ func parseTimeToTime(s string) time.Time {
 // retransmit count when by == "retransmits", capped at limit. The second return
 // value maps the returned nodes' pubKeys to their retransmit count for display.
 func (s *Store) TopNodes(limit int, by string, f AnalyticsFilter) ([]*Node, map[string]int) {
+	key := "topNodes:" + strconv.Itoa(limit) + ":" + by
+	type result struct {
+		nodes []*Node
+		retx  map[string]int
+	}
+	r := cachedAnalyticsForFilter(s, key, f, func() result {
+		nodes, retx := s.computeTopNodes(limit, by, f)
+		return result{nodes: nodes, retx: retx}
+	})
+	return r.nodes, r.retx
+}
+
+func (s *Store) computeTopNodes(limit int, by string, f AnalyticsFilter) ([]*Node, map[string]int) {
 	if limit < 0 {
 		limit = 0
 	}
@@ -1641,10 +1746,7 @@ func (s *Store) TopNodes(limit int, by string, f AnalyticsFilter) ([]*Node, map[
 // RetransmitCounts returns, per node pubKey, the number of distinct packets in
 // which the node appears as a relay (path) hop — i.e. packets it retransmitted.
 func (s *Store) RetransmitCounts(f AnalyticsFilter) map[string]int {
-	if f.Active() {
-		return s.computeRetransmitCounts(f)
-	}
-	return cachedAnalytics(s, "retransmitCounts", func() map[string]int { return s.computeRetransmitCounts(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "retransmitCounts", f, func() map[string]int { return s.computeRetransmitCounts(f) })
 }
 
 func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
@@ -1708,6 +1810,11 @@ func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
 
 // TopObservers returns observers sorted by packet count descending, capped at limit.
 func (s *Store) TopObservers(limit int, f AnalyticsFilter) []*Observer {
+	key := "topObservers:" + strconv.Itoa(limit)
+	return cachedAnalyticsForFilter(s, key, f, func() []*Observer { return s.computeTopObservers(limit, f) })
+}
+
+func (s *Store) computeTopObservers(limit int, f AnalyticsFilter) []*Observer {
 	if limit < 0 {
 		limit = 0
 	}
@@ -1817,10 +1924,7 @@ type ObserverAnalyticsData struct {
 
 // PacketsByType returns counts per payload type.
 func (s *Store) PacketsByType(f AnalyticsFilter) map[string]int {
-	if f.Active() {
-		return s.computePacketsByType(f)
-	}
-	return cachedAnalytics(s, "packetsByType", func() map[string]int { return s.computePacketsByType(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "packetsByType", f, func() map[string]int { return s.computePacketsByType(f) })
 }
 
 func (s *Store) computePacketsByType(f AnalyticsFilter) map[string]int {
@@ -1876,6 +1980,19 @@ func nodeFromRow(r *db.NodeRow) *Node {
 	return n
 }
 
+func nodeMatchesRow(n *Node, r *db.NodeRow) bool {
+	return n.PubKey == r.PubKey &&
+		n.Name == r.Name &&
+		n.Role == r.Role &&
+		ptrEqual(n.Lat, r.Lat) &&
+		ptrEqual(n.Lon, r.Lon) &&
+		n.LastSeen == r.LastSeen &&
+		n.FirstSeen == r.FirstSeen &&
+		n.AdvertCount == r.AdvertCount &&
+		ptrEqual(n.BatteryMv, r.BatteryMv) &&
+		ptrEqual(n.TempC, r.TempC)
+}
+
 func observerFromRow(r *db.ObserverRow) *Observer {
 	return &Observer{
 		ID: r.ID, Name: r.Name, IATA: r.IATA, LastSeen: r.LastSeen, FirstSeen: r.FirstSeen,
@@ -1884,12 +2001,32 @@ func observerFromRow(r *db.ObserverRow) *Observer {
 	}
 }
 
+func observerMatchesRow(o *Observer, r *db.ObserverRow) bool {
+	return o.ID == r.ID &&
+		o.Name == r.Name &&
+		o.IATA == r.IATA &&
+		o.LastSeen == r.LastSeen &&
+		o.FirstSeen == r.FirstSeen &&
+		o.PktCount == r.PktCount &&
+		o.Model == r.Model &&
+		o.Firmware == r.Firmware &&
+		ptrEqual(o.BatteryMv, r.BatteryMv) &&
+		ptrEqual(o.UptimeSecs, r.UptimeSecs) &&
+		ptrEqual(o.NoiseFloor, r.NoiseFloor)
+}
+
+func ptrEqual[T comparable](a, b *T) bool {
+	switch {
+	case a == nil || b == nil:
+		return a == b
+	default:
+		return *a == *b
+	}
+}
+
 // SNRByPayloadType returns average SNR and observation count per payload type name.
 func (s *Store) SNRByPayloadType(f AnalyticsFilter) map[string]SNRTypeStat {
-	if f.Active() {
-		return s.computeSNRByPayloadType(f)
-	}
-	return cachedAnalytics(s, "snrByType", func() map[string]SNRTypeStat { return s.computeSNRByPayloadType(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "snrByType", f, func() map[string]SNRTypeStat { return s.computeSNRByPayloadType(f) })
 }
 
 func (s *Store) computeSNRByPayloadType(f AnalyticsFilter) map[string]SNRTypeStat {
@@ -1950,10 +2087,7 @@ func isHexHop(s string) bool {
 // observation paths (PathJSON).  "1-byte" means a 2-char hex hop like "AB",
 // "2-byte" means "ABCD", etc.  Full node names in paths are ignored.
 func (s *Store) HashStats(f AnalyticsFilter) HashStatsData {
-	if f.Active() {
-		return s.computeHashStats(f)
-	}
-	return cachedAnalytics(s, "hashStats", func() HashStatsData { return s.computeHashStats(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "hashStats", f, func() HashStatsData { return s.computeHashStats(f) })
 }
 
 func (s *Store) computeHashStats(f AnalyticsFilter) HashStatsData {
@@ -2404,10 +2538,7 @@ type HashMatrixNode struct {
 // hourly activity for the last 24 hours, derived from the flood_scope field on
 // observations.
 func (s *Store) ScopeStats(f AnalyticsFilter) ScopeStatsData {
-	if f.Active() {
-		return s.computeScopeStats(f)
-	}
-	return cachedAnalytics(s, "scopeStats", func() ScopeStatsData { return s.computeScopeStats(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "scopeStats", f, func() ScopeStatsData { return s.computeScopeStats(f) })
 }
 
 func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
@@ -2602,15 +2733,11 @@ type ScopeHour struct {
 // DistanceStats analyses hop-count "distance" across all observations.
 // "Distance" here is the number of intermediate relay hops a packet traversed.
 func (s *Store) DistanceStats(f AnalyticsFilter) DistanceStatsData {
-	if f.Active() {
-		return s.computeDistanceStats(f)
-	}
-	return cachedAnalytics(s, "distanceStats", func() DistanceStatsData { return s.computeDistanceStats(AnalyticsFilter{}) })
+	return cachedAnalyticsForFilter(s, "distanceStats", f, func() DistanceStatsData { return s.computeDistanceStats(f) })
 }
 
 func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var totalHops, pathsAnalyzed, maxHopDist int
 	var direct, singleRelay, multiRelay int
@@ -2630,7 +2757,20 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		observerName, observerIATA string
 		routeType, payloadType     int
 	}
-	var allObsEntries []hopObsEntry
+	topObsEntries := make([]hopObsEntry, 0, 20)
+	insertTopObs := func(entry hopObsEntry) {
+		const topN = 20
+		if len(topObsEntries) == topN && entry.hopCount <= topObsEntries[len(topObsEntries)-1].hopCount {
+			return
+		}
+		pos := sort.Search(len(topObsEntries), func(i int) bool { return topObsEntries[i].hopCount < entry.hopCount })
+		topObsEntries = append(topObsEntries, hopObsEntry{})
+		copy(topObsEntries[pos+1:], topObsEntries[pos:])
+		topObsEntries[pos] = entry
+		if len(topObsEntries) > topN {
+			topObsEntries = topObsEntries[:topN]
+		}
+	}
 
 	// Per-packet best-hop tracking for top paths
 	type txBest struct {
@@ -2688,7 +2828,7 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 				actBuckets[bucket].count++
 			}
 
-			allObsEntries = append(allObsEntries, hopObsEntry{
+			insertTopObs(hopObsEntry{
 				hash: tx.Hash, firstSeen: tx.FirstSeen,
 				hopCount: hopCount, hops: hops,
 				observerName: o.ObserverName, observerIATA: o.ObserverIATA,
@@ -2741,13 +2881,8 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		actHours[i] = a
 	}
 
-	// Top 20 longest hops (per observation, descending)
-	sort.Slice(allObsEntries, func(i, j int) bool { return allObsEntries[i].hopCount > allObsEntries[j].hopCount })
-	if len(allObsEntries) > 20 {
-		allObsEntries = allObsEntries[:20]
-	}
-	top20 := make([]LongHop, len(allObsEntries))
-	for i, e := range allObsEntries {
+	top20 := make([]LongHop, len(topObsEntries))
+	for i, e := range topObsEntries {
 		top20[i] = LongHop{
 			Hash: e.hash, FirstSeen: e.firstSeen,
 			HopCount: e.hopCount, Hops: e.hops,
@@ -2777,7 +2912,7 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		}
 	}
 
-	return DistanceStatsData{
+	out := DistanceStatsData{
 		TotalHops:       totalHops,
 		PathsAnalyzed:   pathsAnalyzed,
 		AvgHopDist:      avgHopDist,
@@ -2787,8 +2922,11 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		ActivityByHour:  actHours,
 		Top20Hops:       top20,
 		Top10MultiHop:   top10,
-		Geo:             s.geoDistStats(),
 	}
+	s.mu.RUnlock()
+
+	out.Geo = s.geoDistStats()
+	return out
 }
 
 func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
@@ -2801,9 +2939,15 @@ func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
 	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
-// geoDistStats computes pairwise Haversine distances for all nodes with known coordinates.
-// Called under the read lock already held by DistanceStats.
 func (s *Store) geoDistStats() GeoDistData {
+	return cachedNodeAnalytics(s, "geoDistStats", s.computeGeoDistStats)
+}
+
+// computeGeoDistStats computes pairwise Haversine distances for all nodes with known coordinates.
+func (s *Store) computeGeoDistStats() GeoDistData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	type geoNode struct {
 		pubKey, name string
 		lat, lon     float64
