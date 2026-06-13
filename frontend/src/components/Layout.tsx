@@ -16,6 +16,7 @@ import { LANGUAGES } from '../i18n'
 import { FlagByCC } from '../utils/flags'
 import CookieBanner from './CookieBanner'
 import ErrorBoundary from './ErrorBoundary'
+import SpotlightSearch from './SpotlightSearch'
 import { buildIssueUrl } from '../utils/issueUrl'
 
 import HomeIcon from '@mui/icons-material/Home'
@@ -37,6 +38,7 @@ import { ACCENTS } from '../theme'
 import TranslateIcon from '@mui/icons-material/Translate'
 import CheckIcon from '@mui/icons-material/Check'
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
+import SearchIcon from '@mui/icons-material/Search'
 import ListItemIcon from '@mui/material/ListItemIcon'
 
 const NAV = [
@@ -102,11 +104,17 @@ export default function Layout() {
     wsStatus === 'connected'  ? '#4caf50' :
     wsStatus === 'connecting' ? '#4caf5088' :
                                  md3.error
+  const wsStatusText =
+    wsStatus === 'connected'  ? t('common.live') :
+    wsStatus === 'connecting' ? t('common.connecting') :
+                                t('common.off')
+  const wsStatusLabel = `WebSocket: ${wsStatusText}`
 
   const currentLang = LANGUAGES.find(l => i18n.language?.startsWith(l.code)) ?? LANGUAGES[0]!
 
   const isActive = (to: string, exact: boolean) =>
     exact ? loc.pathname === to : (loc.pathname === to || loc.pathname.startsWith(to + '/'))
+  const openSpotlight = () => window.dispatchEvent(new Event('litescope:open-spotlight'))
 
   const settingsCluster = (
     <>
@@ -209,6 +217,13 @@ export default function Layout() {
         <Box component="img" src="/icon.svg" alt="liteScope"
           sx={{ width: 36, height: 36, mb: 1.5, borderRadius: '10px', boxShadow: `0 2px 8px ${alpha(md3.primary, 0.4)}` }} />
 
+        <Tooltip title={`${t('common.search')} (Ctrl+K)`} placement="right">
+          <IconButton aria-label={t('common.search')} onClick={openSpotlight}
+            sx={{ color: md3.onSurfaceVariant, mb: 0.75, '&:hover': { background: alpha(md3.onSurface, 0.08) } }}>
+            <SearchIcon sx={{ fontSize: 20 }} />
+          </IconButton>
+        </Tooltip>
+
         {NAV.map(({ to, key, Icon, exact }) => {
           const active = isActive(to, exact)
           return (
@@ -240,14 +255,15 @@ export default function Layout() {
         {settingsCluster}
 
         {/* WebSocket status */}
-        <Tooltip title={`WebSocket: ${wsStatus === 'connected' ? t('common.live') : wsStatus === 'connecting' ? t('common.connecting') : t('common.off')}`} placement="right">
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.3, mt: 0.5 }}>
+        <Tooltip title={wsStatusLabel} placement="right" describeChild>
+          <Box component="span" role="status" aria-live="polite" aria-label={wsStatusLabel}
+            sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.3, mt: 0.5 }}>
             <Box sx={{
               width: 8, height: 8, borderRadius: '50%', background: statusColor,
               boxShadow: wsStatus === 'connected' ? `0 0 6px ${statusColor}` : 'none', transition: 'all 0.5s',
             }} />
             <Typography sx={{ fontSize: 9, color: md3.onSurfaceVariant, letterSpacing: '0.2px' }}>
-              {wsStatus === 'connected' ? t('common.live') : wsStatus === 'connecting' ? t('common.connecting') : t('common.off')}
+              {wsStatusText}
             </Typography>
           </Box>
         </Tooltip>
@@ -270,9 +286,16 @@ export default function Layout() {
             liteScope
           </Typography>
           <Box sx={{ flex: 1 }} />
+          <Tooltip title={`${t('common.search')} (Ctrl+K)`}>
+            <IconButton aria-label={t('common.search')} onClick={openSpotlight}
+              sx={{ color: md3.onSurfaceVariant, '&:hover': { background: alpha(md3.onSurface, 0.08) } }}>
+              <SearchIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
           {/* WS dot */}
-          <Tooltip title={`WebSocket: ${wsStatus === 'connected' ? t('common.live') : wsStatus === 'connecting' ? t('common.connecting') : t('common.off')}`}>
-            <Box sx={{
+          <Tooltip title={wsStatusLabel} describeChild>
+            <Box component="span" role="status" aria-live="polite" aria-label={wsStatusLabel}
+              sx={{
               width: 8, height: 8, borderRadius: '50%', background: statusColor,
               boxShadow: wsStatus === 'connected' ? `0 0 6px ${statusColor}` : 'none', transition: 'all 0.5s',
             }} />
@@ -422,8 +445,9 @@ export default function Layout() {
         </Menu>
 
       </Box>
-    </Box>
-    <CookieBanner />
+      </Box>
+      <CookieBanner />
+      <SpotlightSearch />
     </>
   )
 }
