@@ -80,13 +80,14 @@ export default function MapView() {
   const clusterGroup = useRef<L.MarkerClusterGroup | null>(null)
   const markersRef   = useRef<Map<string, L.Marker>>(new Map())
   const scopeLayerRef = useRef<L.LayerGroup | null>(null)
-  const heatLayerRef = useRef<L.LayerGroup | null>(null)
+  const heatCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const neighborLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [nodes,    setNodes]    = useState<Node[]>([])
   const [scopeRegions, setScopeRegions] = useState<ScopeRegion[]>([])
   const [heatPoints, setHeatPoints] = useState<MapHeatPoint[]>([])
   const [directLinks, setDirectLinks] = useState<DirectLink[]>([])
+  const [tilesReady, setTilesReady] = useState(false)
   const [selected, setSelected] = useState<Node | null>(null)
   const [overview, setOverview] = useState<NodeOverview | null>(null)
   const [rf,       setRF]       = useState<RFStats | null>(null)
@@ -186,14 +187,20 @@ export default function MapView() {
       },
     })
     cluster.addTo(map)
-    heatLayerRef.current = L.layerGroup().addTo(map)
     neighborLayerRef.current = L.layerGroup().addTo(map)
     scopeLayerRef.current = L.layerGroup().addTo(map)
+
+    const heatCanvas = document.createElement('canvas')
+    heatCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:420;opacity:0;'
+    el.appendChild(heatCanvas)
+    heatCanvasRef.current = heatCanvas
+
     clusterGroup.current = cluster
     mapInstance.current = map
     return () => {
+      heatCanvas.remove()
       map.remove(); mapInstance.current = null; clusterGroup.current = null
-      scopeLayerRef.current = null; heatLayerRef.current = null; neighborLayerRef.current = null
+      scopeLayerRef.current = null; heatCanvasRef.current = null; neighborLayerRef.current = null
     }
   }, [])
 
@@ -201,8 +208,9 @@ export default function MapView() {
   useEffect(() => {
     const map = mapInstance.current; if (!map) return
     if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
+    setTilesReady(false)
     const isDark = theme.palette.mode === 'dark'
-    tileLayerRef.current = L.tileLayer(
+    const tileLayer = L.tileLayer(
       isDark
         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -211,7 +219,10 @@ export default function MapView() {
         subdomains: isDark ? 'abcd' : 'abc',
         maxZoom: 19,
       }
-    ).addTo(map)
+    )
+    tileLayer.on('load', () => setTilesReady(true))
+    tileLayer.on('loading', () => setTilesReady(false))
+    tileLayerRef.current = tileLayer.addTo(map)
     // Refresh cluster icons so they pick up the new theme colours
     clusterCtxRef.current = { mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface }
     clusterGroup.current?.refreshClusters()
@@ -274,34 +285,84 @@ export default function MapView() {
   }, [showHeatMap, showNeighbors, scopeParams])
 
   useEffect(() => {
-    const layer = heatLayerRef.current
-    if (!layer) return
-    layer.clearLayers()
-    if (!showHeatMap) return
-    const maxWeight = Math.max(1, ...heatPoints.map(p => p.weight))
-    for (const p of heatPoints) {
-      const intensity = Math.sqrt(p.weight / maxWeight)
-      const color = intensity > 0.66 ? '#ef4444' : intensity > 0.33 ? '#f59e0b' : '#22c55e'
-      const radius = 12_000 + intensity * 130_000
-      L.circle([p.lat, p.lon], {
-        radius,
-        color,
-        weight: 1,
-        opacity: 0.55,
-        fillColor: color,
-        fillOpacity: 0.14 + intensity * 0.22,
-        interactive: true,
-      }).bindTooltip(
-        `<div style="font-family:system-ui;min-width:150px">
-          <b>${escapeHtml(p.name || p.pubKey.slice(0, 12))}</b>
-          <div style="color:#64748b">${escapeHtml(p.role)}</div>
-          <div>${escapeHtml(t('map.heatWeight', { count: p.weight.toLocaleString() }))}</div>
-          <div style="color:#64748b">${escapeHtml(t('map.heatBreakdown', { packets: p.packetCount.toLocaleString(), observations: p.observationCount.toLocaleString() }))}</div>
-        </div>`,
-        { sticky: true },
-      ).addTo(layer)
+    const canvas = heatCanvasRef.current
+    const map = mapInstance.current
+    if (!canvas || !map) return
+
+    let raf = 0
+    const draw = () => {
+      raf = 0
+      const dpr = 1
+      const w = canvas.clientWidth
+      const h = canvas.clientHeight
+      if (w === 0 || h === 0) return
+      const bw = Math.round(w * dpr)
+      const bh = Math.round(h * dpr)
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw
+        canvas.height = bh
+      }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, w, h)
+      canvas.style.opacity = showHeatMap && tilesReady ? '0.72' : '0'
+      if (!showHeatMap || !tilesReady || heatPoints.length === 0) return
+
+      const zoom = map.getZoom()
+      const cellSize = zoom <= 3 ? 34 : zoom <= 5 ? 26 : 18
+      const cells = new Map<string, { x: number; y: number; weight: number }>()
+      for (const p of heatPoints) {
+        const pt = map.latLngToContainerPoint([p.lat, p.lon])
+        if (pt.x < -100 || pt.y < -100 || pt.x > w + 100 || pt.y > h + 100) continue
+        const cx = Math.floor(pt.x / cellSize)
+        const cy = Math.floor(pt.y / cellSize)
+        const key = `${cx}:${cy}`
+        const prev = cells.get(key)
+        if (prev) {
+          const nextWeight = prev.weight + p.weight
+          prev.x = (prev.x * prev.weight + pt.x * p.weight) / nextWeight
+          prev.y = (prev.y * prev.weight + pt.y * p.weight) / nextWeight
+          prev.weight = nextWeight
+        } else {
+          cells.set(key, { x: pt.x, y: pt.y, weight: p.weight })
+        }
+      }
+      let points = [...cells.values()]
+      if (points.length > 650) {
+        points.sort((a, b) => b.weight - a.weight)
+        points = points.slice(0, 650)
+      }
+      const maxWeight = Math.max(1, ...points.map(p => p.weight))
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.filter = 'none'
+      for (const p of points) {
+        const intensity = Math.sqrt(p.weight / maxWeight)
+        const radius = (zoom <= 4 ? 34 : 24) + intensity * (zoom <= 4 ? 58 : 46)
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius)
+        grad.addColorStop(0, `rgba(220,38,38,${0.16 + intensity * 0.20})`)
+        grad.addColorStop(0.28, `rgba(249,115,22,${0.12 + intensity * 0.16})`)
+        grad.addColorStop(0.52, `rgba(253,224,71,${0.08 + intensity * 0.12})`)
+        grad.addColorStop(0.76, `rgba(34,197,94,${0.045 + intensity * 0.075})`)
+        grad.addColorStop(1, 'rgba(34,197,94,0)')
+        ctx.fillStyle = grad
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
     }
-  }, [showHeatMap, heatPoints, t])
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(draw)
+    }
+    draw()
+    map.on('move zoom resize', schedule)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      map.off('move zoom resize', schedule)
+    }
+  }, [showHeatMap, heatPoints, tilesReady])
 
   useEffect(() => {
     const layer = neighborLayerRef.current
