@@ -286,15 +286,15 @@ export default function MapView() {
       }).bindTooltip(
         `<div style="font-family:system-ui;min-width:160px">
           <b>${escapeHtml(region.region)}</b>
-          <div style="margin:2px 0;color:#64748b">${region.observerCount} observer${region.observerCount === 1 ? '' : 's'} · ${region.obsCount.toLocaleString()} observations</div>
-          <div style="color:${color};font-weight:700">Dominant: ${escapeHtml(region.dominantScope)}</div>
+          <div style="margin:2px 0;color:#64748b">${escapeHtml(t('map.scopeRegionSummary', { observers: region.observerCount, observations: region.obsCount.toLocaleString() }))}</div>
+          <div style="color:${color};font-weight:700">${escapeHtml(t('map.dominantScope', { scope: region.dominantScope }))}</div>
           ${topScopes ? `<div style="margin-top:4px">${topScopes}</div>` : ''}
         </div>`,
         { sticky: true },
       )
       layer.addLayer(circle)
     }
-  }, [showScopeRegions, scopeRegions, scopeFilter, scopeColor])
+  }, [showScopeRegions, scopeRegions, scopeFilter, scopeColor, t])
 
   // Sync markers with current filters
   useEffect(() => {
@@ -491,7 +491,7 @@ export default function MapView() {
 
             {/* Scoped regions overlay */}
             <Box>
-              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Layers</Typography>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('map.layers')}</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: showScopeRegions ? 0.75 : 0 }}>
                 <Checkbox
                   size="small"
@@ -500,7 +500,7 @@ export default function MapView() {
                   sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
                 />
                 <LayersIcon sx={{ fontSize: 14, color: md3.primary }} />
-                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11, flex: 1 }}>Scoped regions</Typography>
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11, flex: 1 }}>{t('map.scopedRegions')}</Typography>
                 {showScopeRegions && (
                   <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{scopeRegions.length}</Typography>
                 )}
@@ -512,7 +512,7 @@ export default function MapView() {
                   onChange={e => setScopeFilter(e.target.value)}
                   sx={{ width: '100%', height: 28, fontSize: 11 }}
                 >
-                  <MenuItem value="all" sx={{ fontSize: 12 }}>All scopes</MenuItem>
+                  <MenuItem value="all" sx={{ fontSize: 12 }}>{t('map.allScopes')}</MenuItem>
                   {scopeOptions.map(scope => (
                     <MenuItem key={scope} value={scope} sx={{ fontSize: 12 }}>
                       <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>

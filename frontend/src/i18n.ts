@@ -179,6 +179,9 @@ const en = {
     liveFeed: 'Live Feed', waiting: 'Waiting…',
     repeaters: 'Repeaters', companions: 'Companions', roomServers: 'Room Servers', sensors: 'Sensors',
     center: 'Center', detailsLink: 'Details →',
+    layers: 'Layers', scopedRegions: 'Scoped regions', allScopes: 'All scopes',
+    scopeRegionSummary: '{{observers}} observers · {{observations}} observations',
+    dominantScope: 'Dominant: {{scope}}',
   },
   notFound: {
     title: 'Page not found',
@@ -376,6 +379,9 @@ const pl: typeof en = {
     liveFeed: 'Transmisja na żywo', waiting: 'Oczekiwanie…',
     repeaters: 'Przekaźniki', companions: 'Towarzysze', roomServers: 'Serwery pokoi', sensors: 'Czujniki',
     center: 'Wyśrodkuj', detailsLink: 'Szczegóły →',
+    layers: 'Warstwy', scopedRegions: 'Regiony zakresów', allScopes: 'Wszystkie zakresy',
+    scopeRegionSummary: '{{observers}} obserwatorów · {{observations}} obserwacji',
+    dominantScope: 'Dominujący: {{scope}}',
   },
   notFound: {
     title: 'Strona nie istnieje',
@@ -573,6 +579,9 @@ const de: typeof en = {
     liveFeed: 'Live-Feed', waiting: 'Warten…',
     repeaters: 'Repeater', companions: 'Begleiter', roomServers: 'Raumserver', sensors: 'Sensoren',
     center: 'Zentrieren', detailsLink: 'Details →',
+    layers: 'Ebenen', scopedRegions: 'Scope-Regionen', allScopes: 'Alle Scopes',
+    scopeRegionSummary: '{{observers}} Beobachter · {{observations}} Beobachtungen',
+    dominantScope: 'Dominant: {{scope}}',
   },
   notFound: {
     title: 'Seite nicht gefunden',
@@ -757,6 +766,9 @@ const fr = {
     liveFeed: 'Flux en direct', waiting: 'En attente…',
     repeaters: 'Répéteurs', companions: 'Compagnons', roomServers: 'Serveurs de salle', sensors: 'Capteurs',
     center: 'Centrer', detailsLink: 'Détails →',
+    layers: 'Couches', scopedRegions: 'Régions de portée', allScopes: 'Toutes les portées',
+    scopeRegionSummary: '{{observers}} observateurs · {{observations}} observations',
+    dominantScope: 'Dominant : {{scope}}',
   },
   notFound: {
     title: 'Page introuvable',
@@ -932,6 +944,9 @@ const uk = {
     liveFeed: 'Живий потік', waiting: 'Очікування…',
     repeaters: 'Ретранслятори', companions: 'Компаньйони', roomServers: 'Кімнатні сервери', sensors: 'Сенсори',
     center: 'Центрувати', detailsLink: 'Деталі →',
+    layers: 'Шари', scopedRegions: 'Регіони scope', allScopes: 'Усі scope',
+    scopeRegionSummary: '{{observers}} спостерігачів · {{observations}} спостережень',
+    dominantScope: 'Домінує: {{scope}}',
   },
   notFound: {
     title: 'Сторінку не знайдено',
@@ -1107,6 +1122,9 @@ const ru = {
     liveFeed: 'Прямой эфир', waiting: 'Ожидание…',
     repeaters: 'Ретрансляторы', companions: 'Компаньоны', roomServers: 'Комнатные серверы', sensors: 'Сенсоры',
     center: 'Центрировать', detailsLink: 'Детали →',
+    layers: 'Слои', scopedRegions: 'Регионы scope', allScopes: 'Все scope',
+    scopeRegionSummary: '{{observers}} наблюдателей · {{observations}} наблюдений',
+    dominantScope: 'Доминирует: {{scope}}',
   },
   notFound: {
     title: 'Страница не найдена',
@@ -1282,6 +1300,9 @@ const nl = {
     liveFeed: 'Live feed', waiting: 'Wachten…',
     repeaters: 'Repeaters', companions: 'Metgezellen', roomServers: 'Kamerservers', sensors: 'Sensoren',
     center: 'Centreren', detailsLink: 'Details →',
+    layers: 'Lagen', scopedRegions: 'Scope-regio’s', allScopes: 'Alle scopes',
+    scopeRegionSummary: '{{observers}} waarnemers · {{observations}} waarnemingen',
+    dominantScope: 'Dominant: {{scope}}',
   },
   notFound: {
     title: 'Pagina niet gevonden',
@@ -1457,6 +1478,9 @@ const es = {
     liveFeed: 'Transmisión en vivo', waiting: 'Esperando…',
     repeaters: 'Repetidores', companions: 'Compañeros', roomServers: 'Servidores de sala', sensors: 'Sensores',
     center: 'Centrar', detailsLink: 'Detalles →',
+    layers: 'Capas', scopedRegions: 'Regiones de alcance', allScopes: 'Todos los alcances',
+    scopeRegionSummary: '{{observers}} observadores · {{observations}} observaciones',
+    dominantScope: 'Dominante: {{scope}}',
   },
   notFound: {
     title: 'Página no encontrada',
@@ -1632,6 +1656,9 @@ const cs = {
     liveFeed: 'Živý přenos', waiting: 'Čekání…',
     repeaters: 'Opakovače', companions: 'Průvodci', roomServers: 'Pokojové servery', sensors: 'Senzory',
     center: 'Vystředit', detailsLink: 'Detaily →',
+    layers: 'Vrstvy', scopedRegions: 'Regiony scope', allScopes: 'Všechny scope',
+    scopeRegionSummary: '{{observers}} pozorovatelů · {{observations}} pozorování',
+    dominantScope: 'Dominantní: {{scope}}',
   },
   notFound: {
     title: 'Stránka nenalezena',
@@ -1807,6 +1834,9 @@ const sk = {
     liveFeed: 'Živý prenos', waiting: 'Čakanie…',
     repeaters: 'Opakovače', companions: 'Sprievodcovia', roomServers: 'Izbové servery', sensors: 'Senzory',
     center: 'Vycentrovať', detailsLink: 'Detaily →',
+    layers: 'Vrstvy', scopedRegions: 'Regióny scope', allScopes: 'Všetky scope',
+    scopeRegionSummary: '{{observers}} pozorovateľov · {{observations}} pozorovaní',
+    dominantScope: 'Dominantné: {{scope}}',
   },
   notFound: {
     title: 'Stránka nenájdená',
@@ -1982,6 +2012,9 @@ const it = {
     liveFeed: 'Feed live', waiting: 'In attesa…',
     repeaters: 'Ripetitori', companions: 'Accompagnatori', roomServers: 'Server stanza', sensors: 'Sensori',
     center: 'Centra', detailsLink: 'Dettagli →',
+    layers: 'Livelli', scopedRegions: 'Regioni scope', allScopes: 'Tutti gli scope',
+    scopeRegionSummary: '{{observers}} osservatori · {{observations}} osservazioni',
+    dominantScope: 'Dominante: {{scope}}',
   },
   notFound: {
     title: 'Pagina non trovata',
