@@ -979,6 +979,158 @@ func (s *Store) nodeForObserverID(id string) *Node {
 	return nil
 }
 
+func (s *Store) MapHeat(f AnalyticsFilter) []MapHeatPoint {
+	return cachedAnalyticsForFilter(s, "mapHeat", f, func() []MapHeatPoint { return s.computeMapHeat(f) })
+}
+
+func (s *Store) computeMapHeat(f AnalyticsFilter) []MapHeatPoint {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	type acc struct {
+		node         *Node
+		packetCount  int
+		observeCount int
+	}
+	byNode := make(map[string]*acc)
+	add := func(n *Node, packets, observations int) {
+		if n == nil || n.Lat == nil || n.Lon == nil {
+			return
+		}
+		a := byNode[n.PubKey]
+		if a == nil {
+			a = &acc{node: n}
+			byNode[n.PubKey] = a
+		}
+		a.packetCount += packets
+		a.observeCount += observations
+	}
+
+	observerNodes := make(map[string]*Node, len(s.byObserver))
+	for id := range s.byObserver {
+		observerNodes[id] = s.nodeForObserverID(id)
+	}
+
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		if dec := tx.Decoded(); dec != nil {
+			if pk, _ := dec["pubKey"].(string); pk != "" {
+				add(s.nodes[pk], 1, 0)
+			}
+		}
+		for _, o := range tx.Observations {
+			if f.obsOK(o) {
+				add(observerNodes[o.ObserverID], 0, 1)
+			}
+		}
+	}
+
+	out := make([]MapHeatPoint, 0, len(byNode))
+	for _, a := range byNode {
+		weight := a.packetCount + a.observeCount
+		if weight == 0 {
+			continue
+		}
+		out = append(out, MapHeatPoint{
+			PubKey: a.node.PubKey, Name: a.node.Name, Role: a.node.Role,
+			Lat: *a.node.Lat, Lon: *a.node.Lon,
+			PacketCount: a.packetCount, ObservationCount: a.observeCount, Weight: weight,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Weight > out[j].Weight })
+	return out
+}
+
+func (s *Store) DirectLinks(f AnalyticsFilter) []DirectLink {
+	return cachedAnalyticsForFilter(s, "directLinks", f, func() []DirectLink { return s.computeDirectLinks(f) })
+}
+
+func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	observerNodes := make(map[string]*Node, len(s.byObserver))
+	for id := range s.byObserver {
+		observerNodes[id] = s.nodeForObserverID(id)
+	}
+
+	type acc struct {
+		a, b         *Node
+		count        int
+		snrSum       float64
+		snrN         int
+		rssiSum      float64
+		rssiN        int
+		lastSeen     string
+	}
+	links := make(map[string]*acc)
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		dec := tx.Decoded()
+		if dec == nil {
+			continue
+		}
+		pubKey, _ := dec["pubKey"].(string)
+		src := s.nodes[pubKey]
+		if src == nil || src.Lat == nil || src.Lon == nil {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) || len(o.Path) > 0 {
+				continue
+			}
+			dst := observerNodes[o.ObserverID]
+			if dst == nil || dst.Lat == nil || dst.Lon == nil || dst.PubKey == src.PubKey {
+				continue
+			}
+			a, b := src, dst
+			if a.PubKey > b.PubKey {
+				a, b = b, a
+			}
+			key := a.PubKey + "|" + b.PubKey
+			l := links[key]
+			if l == nil {
+				l = &acc{a: a, b: b}
+				links[key] = l
+			}
+			l.count++
+			if o.SNR != nil {
+				l.snrSum += *o.SNR
+				l.snrN++
+			}
+			if o.RSSI != nil {
+				l.rssiSum += *o.RSSI
+				l.rssiN++
+			}
+			if o.Timestamp > l.lastSeen {
+				l.lastSeen = o.Timestamp
+			}
+		}
+	}
+
+	out := make([]DirectLink, 0, len(links))
+	for _, l := range links {
+		row := DirectLink{
+			NodeA: DirectLinkNode{PubKey: l.a.PubKey, Name: l.a.Name, Role: l.a.Role, Lat: *l.a.Lat, Lon: *l.a.Lon},
+			NodeB: DirectLinkNode{PubKey: l.b.PubKey, Name: l.b.Name, Role: l.b.Role, Lat: *l.b.Lat, Lon: *l.b.Lon},
+			Count: l.count, LastSeen: l.lastSeen,
+		}
+		if l.snrN > 0 {
+			row.AvgSNR = l.snrSum / float64(l.snrN)
+		}
+		if l.rssiN > 0 {
+			row.AvgRSSI = l.rssiSum / float64(l.rssiN)
+		}
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
+	return out
+}
+
 // normalizeIATA returns the uppercase IATA code, or "" when the value is not a
 // real assigned IATA location code. New data is validated at ingest, but rows
 // written before validation existed can still carry junk — this keeps them out
@@ -2858,6 +3010,34 @@ type ScopeRegionScope struct {
 	Scope    string `json:"scope"`
 	PktCount int    `json:"pktCount"`
 	ObsCount int    `json:"obsCount"`
+}
+
+type MapHeatPoint struct {
+	PubKey           string  `json:"pubKey"`
+	Name             string  `json:"name"`
+	Role             string  `json:"role"`
+	Lat              float64 `json:"lat"`
+	Lon              float64 `json:"lon"`
+	PacketCount      int     `json:"packetCount"`
+	ObservationCount int     `json:"observationCount"`
+	Weight           int     `json:"weight"`
+}
+
+type DirectLink struct {
+	NodeA   DirectLinkNode `json:"nodeA"`
+	NodeB   DirectLinkNode `json:"nodeB"`
+	Count   int            `json:"count"`
+	AvgSNR  float64        `json:"avgSnr"`
+	AvgRSSI float64        `json:"avgRssi"`
+	LastSeen string         `json:"lastSeen"`
+}
+
+type DirectLinkNode struct {
+	PubKey string  `json:"pubKey"`
+	Name   string  `json:"name"`
+	Role   string  `json:"role"`
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
 }
 
 type ScopeBucket struct {

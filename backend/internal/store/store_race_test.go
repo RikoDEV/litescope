@@ -363,6 +363,38 @@ func TestScopeRegionsUsesLocatedObservers(t *testing.T) {
 	}
 }
 
+func TestMapHeatAndDirectLinks(t *testing.T) {
+	srcLat, srcLon := 52.0, 21.0
+	obsLat, obsLon := 52.2, 21.2
+	snr := 7.0
+	s := New()
+	s.Load(
+		[]*db.TxRow{{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"srcNode"}`}},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obsNode", ObserverIATA: "WAW", SNR: &snr, PathJSON: "[]", Timestamp: "2024-01-01T00:00:01Z"},
+			{ID: 2, TxID: 1, ObserverID: "obsNode", ObserverIATA: "WAW", SNR: &snr, PathJSON: `["aa"]`, Timestamp: "2024-01-01T00:00:02Z"},
+		},
+		[]*db.NodeRow{
+			{PubKey: "srcNode", Name: "Source", Role: "companion", Lat: &srcLat, Lon: &srcLon},
+			{PubKey: "obsNode", Name: "Observer", Role: "repeater", Lat: &obsLat, Lon: &obsLon},
+		},
+		nil,
+	)
+
+	heat := s.MapHeat(AnalyticsFilter{})
+	if len(heat) != 2 {
+		t.Fatalf("expected source and observer heat points, got %+v", heat)
+	}
+
+	links := s.DirectLinks(AnalyticsFilter{})
+	if len(links) != 1 {
+		t.Fatalf("expected one direct link, got %+v", links)
+	}
+	if links[0].Count != 1 || links[0].AvgSNR != 7.0 {
+		t.Fatalf("unexpected direct link aggregate: %+v", links[0])
+	}
+}
+
 func TestIATAsFiltersInvalidRegionSegments(t *testing.T) {
 	s := New()
 	s.Load(

@@ -182,6 +182,8 @@ const en = {
     layers: 'Layers', scopedRegions: 'Scoped regions', allScopes: 'All scopes',
     scopeRegionSummary: '{{observers}} observers · {{observations}} observations',
     dominantScope: 'Dominant: {{scope}}',
+    heatMap: 'Heat map', neighbors: 'Neighbors', heatWeight: '{{count}} seen events',
+    heatBreakdown: '{{packets}} packets · {{observations}} observations', directPackets: '{{count}} direct packets',
   },
   notFound: {
     title: 'Page not found',
@@ -382,6 +384,8 @@ const pl: typeof en = {
     layers: 'Warstwy', scopedRegions: 'Regiony zakresów', allScopes: 'Wszystkie zakresy',
     scopeRegionSummary: '{{observers}} obserwatorów · {{observations}} obserwacji',
     dominantScope: 'Dominujący: {{scope}}',
+    heatMap: 'Mapa ciepła', neighbors: 'Sąsiedzi', heatWeight: '{{count}} zdarzeń',
+    heatBreakdown: '{{packets}} pakietów · {{observations}} obserwacji', directPackets: '{{count}} pakietów bezpośrednich',
   },
   notFound: {
     title: 'Strona nie istnieje',
@@ -582,6 +586,8 @@ const de: typeof en = {
     layers: 'Ebenen', scopedRegions: 'Scope-Regionen', allScopes: 'Alle Scopes',
     scopeRegionSummary: '{{observers}} Beobachter · {{observations}} Beobachtungen',
     dominantScope: 'Dominant: {{scope}}',
+    heatMap: 'Heatmap', neighbors: 'Nachbarn', heatWeight: '{{count}} Ereignisse',
+    heatBreakdown: '{{packets}} Pakete · {{observations}} Beobachtungen', directPackets: '{{count}} direkte Pakete',
   },
   notFound: {
     title: 'Seite nicht gefunden',
@@ -769,6 +775,8 @@ const fr = {
     layers: 'Couches', scopedRegions: 'Régions de portée', allScopes: 'Toutes les portées',
     scopeRegionSummary: '{{observers}} observateurs · {{observations}} observations',
     dominantScope: 'Dominant : {{scope}}',
+    heatMap: 'Carte de chaleur', neighbors: 'Voisins', heatWeight: '{{count}} événements vus',
+    heatBreakdown: '{{packets}} paquets · {{observations}} observations', directPackets: '{{count}} paquets directs',
   },
   notFound: {
     title: 'Page introuvable',
@@ -947,6 +955,8 @@ const uk = {
     layers: 'Шари', scopedRegions: 'Регіони scope', allScopes: 'Усі scope',
     scopeRegionSummary: '{{observers}} спостерігачів · {{observations}} спостережень',
     dominantScope: 'Домінує: {{scope}}',
+    heatMap: 'Теплова карта', neighbors: 'Сусіди', heatWeight: '{{count}} подій',
+    heatBreakdown: '{{packets}} пакетів · {{observations}} спостережень', directPackets: '{{count}} прямих пакетів',
   },
   notFound: {
     title: 'Сторінку не знайдено',
@@ -1125,6 +1135,8 @@ const ru = {
     layers: 'Слои', scopedRegions: 'Регионы scope', allScopes: 'Все scope',
     scopeRegionSummary: '{{observers}} наблюдателей · {{observations}} наблюдений',
     dominantScope: 'Доминирует: {{scope}}',
+    heatMap: 'Тепловая карта', neighbors: 'Соседи', heatWeight: '{{count}} событий',
+    heatBreakdown: '{{packets}} пакетов · {{observations}} наблюдений', directPackets: '{{count}} прямых пакетов',
   },
   notFound: {
     title: 'Страница не найдена',
@@ -1303,6 +1315,8 @@ const nl = {
     layers: 'Lagen', scopedRegions: 'Scope-regio’s', allScopes: 'Alle scopes',
     scopeRegionSummary: '{{observers}} waarnemers · {{observations}} waarnemingen',
     dominantScope: 'Dominant: {{scope}}',
+    heatMap: 'Heatmap', neighbors: 'Buren', heatWeight: '{{count}} gebeurtenissen',
+    heatBreakdown: '{{packets}} pakketten · {{observations}} waarnemingen', directPackets: '{{count}} directe pakketten',
   },
   notFound: {
     title: 'Pagina niet gevonden',
@@ -1481,6 +1495,8 @@ const es = {
     layers: 'Capas', scopedRegions: 'Regiones de alcance', allScopes: 'Todos los alcances',
     scopeRegionSummary: '{{observers}} observadores · {{observations}} observaciones',
     dominantScope: 'Dominante: {{scope}}',
+    heatMap: 'Mapa de calor', neighbors: 'Vecinos', heatWeight: '{{count}} eventos vistos',
+    heatBreakdown: '{{packets}} paquetes · {{observations}} observaciones', directPackets: '{{count}} paquetes directos',
   },
   notFound: {
     title: 'Página no encontrada',
@@ -1659,6 +1675,8 @@ const cs = {
     layers: 'Vrstvy', scopedRegions: 'Regiony scope', allScopes: 'Všechny scope',
     scopeRegionSummary: '{{observers}} pozorovatelů · {{observations}} pozorování',
     dominantScope: 'Dominantní: {{scope}}',
+    heatMap: 'Heat mapa', neighbors: 'Sousedé', heatWeight: '{{count}} událostí',
+    heatBreakdown: '{{packets}} paketů · {{observations}} pozorování', directPackets: '{{count}} přímých paketů',
   },
   notFound: {
     title: 'Stránka nenalezena',
@@ -1837,6 +1855,8 @@ const sk = {
     layers: 'Vrstvy', scopedRegions: 'Regióny scope', allScopes: 'Všetky scope',
     scopeRegionSummary: '{{observers}} pozorovateľov · {{observations}} pozorovaní',
     dominantScope: 'Dominantné: {{scope}}',
+    heatMap: 'Heat mapa', neighbors: 'Susedia', heatWeight: '{{count}} udalostí',
+    heatBreakdown: '{{packets}} paketov · {{observations}} pozorovaní', directPackets: '{{count}} priamych paketov',
   },
   notFound: {
     title: 'Stránka nenájdená',
@@ -2015,6 +2035,8 @@ const it = {
     layers: 'Livelli', scopedRegions: 'Regioni scope', allScopes: 'Tutti gli scope',
     scopeRegionSummary: '{{observers}} osservatori · {{observations}} osservazioni',
     dominantScope: 'Dominante: {{scope}}',
+    heatMap: 'Mappa calore', neighbors: 'Vicini', heatWeight: '{{count}} eventi visti',
+    heatBreakdown: '{{packets}} pacchetti · {{observations}} osservazioni', directPackets: '{{count}} pacchetti diretti',
   },
   notFound: {
     title: 'Pagina non trovata',

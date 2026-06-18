@@ -92,6 +92,34 @@ export interface ScopeRegion {
   scopes: Array<{ scope: string; pktCount: number; obsCount: number }>
 }
 
+export interface MapHeatPoint {
+  pubKey: string
+  name: string
+  role: string
+  lat: number
+  lon: number
+  packetCount: number
+  observationCount: number
+  weight: number
+}
+
+export interface DirectLink {
+  nodeA: DirectLinkNode
+  nodeB: DirectLinkNode
+  count: number
+  avgSnr: number
+  avgRssi: number
+  lastSeen: string
+}
+
+export interface DirectLinkNode {
+  pubKey: string
+  name: string
+  role: string
+  lat: number
+  lon: number
+}
+
 export interface Channel {
   hash: string
   name: string

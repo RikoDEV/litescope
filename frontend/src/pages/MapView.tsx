@@ -27,7 +27,7 @@ import LayersIcon from '@mui/icons-material/Layers'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
-import type { Node, NodeOverview, Packet, RFStats, ScopeRegion } from '../types'
+import type { DirectLink, MapHeatPoint, Node, NodeOverview, Packet, RFStats, ScopeRegion } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
@@ -80,9 +80,13 @@ export default function MapView() {
   const clusterGroup = useRef<L.MarkerClusterGroup | null>(null)
   const markersRef   = useRef<Map<string, L.Marker>>(new Map())
   const scopeLayerRef = useRef<L.LayerGroup | null>(null)
+  const heatLayerRef = useRef<L.LayerGroup | null>(null)
+  const neighborLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [nodes,    setNodes]    = useState<Node[]>([])
   const [scopeRegions, setScopeRegions] = useState<ScopeRegion[]>([])
+  const [heatPoints, setHeatPoints] = useState<MapHeatPoint[]>([])
+  const [directLinks, setDirectLinks] = useState<DirectLink[]>([])
   const [selected, setSelected] = useState<Node | null>(null)
   const [overview, setOverview] = useState<NodeOverview | null>(null)
   const [rf,       setRF]       = useState<RFStats | null>(null)
@@ -104,6 +108,8 @@ export default function MapView() {
   const [lastHeardFilter, setLastHeardFilter] = useState('30d')
   const [byteSizeFilter, setByteSizeFilter] = useState<'all' | '1' | '2' | '3'>('all')
   const [showScopeRegions, setShowScopeRegions] = useState(false)
+  const [showHeatMap, setShowHeatMap] = useState(false)
+  const [showNeighbors, setShowNeighbors] = useState(false)
   const [scopeFilter, setScopeFilter] = useState('all')
   const [showLabels, setShowLabels] = useState(false)
   const [quickJump, setQuickJump] = useState('')
@@ -180,10 +186,15 @@ export default function MapView() {
       },
     })
     cluster.addTo(map)
+    heatLayerRef.current = L.layerGroup().addTo(map)
+    neighborLayerRef.current = L.layerGroup().addTo(map)
     scopeLayerRef.current = L.layerGroup().addTo(map)
     clusterGroup.current = cluster
     mapInstance.current = map
-    return () => { map.remove(); mapInstance.current = null; clusterGroup.current = null; scopeLayerRef.current = null }
+    return () => {
+      map.remove(); mapInstance.current = null; clusterGroup.current = null
+      scopeLayerRef.current = null; heatLayerRef.current = null; neighborLayerRef.current = null
+    }
   }, [])
 
   // Swap tile layer when theme changes
@@ -241,6 +252,82 @@ export default function MapView() {
     const id = window.setInterval(load, 30_000)
     return () => { cancelled = true; window.clearInterval(id) }
   }, [showScopeRegions, scopeParams])
+
+  useEffect(() => {
+    if (!showHeatMap && !showNeighbors) return
+    let cancelled = false
+    const load = () => {
+      if (showHeatMap) {
+        api.analyticsMapHeat(scopeParams)
+          .then(points => { if (!cancelled) setHeatPoints(points ?? []) })
+          .catch(() => { if (!cancelled) setHeatPoints([]) })
+      }
+      if (showNeighbors) {
+        api.analyticsDirectLinks(scopeParams)
+          .then(links => { if (!cancelled) setDirectLinks(links ?? []) })
+          .catch(() => { if (!cancelled) setDirectLinks([]) })
+      }
+    }
+    load()
+    const id = window.setInterval(load, 30_000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [showHeatMap, showNeighbors, scopeParams])
+
+  useEffect(() => {
+    const layer = heatLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    if (!showHeatMap) return
+    const maxWeight = Math.max(1, ...heatPoints.map(p => p.weight))
+    for (const p of heatPoints) {
+      const intensity = Math.sqrt(p.weight / maxWeight)
+      const color = intensity > 0.66 ? '#ef4444' : intensity > 0.33 ? '#f59e0b' : '#22c55e'
+      const radius = 12_000 + intensity * 130_000
+      L.circle([p.lat, p.lon], {
+        radius,
+        color,
+        weight: 1,
+        opacity: 0.55,
+        fillColor: color,
+        fillOpacity: 0.14 + intensity * 0.22,
+        interactive: true,
+      }).bindTooltip(
+        `<div style="font-family:system-ui;min-width:150px">
+          <b>${escapeHtml(p.name || p.pubKey.slice(0, 12))}</b>
+          <div style="color:#64748b">${escapeHtml(p.role)}</div>
+          <div>${escapeHtml(t('map.heatWeight', { count: p.weight.toLocaleString() }))}</div>
+          <div style="color:#64748b">${escapeHtml(t('map.heatBreakdown', { packets: p.packetCount.toLocaleString(), observations: p.observationCount.toLocaleString() }))}</div>
+        </div>`,
+        { sticky: true },
+      ).addTo(layer)
+    }
+  }, [showHeatMap, heatPoints, t])
+
+  useEffect(() => {
+    const layer = neighborLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    if (!showNeighbors) return
+    const maxCount = Math.max(1, ...directLinks.map(l => l.count))
+    for (const link of directLinks) {
+      const intensity = Math.sqrt(link.count / maxCount)
+      const color = link.avgSnr >= 8 ? '#22c55e' : link.avgSnr >= 0 ? '#f59e0b' : md3.error
+      const labelA = link.nodeA.name || link.nodeA.pubKey.slice(0, 10)
+      const labelB = link.nodeB.name || link.nodeB.pubKey.slice(0, 10)
+      L.polyline([[link.nodeA.lat, link.nodeA.lon], [link.nodeB.lat, link.nodeB.lon]], {
+        color,
+        weight: 1.2 + intensity * 4,
+        opacity: 0.25 + intensity * 0.55,
+      }).bindTooltip(
+        `<div style="font-family:system-ui;min-width:170px">
+          <b>${escapeHtml(labelA)} ↔ ${escapeHtml(labelB)}</b>
+          <div>${escapeHtml(t('map.directPackets', { count: link.count.toLocaleString() }))}</div>
+          <div style="color:#64748b">SNR ${link.avgSnr.toFixed(1)} · RSSI ${link.avgRssi.toFixed(1)}</div>
+        </div>`,
+        { sticky: true },
+      ).addTo(layer)
+    }
+  }, [showNeighbors, directLinks, md3.error, t])
 
   const scopeOptions = useMemo(() => {
     const set = new Set<string>()
@@ -492,6 +579,32 @@ export default function MapView() {
             {/* Scoped regions overlay */}
             <Box>
               <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>{t('map.layers')}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.4 }}>
+                <Checkbox
+                  size="small"
+                  checked={showHeatMap}
+                  onChange={e => setShowHeatMap(e.target.checked)}
+                  sx={{ p: 0.25, color: '#f59e0b', '&.Mui-checked': { color: '#f59e0b' } }}
+                />
+                <LayersIcon sx={{ fontSize: 14, color: '#f59e0b' }} />
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11, flex: 1 }}>{t('map.heatMap')}</Typography>
+                {showHeatMap && (
+                  <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{heatPoints.length}</Typography>
+                )}
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.4 }}>
+                <Checkbox
+                  size="small"
+                  checked={showNeighbors}
+                  onChange={e => setShowNeighbors(e.target.checked)}
+                  sx={{ p: 0.25, color: '#14b8a6', '&.Mui-checked': { color: '#14b8a6' } }}
+                />
+                <LayersIcon sx={{ fontSize: 14, color: '#14b8a6' }} />
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11, flex: 1 }}>{t('map.neighbors')}</Typography>
+                {showNeighbors && (
+                  <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{directLinks.length}</Typography>
+                )}
+              </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: showScopeRegions ? 0.75 : 0 }}>
                 <Checkbox
                   size="small"

@@ -56,6 +56,8 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/analytics/hashes", s.getAnalyticsHashes).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/scope", s.getAnalyticsScope).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/scope-regions", s.getAnalyticsScopeRegions).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/map-heat", s.getAnalyticsMapHeat).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/direct-links", s.getAnalyticsDirectLinks).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/channels", s.getChannelAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/distance", s.getAnalyticsDistance).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}/analytics", s.getObserverAnalytics).Methods("GET", "OPTIONS")
@@ -542,6 +544,14 @@ func (s *Server) getAnalyticsScope(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAnalyticsScopeRegions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.Store.ScopeRegions(analyticsFilter(r)))
+}
+
+func (s *Server) getAnalyticsMapHeat(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.Store.MapHeat(analyticsFilter(r)))
+}
+
+func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.Store.DirectLinks(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsDistance(w http.ResponseWriter, r *http.Request) {

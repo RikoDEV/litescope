@@ -1,4 +1,4 @@
-import type { Channel, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats, ScopeRegion } from '../types'
+import type { Channel, DirectLink, MapHeatPoint, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats, ScopeRegion } from '../types'
 import { getEnv } from '../env'
 
 const BASE = getEnv('VITE_API_URL')
@@ -162,6 +162,12 @@ export const api = {
 
   analyticsScopeRegions: (p?: AnalyticsParams) =>
     get<ScopeRegion[]>(`/api/analytics/scope-regions${aq(p)}`),
+
+  analyticsMapHeat: (p?: AnalyticsParams) =>
+    get<MapHeatPoint[]>(`/api/analytics/map-heat${aq(p)}`),
+
+  analyticsDirectLinks: (p?: AnalyticsParams) =>
+    get<DirectLink[]>(`/api/analytics/direct-links${aq(p)}`),
 
   analyticsHashes: (p?: AnalyticsParams) =>
     get<{
