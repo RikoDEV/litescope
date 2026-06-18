@@ -81,6 +81,17 @@ export interface Observer {
   noiseFloor?: number | undefined
 }
 
+export interface ScopeRegion {
+  region: string
+  lat: number
+  lon: number
+  observerCount: number
+  pktCount: number
+  obsCount: number
+  dominantScope: string
+  scopes: Array<{ scope: string; pktCount: number; obsCount: number }>
+}
+
 export interface Channel {
   hash: string
   name: string

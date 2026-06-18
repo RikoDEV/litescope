@@ -40,15 +40,19 @@ func main() {
 	log.Printf("SQLite opened: %s", cfg.DBPath)
 
 	// Load everything into memory
+	loadStart := time.Now()
 	txs, obss, nodes, observers, err := database.LoadAll()
 	if err != nil {
 		log.Fatalf("load: %v", err)
 	}
+	dbLoadDur := time.Since(loadStart)
+	indexStart := time.Now()
 	st := store.New()
 	st.Load(txs, obss, nodes, observers)
+	indexDur := time.Since(indexStart)
 	lastTxID, lastObsID := st.LastIDs()
-	log.Printf("loaded %d packets, %d observations, %d nodes, %d observers",
-		len(txs), len(obss), len(nodes), len(observers))
+	log.Printf("loaded %d packets, %d observations, %d nodes, %d observers (db=%s, index=%s)",
+		len(txs), len(obss), len(nodes), len(observers), dbLoadDur.Round(time.Millisecond), indexDur.Round(time.Millisecond))
 
 	hub := api.NewHub(cfg.AllowedOrigins)
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)

@@ -23,10 +23,11 @@ import { alpha, useTheme } from '@mui/material/styles'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import MapIcon from '@mui/icons-material/Map'
+import LayersIcon from '@mui/icons-material/Layers'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
-import type { Node, NodeOverview, Packet, RFStats } from '../types'
+import type { Node, NodeOverview, Packet, RFStats, ScopeRegion } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
@@ -43,6 +44,7 @@ L.Icon.Default.mergeOptions({
 })
 
 const ACTIVE_MS = 24 * 3600e3
+const SCOPE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316']
 
 const LH_MS: Record<string, number> = {
   '1h': 3600e3, '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*24*3600e3, '30d': 30*24*3600e3,
@@ -77,8 +79,10 @@ export default function MapView() {
   const mapInstance  = useRef<L.Map | null>(null)
   const clusterGroup = useRef<L.MarkerClusterGroup | null>(null)
   const markersRef   = useRef<Map<string, L.Marker>>(new Map())
+  const scopeLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [nodes,    setNodes]    = useState<Node[]>([])
+  const [scopeRegions, setScopeRegions] = useState<ScopeRegion[]>([])
   const [selected, setSelected] = useState<Node | null>(null)
   const [overview, setOverview] = useState<NodeOverview | null>(null)
   const [rf,       setRF]       = useState<RFStats | null>(null)
@@ -99,6 +103,8 @@ export default function MapView() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'stale'>('all')
   const [lastHeardFilter, setLastHeardFilter] = useState('30d')
   const [byteSizeFilter, setByteSizeFilter] = useState<'all' | '1' | '2' | '3'>('all')
+  const [showScopeRegions, setShowScopeRegions] = useState(false)
+  const [scopeFilter, setScopeFilter] = useState('all')
   const [showLabels, setShowLabels] = useState(false)
   const [quickJump, setQuickJump] = useState('')
   const [iatas, setIatas] = useState<string[]>([])
@@ -110,6 +116,12 @@ export default function MapView() {
   const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
 
   const roleColor = (r: string) => roleColorFn(r, md3)
+  const scopeColor = useCallback((scope: string) => {
+    if (scope === 'unknown') return md3.outline
+    let hash = 0
+    for (let i = 0; i < scope.length; i++) hash = (hash * 31 + scope.charCodeAt(i)) | 0
+    return SCOPE_COLORS[Math.abs(hash) % SCOPE_COLORS.length] ?? SCOPE_COLORS[0]!
+  }, [md3.outline])
 
   // Shared ref so the markercluster iconCreateFunction (a static closure) can read live theme values
   const clusterCtxRef = useRef({ mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface })
@@ -168,9 +180,10 @@ export default function MapView() {
       },
     })
     cluster.addTo(map)
+    scopeLayerRef.current = L.layerGroup().addTo(map)
     clusterGroup.current = cluster
     mapInstance.current = map
-    return () => { map.remove(); mapInstance.current = null; clusterGroup.current = null }
+    return () => { map.remove(); mapInstance.current = null; clusterGroup.current = null; scopeLayerRef.current = null }
   }, [])
 
   // Swap tile layer when theme changes
@@ -204,6 +217,84 @@ export default function MapView() {
     })
     api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {})
   }, [])
+
+  const scopeParams = useMemo(() => {
+    const hours = lastHeardFilter === '1h' ? 1 :
+                  lastHeardFilter === '6h' ? 6 :
+                  lastHeardFilter === '24h' ? 24 :
+                  lastHeardFilter === '7d' ? 168 : undefined
+    return {
+      hours,
+      regions: [...regionFilter],
+    }
+  }, [lastHeardFilter, regionFilter])
+
+  useEffect(() => {
+    if (!showScopeRegions) return
+    let cancelled = false
+    const load = () => {
+      api.analyticsScopeRegions(scopeParams)
+        .then(regions => { if (!cancelled) setScopeRegions(regions ?? []) })
+        .catch(() => { if (!cancelled) setScopeRegions([]) })
+    }
+    load()
+    const id = window.setInterval(load, 30_000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [showScopeRegions, scopeParams])
+
+  const scopeOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of scopeRegions) for (const s of r.scopes) set.add(s.scope)
+    return [...set].sort((a, b) => a === 'unknown' ? 1 : b === 'unknown' ? -1 : a.localeCompare(b))
+  }, [scopeRegions])
+
+  useEffect(() => {
+    const layer = scopeLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    if (!showScopeRegions) return
+
+    const filtered = scopeRegions
+      .map(region => {
+        if (scopeFilter === 'all') return region
+        const scope = region.scopes.find(s => s.scope === scopeFilter)
+        if (!scope) return null
+        return {
+          ...region,
+          pktCount: scope.pktCount,
+          obsCount: scope.obsCount,
+          dominantScope: scope.scope,
+          scopes: [scope],
+        }
+      })
+      .filter((r): r is ScopeRegion => Boolean(r))
+
+    const maxObs = Math.max(1, ...filtered.map(r => r.obsCount))
+    for (const region of filtered) {
+      const color = scopeColor(region.dominantScope)
+      const radius = 25_000 + Math.sqrt(region.obsCount / maxObs) * 260_000
+      const topScopes = region.scopes.slice(0, 4)
+        .map(s => `<div style="display:flex;justify-content:space-between;gap:12px"><span>${escapeHtml(s.scope)}</span><b>${s.obsCount.toLocaleString()}</b></div>`)
+        .join('')
+      const circle = L.circle([region.lat, region.lon], {
+        radius,
+        color,
+        weight: 1.5,
+        opacity: 0.85,
+        fillColor: color,
+        fillOpacity: 0.16,
+      }).bindTooltip(
+        `<div style="font-family:system-ui;min-width:160px">
+          <b>${escapeHtml(region.region)}</b>
+          <div style="margin:2px 0;color:#64748b">${region.observerCount} observer${region.observerCount === 1 ? '' : 's'} · ${region.obsCount.toLocaleString()} observations</div>
+          <div style="color:${color};font-weight:700">Dominant: ${escapeHtml(region.dominantScope)}</div>
+          ${topScopes ? `<div style="margin-top:4px">${topScopes}</div>` : ''}
+        </div>`,
+        { sticky: true },
+      )
+      layer.addLayer(circle)
+    }
+  }, [showScopeRegions, scopeRegions, scopeFilter, scopeColor])
 
   // Sync markers with current filters
   useEffect(() => {
@@ -397,6 +488,44 @@ export default function MapView() {
                 <Divider sx={{ opacity: 0.4 }} />
               </>
             )}
+
+            {/* Scoped regions overlay */}
+            <Box>
+              <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 0.5 }}>Layers</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: showScopeRegions ? 0.75 : 0 }}>
+                <Checkbox
+                  size="small"
+                  checked={showScopeRegions}
+                  onChange={e => setShowScopeRegions(e.target.checked)}
+                  sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
+                />
+                <LayersIcon sx={{ fontSize: 14, color: md3.primary }} />
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11, flex: 1 }}>Scoped regions</Typography>
+                {showScopeRegions && (
+                  <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{scopeRegions.length}</Typography>
+                )}
+              </Box>
+              {showScopeRegions && (
+                <Select
+                  size="small"
+                  value={scopeFilter}
+                  onChange={e => setScopeFilter(e.target.value)}
+                  sx={{ width: '100%', height: 28, fontSize: 11 }}
+                >
+                  <MenuItem value="all" sx={{ fontSize: 12 }}>All scopes</MenuItem>
+                  {scopeOptions.map(scope => (
+                    <MenuItem key={scope} value={scope} sx={{ fontSize: 12 }}>
+                      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                        <Box component="span" sx={{ width: 8, height: 8, borderRadius: '50%', background: scopeColor(scope) }} />
+                        {scope}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              )}
+            </Box>
+
+            <Divider sx={{ opacity: 0.4 }} />
 
             {/* Byte Size */}
             <Box>

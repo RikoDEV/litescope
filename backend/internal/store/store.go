@@ -275,6 +275,20 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.packets = make([]*Tx, 0, len(txs))
+	s.byHash = make(map[string]*Tx, len(txs))
+	s.byTxID = make(map[int64]*Tx, len(txs))
+	s.byObsID = make(map[int64]*Obs, len(obss))
+	s.byObserver = make(map[string][]*Obs, len(obs))
+	s.byNode = make(map[string][]*Tx, len(nodes))
+	s.byRelayHop = make(map[string][]*Tx)
+	s.relayHopLengths = make(map[int]struct{})
+	s.nodes = make(map[string]*Node, len(nodes))
+	s.observers = make(map[string]*Observer, len(obs))
+	s.cache = make(map[string]cacheEntry)
+	s.lastTxID = 0
+	s.lastObsID = 0
+
 	for _, r := range txs {
 		t := txFromRow(r)
 		s.packets = append(s.packets, t)
@@ -290,12 +304,14 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 		s.byObserver[o.ObserverID] = append(s.byObserver[o.ObserverID], o)
 		if tx, ok := s.byTxID[o.TxID]; ok {
 			tx.Observations = append(tx.Observations, o)
-			s.indexByNode(tx)
 			s.indexRelayHops(tx, o)
 		}
 		if o.ID > s.lastObsID {
 			s.lastObsID = o.ID
 		}
+	}
+	for _, tx := range s.packets {
+		s.indexByNode(tx)
 	}
 	for _, r := range nodes {
 		s.nodes[r.PubKey] = nodeFromRow(r)
@@ -839,6 +855,128 @@ func (s *Store) IATAs() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ScopeRegions returns map-ready scoped-packet aggregates grouped by observer
+// IATA. Region centers are derived from located observer nodes.
+func (s *Store) ScopeRegions(f AnalyticsFilter) []ScopeRegion {
+	return cachedAnalyticsForFilter(s, "scopeRegions", f, func() []ScopeRegion { return s.computeScopeRegions(f) })
+}
+
+func (s *Store) computeScopeRegions(f AnalyticsFilter) []ScopeRegion {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	observerNodes := make(map[string]*Node, len(s.byObserver))
+	for id := range s.byObserver {
+		observerNodes[id] = s.nodeForObserverID(id)
+	}
+
+	type acc struct {
+		region       string
+		latSum       float64
+		lonSum       float64
+		observerSeen map[string]bool
+		scopeObs     map[string]int
+		scopeTx      map[string]map[int64]bool
+	}
+	byRegion := make(map[string]*acc)
+	const unknownScope = "unknown"
+
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) {
+				continue
+			}
+			n := observerNodes[o.ObserverID]
+			if n == nil || n.Lat == nil || n.Lon == nil {
+				continue
+			}
+			region := normalizeIATA(o.ObserverIATA)
+			if region == "" {
+				continue
+			}
+			a := byRegion[region]
+			if a == nil {
+				a = &acc{
+					region:       region,
+					observerSeen: make(map[string]bool),
+					scopeObs:     make(map[string]int),
+					scopeTx:      make(map[string]map[int64]bool),
+				}
+				byRegion[region] = a
+			}
+			if !a.observerSeen[o.ObserverID] {
+				a.observerSeen[o.ObserverID] = true
+				a.latSum += *n.Lat
+				a.lonSum += *n.Lon
+			}
+			scope := o.FloodScope
+			if scope == "" {
+				scope = unknownScope
+			}
+			a.scopeObs[scope]++
+			if a.scopeTx[scope] == nil {
+				a.scopeTx[scope] = make(map[int64]bool)
+			}
+			a.scopeTx[scope][tx.ID] = true
+		}
+	}
+
+	out := make([]ScopeRegion, 0, len(byRegion))
+	for _, a := range byRegion {
+		observerCount := len(a.observerSeen)
+		if observerCount == 0 {
+			continue
+		}
+		scopes := make([]ScopeRegionScope, 0, len(a.scopeObs))
+		totalObs := 0
+		totalPkts := 0
+		dominant := ""
+		dominantObs := -1
+		for scope, obsCount := range a.scopeObs {
+			pktCount := len(a.scopeTx[scope])
+			totalObs += obsCount
+			totalPkts += pktCount
+			if obsCount > dominantObs || (obsCount == dominantObs && scope < dominant) {
+				dominant = scope
+				dominantObs = obsCount
+			}
+			scopes = append(scopes, ScopeRegionScope{Scope: scope, PktCount: pktCount, ObsCount: obsCount})
+		}
+		sort.Slice(scopes, func(i, j int) bool { return scopes[i].ObsCount > scopes[j].ObsCount })
+		out = append(out, ScopeRegion{
+			Region:        a.region,
+			Lat:           a.latSum / float64(observerCount),
+			Lon:           a.lonSum / float64(observerCount),
+			ObserverCount: observerCount,
+			PktCount:      totalPkts,
+			ObsCount:      totalObs,
+			DominantScope: dominant,
+			Scopes:        scopes,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ObsCount > out[j].ObsCount })
+	return out
+}
+
+func (s *Store) nodeForObserverID(id string) *Node {
+	if id == "" {
+		return nil
+	}
+	if n := s.nodes[id]; n != nil && n.Lat != nil && n.Lon != nil {
+		return n
+	}
+	uid := strings.ToUpper(id)
+	for pk, n := range s.nodes {
+		if n.Lat != nil && n.Lon != nil && strings.HasPrefix(strings.ToUpper(pk), uid) {
+			return n
+		}
+	}
+	return nil
 }
 
 // normalizeIATA returns the uppercase IATA code, or "" when the value is not a
@@ -1950,7 +2088,9 @@ func txFromRow(r *db.TxRow) *Tx {
 	}
 	// Decode once here, under the write lock held by Load/AddTxBatch, so that
 	// Tx.Decoded() is a race-free pure getter for read-lock holders.
-	json.Unmarshal([]byte(t.DecodedJSON), &t.DecodedPayload) //nolint:errcheck
+	if t.DecodedJSON != "" && t.DecodedJSON != "null" {
+		json.Unmarshal([]byte(t.DecodedJSON), &t.DecodedPayload) //nolint:errcheck
+	}
 	return t
 }
 
@@ -1964,7 +2104,9 @@ func obsFromRow(r *db.ObsRow) *Obs {
 	// Decode the hop path once here (under the store write lock held by
 	// Load/AddTxBatch) so every analytics pass reads o.Path instead of
 	// re-unmarshalling the JSON string on each request.
-	json.Unmarshal([]byte(r.PathJSON), &o.Path) //nolint:errcheck
+	if r.PathJSON != "" && r.PathJSON != "[]" && r.PathJSON != "null" {
+		json.Unmarshal([]byte(r.PathJSON), &o.Path) //nolint:errcheck
+	}
 	return o
 }
 
@@ -2699,6 +2841,23 @@ type ScopeStatsData struct {
 	TopObservers   []ScopeObserver `json:"topObservers"`
 	ActivityScopes []string        `json:"activityScopes"`
 	Activity       []ScopeHour     `json:"activity"`
+}
+
+type ScopeRegion struct {
+	Region        string             `json:"region"`
+	Lat           float64            `json:"lat"`
+	Lon           float64            `json:"lon"`
+	ObserverCount int                `json:"observerCount"`
+	PktCount      int                `json:"pktCount"`
+	ObsCount      int                `json:"obsCount"`
+	DominantScope string             `json:"dominantScope"`
+	Scopes        []ScopeRegionScope `json:"scopes"`
+}
+
+type ScopeRegionScope struct {
+	Scope    string `json:"scope"`
+	PktCount int    `json:"pktCount"`
+	ObsCount int    `json:"obsCount"`
 }
 
 type ScopeBucket struct {

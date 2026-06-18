@@ -295,30 +295,39 @@ export default function Layout() {
 
         {/* ── Footer — desktop only ── */}
         <Box component="footer" sx={{
-          display: { xs: 'none', md: 'flex' },
-          flexShrink: 0, alignItems: 'center', gap: 1,
-          px: 2, py: 0.75,
+          display: 'flex',
+          flexShrink: 0, alignItems: 'center', gap: { xs: 0.75, md: 1 },
+          px: { xs: 1.25, md: 2 }, py: { xs: 0.6, md: 0.75 },
           borderTop: `1px solid ${md3.outlineVariant}`,
           background: md3.surfaceContainerLow,
+          minWidth: 0,
         }}>
-          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: { xs: 10, md: 12 }, whiteSpace: 'nowrap' }}>
             © {new Date().getFullYear()} liteScope by{' '}
             <Typography component="a" href="https://riko.dev" target="_blank" rel="noopener noreferrer" variant="caption"
-              sx={{ color: md3.primary, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+              sx={{ color: md3.primary, textDecoration: 'none', fontSize: 'inherit', '&:hover': { textDecoration: 'underline' } }}>
               riko.dev
             </Typography>
           </Typography>
           <Box sx={{ width: 3, height: 3, borderRadius: '50%', background: md3.outline }} />
-          <Typography variant="caption" sx={{ color: md3.outline }}>{t('footer.tagline')}</Typography>
+          <Typography variant="caption" sx={{
+            display: { xs: 'none', sm: 'block' },
+            color: md3.outline,
+            fontSize: { sm: 10, md: 12 },
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>{t('footer.tagline')}</Typography>
           <Box sx={{ flex: 1 }} />
           <Typography component="a" href={buildIssueUrl()} target="_blank" rel="noopener noreferrer" variant="caption"
-            sx={{ color: md3.onSurfaceVariant, textDecoration: 'none', '&:hover': { color: md3.error, textDecoration: 'underline' } }}>
+            sx={{ display: { xs: 'none', sm: 'inline' }, color: md3.onSurfaceVariant, textDecoration: 'none', fontSize: { sm: 10, md: 12 }, whiteSpace: 'nowrap', '&:hover': { color: md3.error, textDecoration: 'underline' } }}>
             {t('error.reportIssue')}
           </Typography>
-          <Box sx={{ width: 3, height: 3, borderRadius: '50%', background: md3.outline }} />
+          <Box sx={{ display: { xs: 'none', sm: 'block' }, width: 3, height: 3, borderRadius: '50%', background: md3.outline }} />
           <Tooltip title="GitHub">
             <Typography component="a" href="https://github.com/RikoDEV/litescope" target="_blank" rel="noopener noreferrer" variant="caption"
-              sx={{ color: md3.primary, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+              sx={{ color: md3.primary, textDecoration: 'none', fontSize: { xs: 10, md: 12 }, whiteSpace: 'nowrap', '&:hover': { textDecoration: 'underline' } }}>
               {__APP_VERSION__}
             </Typography>
           </Tooltip>

@@ -1,4 +1,4 @@
-import type { Channel, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats } from '../types'
+import type { Channel, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats, ScopeRegion } from '../types'
 import { getEnv } from '../env'
 
 const BASE = getEnv('VITE_API_URL')
@@ -159,6 +159,9 @@ export const api = {
       activityScopes: string[]
       activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
     }>(`/api/analytics/scope${aq(p)}`),
+
+  analyticsScopeRegions: (p?: AnalyticsParams) =>
+    get<ScopeRegion[]>(`/api/analytics/scope-regions${aq(p)}`),
 
   analyticsHashes: (p?: AnalyticsParams) =>
     get<{

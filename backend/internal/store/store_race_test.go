@@ -310,6 +310,59 @@ func TestNodeRFStatsLivePackets(t *testing.T) {
 	}
 }
 
+func TestLoadIndexesNodePacketsOnce(t *testing.T) {
+	s := New()
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"nodeX","type":"ADVERT"}`},
+			{ID: 2, Hash: "b", RawHex: "01", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 4, DecodedJSON: `{"pubKey":"nodeY","type":"ADVERT"}`},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obs1", PathJSON: "[]"},
+			{ID: 2, TxID: 1, ObserverID: "obs2", PathJSON: "[]"},
+		},
+		nil, nil,
+	)
+
+	if got := s.byNode["nodeX"]; len(got) != 1 || got[0].Hash != "a" {
+		t.Fatalf("expected nodeX indexed once, got %v", got)
+	}
+	if got := s.byNode["nodeY"]; len(got) != 1 || got[0].Hash != "b" {
+		t.Fatalf("expected nodeY indexed despite no observations, got %v", got)
+	}
+}
+
+func TestScopeRegionsUsesLocatedObservers(t *testing.T) {
+	lat, lon := 52.0, 21.0
+	s := New()
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 2, DecodedJSON: `{}`},
+			{ID: 2, Hash: "b", RawHex: "00", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 2, DecodedJSON: `{}`},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obsNode", ObserverIATA: "WAW", FloodScope: "local", Timestamp: "2024-01-01T00:00:00Z"},
+			{ID: 2, TxID: 2, ObserverID: "obsNode", ObserverIATA: "WAW", FloodScope: "regional", Timestamp: "2024-01-01T00:00:01Z"},
+			{ID: 3, TxID: 2, ObserverID: "obsNode", ObserverIATA: "WAW", FloodScope: "regional", Timestamp: "2024-01-01T00:00:02Z"},
+			{ID: 4, TxID: 2, ObserverID: "missingLoc", ObserverIATA: "KRK", FloodScope: "local", Timestamp: "2024-01-01T00:00:03Z"},
+		},
+		[]*db.NodeRow{{PubKey: "obsNode", Name: "Observer", Role: "repeater", Lat: &lat, Lon: &lon}},
+		nil,
+	)
+
+	regions := s.ScopeRegions(AnalyticsFilter{})
+	if len(regions) != 1 {
+		t.Fatalf("expected one located region, got %d: %+v", len(regions), regions)
+	}
+	r := regions[0]
+	if r.Region != "WAW" || r.ObserverCount != 1 || r.ObsCount != 3 || r.PktCount != 2 || r.DominantScope != "regional" {
+		t.Fatalf("unexpected region aggregate: %+v", r)
+	}
+	if len(r.Scopes) != 2 || r.Scopes[0].Scope != "regional" || r.Scopes[0].ObsCount != 2 {
+		t.Fatalf("unexpected scope breakdown: %+v", r.Scopes)
+	}
+}
+
 func TestIATAsFiltersInvalidRegionSegments(t *testing.T) {
 	s := New()
 	s.Load(
