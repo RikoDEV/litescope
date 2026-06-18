@@ -16,6 +16,7 @@ import { LANGUAGES } from '../i18n'
 import { FlagByCC } from '../utils/flags'
 import CookieBanner from './CookieBanner'
 import ErrorBoundary from './ErrorBoundary'
+import Seo from './Seo'
 import SpotlightSearch from './SpotlightSearch'
 import { buildIssueUrl } from '../utils/issueUrl'
 
@@ -73,32 +74,6 @@ export default function Layout() {
     setWsStatus(stream.status)
     return stream.onStatus(setWsStatus)
   }, [])
-
-  // Dynamic page title
-  useEffect(() => {
-    const p = loc.pathname
-    const suffix = ' — liteScope'
-    const base   = 'liteScope — MeshCore Network Monitor'
-
-    const exact: Record<string, string> = {
-      '/':           base,
-      '/packets':    t('nav.packets') + suffix,
-      '/map':        t('nav.map')     + suffix,
-      '/live':       t('nav.live')    + suffix,
-      '/nodes':      t('nav.nodes')   + suffix,
-      '/channels':   t('nav.channels')  + suffix,
-      '/observers':  t('nav.observers') + suffix,
-      '/analytics':  t('nav.analytics') + suffix,
-      '/decode':     t('nav.decoder')   + suffix,
-    }
-
-    if (exact[p]) { document.title = exact[p]; return }
-
-    if (p.startsWith('/nodes/'))    { document.title = p.split('/')[2]?.slice(0, 16) + suffix; return }
-    if (p.startsWith('/channels/')) { document.title = '#' + p.split('/')[2] + suffix; return }
-
-    document.title = base
-  }, [loc.pathname, t])
 
   const statusColor =
     wsStatus === 'connected'  ? '#4caf50' :
@@ -203,6 +178,7 @@ export default function Layout() {
 
   return (
     <>
+    <Seo />
     <Box sx={{ display: 'flex', height: '100dvh', background: md3.background }}>
 
       {/* ── Navigation Rail — desktop only (md+) ── */}

@@ -223,6 +223,7 @@ cp frontend/.env.example frontend/.env.local
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_API_URL` | *(empty)* | Backend base URL (e.g. `https://litescope.example.com`). WebSocket URL is derived automatically (`http→ws`, `https→wss`). Leave empty for same-origin / Vite proxy. |
+| `VITE_SITE_URL` | `https://litescope.pages.dev` | Public frontend origin used to generate `sitemap.xml` and `robots.txt`. Set this to your custom domain in production. |
 
 When empty the frontend uses relative URLs, which works with the Vite proxy in dev and Caddy/nginx in production.
 
@@ -317,6 +318,7 @@ Set these in **Cloudflare Dashboard → Pages → litescope → Settings → Env
 | Variable | Example value | Description |
 |---|---|---|
 | `VITE_API_URL` | `https://litescope.example.com` | Your backend's public HTTPS URL. The WebSocket URL (`wss://...`) is derived automatically. |
+| `VITE_SITE_URL` | `https://litescope.example.com` | Your frontend's public HTTPS origin. Used for sitemap URLs submitted to Google. |
 
 Then rebuild and redeploy after setting them (Vite bakes them in at build time).
 
