@@ -226,6 +226,7 @@ cp frontend/.env.example frontend/.env.local
 | `VITE_SITE_URL` | *(empty)* | Public frontend origin used to generate `sitemap.xml` and the robots sitemap directive. Set this to your real production domain. |
 
 When empty the frontend uses relative URLs, which works with the Vite proxy in dev and Caddy/nginx in production.
+For Docker deployments, `VITE_SITE_URL` is read from `.env` when the frontend container starts and rewrites the served `robots.txt`/`sitemap.xml`.
 
 ---
 
