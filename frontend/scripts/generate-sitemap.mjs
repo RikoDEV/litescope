@@ -11,7 +11,7 @@ const siteUrl = (
   process.env.VITE_SITE_URL ||
   process.env.SITE_URL ||
   process.env.CF_PAGES_URL ||
-  'https://litescope.pages.dev'
+  ''
 ).replace(/\/+$/, '')
 
 const pages = [...seoSource.matchAll(/path:\s*'([^']+)'\s*,[\s\S]*?priority:\s*([0-9.]+)/g)]
@@ -31,7 +31,7 @@ const escapeXml = value => value
 
 const urlFor = path => `${siteUrl}${path === '/' ? '/' : path}`
 
-const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+const sitemap = siteUrl ? `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${pages.map(page => `  <url>
     <loc>${escapeXml(urlFor(page.path))}</loc>
@@ -40,14 +40,13 @@ ${pages.map(page => `  <url>
     <priority>${page.priority}</priority>
   </url>`).join('\n')}
 </urlset>
-`
+` : ''
 
 const robots = `User-agent: *
 Allow: /
-
-Sitemap: ${siteUrl}/sitemap.xml
-`
+${siteUrl ? `\nSitemap: ${siteUrl}/sitemap.xml\n` : ''}
+`.replace(/\n+$/, '\n')
 
 mkdirSync(dist, { recursive: true })
-writeFileSync(resolve(dist, 'sitemap.xml'), sitemap)
+if (siteUrl) writeFileSync(resolve(dist, 'sitemap.xml'), sitemap)
 writeFileSync(resolve(dist, 'robots.txt'), robots)
