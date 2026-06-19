@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -277,6 +278,31 @@ type channelDecryptResult struct {
 	Message   string
 }
 
+type channelKeyHashResult struct {
+	hash  byte
+	valid bool
+}
+
+// MeshCore prefixes group packets with the first byte of SHA-256(channel
+// secret). Cache that byte for configured keys so a packet only pays the HMAC
+// and AES cost for colliding channel candidates, matching the firmware's
+// searchChannelsByHash behavior instead of trying every configured channel.
+var channelKeyHashes sync.Map
+
+func channelKeyMatchesHash(keyHex string, want byte) bool {
+	if cached, ok := channelKeyHashes.Load(keyHex); ok {
+		result := cached.(channelKeyHashResult)
+		return result.valid && result.hash == want
+	}
+	key, err := hex.DecodeString(keyHex)
+	result := channelKeyHashResult{valid: err == nil && len(key) == 16}
+	if result.valid {
+		result.hash = sha256.Sum256(key)[0]
+	}
+	channelKeyHashes.Store(keyHex, result)
+	return result.valid && result.hash == want
+}
+
 func decryptChannelMessage(ciphertextHex, macHex, keyHex string) (*channelDecryptResult, error) {
 	key, err := hex.DecodeString(keyHex)
 	if err != nil || len(key) != 16 {
@@ -353,6 +379,9 @@ func decodeGrpTxt(buf []byte, keys map[string]string) Payload {
 	enc := hex.EncodeToString(buf[3:])
 	if len(keys) > 0 && len(enc) >= 10 {
 		for name, key := range keys {
+			if !channelKeyMatchesHash(key, buf[0]) {
+				continue
+			}
 			res, err := decryptChannelMessage(enc, mac, key)
 			if err != nil {
 				continue

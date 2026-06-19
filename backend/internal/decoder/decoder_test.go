@@ -2,6 +2,19 @@ package decoder
 
 import "testing"
 
+func TestChannelKeyMatchesMeshCoreHash(t *testing.T) {
+	const publicKey = "8b3387e9c5cdea6ac9e5edbaa115cd72"
+	if !channelKeyMatchesHash(publicKey, 0x11) {
+		t.Fatal("expected Public key to match its MeshCore channel hash")
+	}
+	if channelKeyMatchesHash(publicKey, 0x12) {
+		t.Fatal("key must not match a different channel hash")
+	}
+	if channelKeyMatchesHash("invalid", 0x11) {
+		t.Fatal("invalid keys must not match")
+	}
+}
+
 func TestDecodeEncryptedPayloadUsesPathHashSize(t *testing.T) {
 	pkt, err := DecodePacket("0941aabb1122334455667788", nil)
 	if err != nil {
