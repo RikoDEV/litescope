@@ -79,7 +79,13 @@ func Open(path string) (*DB, error) {
 	// `_journal_mode=...` form is mattn/go-sqlite3 syntax and is silently
 	// ignored). WAL + busy_timeout are load-bearing here: the ingestor writes
 	// while the server polls the same file every second.
-	connStr := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", path)
+	//
+	// synchronous=NORMAL is the recommended pairing with WAL: commits no longer
+	// fsync the WAL on every transaction (only at checkpoint), which is the bulk
+	// of the ingestor's per-packet cost on a busy mesh. The DB stays consistent
+	// across application crashes; only the last few commits can be lost on an OS
+	// crash / power loss, which is acceptable for re-fetchable telemetry.
+	connStr := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)", path)
 	db, err := sql.Open("sqlite", connStr)
 	if err != nil {
 		return nil, err

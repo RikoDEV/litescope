@@ -642,6 +642,21 @@ func DecodePacket(hexStr string, channelKeys map[string]string) (*DecodedPacket,
 	}, nil
 }
 
+// floodScopeKeys caches the 16-byte HMAC key (first half of SHA-256(scope
+// name)) per normalized scope. The scope allowlist is fixed for the process
+// lifetime, so this turns a per-packet SHA-256-per-scope into a one-time cost.
+var floodScopeKeys sync.Map
+
+func floodScopeKey(n string) []byte {
+	if cached, ok := floodScopeKeys.Load(n); ok {
+		return cached.([]byte)
+	}
+	h := sha256.Sum256([]byte(n))
+	key := h[:16:16]
+	floodScopeKeys.Store(n, key)
+	return key
+}
+
 // ResolveFloodScope matches a TC_FLOOD packet's transport code against a scope
 // allowlist using the same HMAC derivation as the firmware's TransportKey::calcTransportCode.
 // Returns the first matching scope name (e.g. "#waw") or "".
@@ -664,8 +679,7 @@ func (p *DecodedPacket) ResolveFloodScope(allowlist []string) string {
 		if n[0] != '#' {
 			n = "#" + n
 		}
-		h := sha256.Sum256([]byte(n))
-		key := h[:16]
+		key := floodScopeKey(n)
 		mac := hmac.New(sha256.New, key)
 		mac.Write(msg)
 		sig := mac.Sum(nil)
