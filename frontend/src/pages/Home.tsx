@@ -31,6 +31,8 @@ import { useDateLocale } from '../hooks/useDateLocale'
 import { IataFlag } from '../utils/flags'
 import { ROLE_GLYPH, roleColor } from '../utils/roles'
 
+const OBSERVER_REFRESH_MS = 30_000
+
 // ── component ─────────────────────────────────────────────────────────────────
 export default function Home() {
   const theme    = useTheme()
@@ -77,9 +79,29 @@ export default function Home() {
       }
     })
     api.analyticsActivity(24).then(d => setActivity(d?.buckets ?? []))
-    api.observers().then(r => setObservers(r.observers ?? []))
     api.packets(6, 0).then(r => setRecent(r.packets ?? []))
     api.analyticsRFSummary().then(d => d && setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
+  }, [])
+
+  // Observer status is metadata, not part of the packet WebSocket stream. Keep
+  // lastSeen fresh so active observers do not age out five minutes after mount.
+  useEffect(() => {
+    let cancelled = false
+    const refreshObservers = () => {
+      api.observers().then(r => {
+        if (!cancelled) setObservers(r.observers ?? [])
+      })
+    }
+    const refreshWhenVisible = () => { if (!document.hidden) refreshObservers() }
+
+    refreshObservers()
+    const id = setInterval(refreshObservers, OBSERVER_REFRESH_MS)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [])
 
   // top nodes — refetch when the ranking metric changes. Guard against stale

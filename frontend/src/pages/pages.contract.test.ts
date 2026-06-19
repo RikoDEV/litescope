@@ -15,7 +15,7 @@ const pageContracts: Record<string, {
 }> = {
   Home: {
     route: '<Route index element={<Home />} />',
-    snippets: ['api.overview()', 'api.analyticsActivity(24)', 'api.observers()', 'api.packets(6, 0)', 'api.analyticsRFSummary()'],
+    snippets: ['api.overview()', 'api.analyticsActivity(24)', 'api.observers()', 'setInterval(refreshObservers, OBSERVER_REFRESH_MS)', 'api.packets(6, 0)', 'api.analyticsRFSummary()'],
   },
   Packets: {
     route: 'path="packets" element={<Packets />}',
