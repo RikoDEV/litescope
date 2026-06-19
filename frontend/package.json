@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "pnpm": {
+    "overrides": {
+      "electron-to-chromium": "1.5.375"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
