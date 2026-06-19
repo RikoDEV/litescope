@@ -185,124 +185,164 @@ func (d *DB) applySchema() error {
 	return nil
 }
 
-// InsertTransmission upserts a transmission and adds an observation.
-// Returns the inserted transmission ID and whether it was new.
+// WriteItem is one unit of work for WriteBatch. Any subset of fields may be
+// set: a packet sets Tx+Obs (plus Observer, plus Node for valid adverts); an
+// observer status message sets only Observer.
+type WriteItem struct {
+	Tx          *TxRow
+	Obs         *ObsRow
+	Node        *NodeRow
+	NodeBattery *int
+	NodeTempC   *float64
+	Observer    *ObserverUpsert
+}
+
+// ObserverUpsert carries an observers-table upsert. Meta is set only by observer
+// status messages (model/firmware/battery/uptime/noise_floor).
+type ObserverUpsert struct {
+	ID, Name, IATA, Now string
+	Meta                *ObserverMeta
+}
+
+// WriteBatch applies a batch of writes in a single transaction.
 //
-// The upsert, observation insert and observation_count maintenance run in a
-// single transaction: they were four separate autocommit statements before, so
-// each packet paid four serialized round trips (and a crash mid-sequence could
-// leave observation_count inconsistent). Wrapping them is atomic and issues one
-// commit/fsync per packet.
-func (d *DB) InsertTransmission(tx *TxRow, obs *ObsRow) (int64, bool, error) {
-	dbtx, err := d.db.Begin()
-	if err != nil {
-		return 0, false, fmt.Errorf("begin: %w", err)
+// This is the ingestor's main throughput lever. Previously every MQTT message
+// paid its own transmission-insert transaction AND its own observer-upsert
+// transaction (and adverts two more), so a packet seen by K observers cost ~2K
+// commits of largely redundant data. Folding a batch into one transaction
+// issues one commit (and, with synchronous=NORMAL, fsyncs only at checkpoint),
+// and statements are prepared once per batch so modernc parses each SQL string
+// once instead of once per row.
+//
+// observation_count semantics are preserved: it counts unique observers, so a
+// repeat observation from an already-seen observer of an existing transmission
+// does not bump it.
+func (d *DB) WriteBatch(items []*WriteItem) error {
+	if len(items) == 0 {
+		return nil
 	}
-	defer dbtx.Rollback() //nolint:errcheck // no-op once Commit succeeds
-
-	var txID int64
-	var isNew bool
-
-	// Try to insert; if hash exists, just get the ID
-	res, err := dbtx.Exec(
-		`INSERT OR IGNORE INTO transmissions (raw_hex, hash, first_seen, route_type, payload_type, decoded_json, channel_hash)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		tx.RawHex, tx.Hash, tx.FirstSeen, tx.RouteType, tx.PayloadType, tx.DecodedJSON, nilIfEmpty(tx.ChannelHash),
-	)
-	if err != nil {
-		return 0, false, fmt.Errorf("insert tx: %w", err)
-	}
-	n, _ := res.RowsAffected()
-	if n > 0 {
-		txID, _ = res.LastInsertId()
-		isNew = true
-	} else {
-		err = dbtx.QueryRow(`SELECT id FROM transmissions WHERE hash = ?`, tx.Hash).Scan(&txID)
-		if err != nil {
-			return 0, false, fmt.Errorf("lookup tx: %w", err)
+	var needTx, needNode, needObsv, needObsvMeta bool
+	for _, it := range items {
+		if it.Tx != nil {
+			needTx = true
+		}
+		if it.Node != nil {
+			needNode = true
+		}
+		if it.Observer != nil {
+			needObsv = true
+			if it.Observer.Meta != nil {
+				needObsvMeta = true
+			}
 		}
 	}
 
-	// Insert observation
-	_, err = dbtx.Exec(
-		`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, flood_scope, timestamp, raw_hex)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		txID, obs.ObserverID, obs.ObserverName, obs.ObserverIATA,
-		obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, nilIfEmpty(obs.FloodScope), obs.Timestamp, nilIfEmpty(obs.RawHex),
-	)
+	dbtx, err := d.db.Begin()
 	if err != nil {
-		return txID, isNew, fmt.Errorf("insert obs: %w", err)
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer dbtx.Rollback() //nolint:errcheck // no-op once Commit succeeds
+
+	// Statements prepared once per batch (closed by the deferred loop below);
+	// modernc then parses each SQL string once per flush instead of once per row.
+	var insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upObsv, upObsvMeta *sql.Stmt
+	defer func() {
+		for _, s := range []*sql.Stmt{insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upObsv, upObsvMeta} {
+			if s != nil {
+				s.Close()
+			}
+		}
+	}()
+
+	if needTx {
+		if insTx, err = dbtx.Prepare(`INSERT OR IGNORE INTO transmissions (raw_hex, hash, first_seen, route_type, payload_type, decoded_json, channel_hash) VALUES (?, ?, ?, ?, ?, ?, ?)`); err != nil {
+			return fmt.Errorf("prepare tx: %w", err)
+		}
+		if selTx, err = dbtx.Prepare(`SELECT id FROM transmissions WHERE hash = ?`); err != nil {
+			return fmt.Errorf("prepare tx-id: %w", err)
+		}
+		if insObs, err = dbtx.Prepare(`INSERT INTO observations (tx_id, observer_id, observer_name, observer_iata, rssi, snr, score, direction, path_json, flood_scope, timestamp, raw_hex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`); err != nil {
+			return fmt.Errorf("prepare obs: %w", err)
+		}
+		if cntObs, err = dbtx.Prepare(`SELECT COUNT(*) FROM observations WHERE tx_id = ? AND observer_id = ?`); err != nil {
+			return fmt.Errorf("prepare obs-count: %w", err)
+		}
+		if bumpCnt, err = dbtx.Prepare(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`); err != nil {
+			return fmt.Errorf("prepare bump: %w", err)
+		}
+	}
+	if needNode {
+		if upNode, err = dbtx.Prepare(`INSERT INTO nodes (pub_key, name, role, lat, lon, last_seen, first_seen, advert_count) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(pub_key) DO UPDATE SET name = excluded.name, role = excluded.role, lat = COALESCE(excluded.lat, lat), lon = COALESCE(excluded.lon, lon), last_seen = excluded.last_seen, advert_count = advert_count + 1`); err != nil {
+			return fmt.Errorf("prepare node: %w", err)
+		}
+		if telNode, err = dbtx.Prepare(`UPDATE nodes SET battery_mv = COALESCE(?, battery_mv), temperature_c = COALESCE(?, temperature_c) WHERE pub_key = ?`); err != nil {
+			return fmt.Errorf("prepare node-tel: %w", err)
+		}
+	}
+	if needObsv {
+		if upObsv, err = dbtx.Prepare(`INSERT INTO observers (id, name, iata, last_seen, first_seen, packet_count) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET name = COALESCE(NULLIF(excluded.name,''), name), iata = COALESCE(NULLIF(excluded.iata,''), iata), last_seen = excluded.last_seen, packet_count = packet_count + 1`); err != nil {
+			return fmt.Errorf("prepare observer: %w", err)
+		}
+	}
+	if needObsvMeta {
+		if upObsvMeta, err = dbtx.Prepare(`UPDATE observers SET model = COALESCE(?, model), firmware = COALESCE(?, firmware), battery_mv = COALESCE(?, battery_mv), uptime_secs = COALESCE(?, uptime_secs), noise_floor = COALESCE(?, noise_floor) WHERE id = ?`); err != nil {
+			return fmt.Errorf("prepare observer-meta: %w", err)
+		}
 	}
 
-	// Update observation_count: only count the first observation per unique observer
-	if !isNew {
-		var countFromObserver int
-		dbtx.QueryRow(`SELECT COUNT(*) FROM observations WHERE tx_id = ? AND observer_id = ?`, txID, obs.ObserverID).Scan(&countFromObserver)
-		if countFromObserver == 1 { // the row just inserted is the only one from this observer
-			dbtx.Exec(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`, txID)
+	for _, it := range items {
+		if it.Tx != nil && it.Obs != nil {
+			tx, obs := it.Tx, it.Obs
+			res, err := insTx.Exec(tx.RawHex, tx.Hash, tx.FirstSeen, tx.RouteType, tx.PayloadType, tx.DecodedJSON, nilIfEmpty(tx.ChannelHash))
+			if err != nil {
+				return fmt.Errorf("insert tx: %w", err)
+			}
+			var txID int64
+			isNew := false
+			if n, _ := res.RowsAffected(); n > 0 {
+				txID, _ = res.LastInsertId()
+				isNew = true
+			} else if err = selTx.QueryRow(tx.Hash).Scan(&txID); err != nil {
+				return fmt.Errorf("lookup tx: %w", err)
+			}
+			if _, err := insObs.Exec(txID, obs.ObserverID, obs.ObserverName, obs.ObserverIATA, obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, nilIfEmpty(obs.FloodScope), obs.Timestamp, nilIfEmpty(obs.RawHex)); err != nil {
+				return fmt.Errorf("insert obs: %w", err)
+			}
+			// observation_count tracks unique observers; bump only when this is the
+			// first observation of an existing transmission from this observer.
+			if !isNew {
+				var c int
+				cntObs.QueryRow(txID, obs.ObserverID).Scan(&c)
+				if c == 1 {
+					bumpCnt.Exec(txID)
+				}
+			}
+		}
+		if it.Node != nil {
+			n := it.Node
+			if _, err := upNode.Exec(n.PubKey, n.Name, n.Role, n.Lat, n.Lon, n.LastSeen, n.LastSeen); err != nil {
+				return fmt.Errorf("upsert node: %w", err)
+			}
+			if it.NodeBattery != nil || it.NodeTempC != nil {
+				telNode.Exec(it.NodeBattery, it.NodeTempC, n.PubKey)
+			}
+		}
+		if it.Observer != nil {
+			ob := it.Observer
+			if _, err := upObsv.Exec(ob.ID, ob.Name, ob.IATA, ob.Now, ob.Now); err != nil {
+				return fmt.Errorf("upsert observer: %w", err)
+			}
+			if ob.Meta != nil {
+				m := ob.Meta
+				upObsvMeta.Exec(m.Model, m.Firmware, m.BatteryMv, m.UptimeSecs, m.NoiseFloor, ob.ID)
+			}
 		}
 	}
 
 	if err := dbtx.Commit(); err != nil {
-		return txID, isNew, fmt.Errorf("commit: %w", err)
+		return fmt.Errorf("commit: %w", err)
 	}
-	return txID, isNew, nil
-}
-
-// UpsertNode inserts or updates a node from an ADVERT packet.
-func (d *DB) UpsertNode(n *NodeRow) error {
-	_, err := d.db.Exec(
-		`INSERT INTO nodes (pub_key, name, role, lat, lon, last_seen, first_seen, advert_count)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-		 ON CONFLICT(pub_key) DO UPDATE SET
-		   name         = excluded.name,
-		   role         = excluded.role,
-		   lat          = COALESCE(excluded.lat, lat),
-		   lon          = COALESCE(excluded.lon, lon),
-		   last_seen    = excluded.last_seen,
-		   advert_count = advert_count + 1`,
-		n.PubKey, n.Name, n.Role, n.Lat, n.Lon, n.LastSeen, n.LastSeen,
-	)
-	return err
-}
-
-// UpdateNodeTelemetry updates battery and temperature for a node.
-func (d *DB) UpdateNodeTelemetry(pubKey string, battMv *int, tempC *float64) error {
-	_, err := d.db.Exec(
-		`UPDATE nodes SET battery_mv = COALESCE(?, battery_mv), temperature_c = COALESCE(?, temperature_c) WHERE pub_key = ?`,
-		battMv, tempC, pubKey,
-	)
-	return err
-}
-
-// UpsertObserver inserts or updates an observer from an MQTT message.
-func (d *DB) UpsertObserver(id, name, iata, now string, meta *ObserverMeta) error {
-	_, err := d.db.Exec(
-		`INSERT INTO observers (id, name, iata, last_seen, first_seen, packet_count)
-		 VALUES (?, ?, ?, ?, ?, 1)
-		 ON CONFLICT(id) DO UPDATE SET
-		   name         = COALESCE(NULLIF(excluded.name,''), name),
-		   iata         = COALESCE(NULLIF(excluded.iata,''), iata),
-		   last_seen    = excluded.last_seen,
-		   packet_count = packet_count + 1`,
-		id, name, iata, now, now,
-	)
-	if err != nil {
-		return err
-	}
-	if meta != nil {
-		_, err = d.db.Exec(
-			`UPDATE observers SET
-			   model       = COALESCE(?, model),
-			   firmware    = COALESCE(?, firmware),
-			   battery_mv  = COALESCE(?, battery_mv),
-			   uptime_secs = COALESCE(?, uptime_secs),
-			   noise_floor = COALESCE(?, noise_floor)
-			 WHERE id = ?`,
-			meta.Model, meta.Firmware, meta.BatteryMv, meta.UptimeSecs, meta.NoiseFloor, id,
-		)
-	}
-	return err
+	return nil
 }
 
 // LoadAll loads all rows for server startup.

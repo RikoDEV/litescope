@@ -75,6 +75,15 @@ func main() {
 		}()
 	}
 
+	// All DB writes funnel through a single writer goroutine that batches them
+	// into one transaction per flush. The MQTT handlers only decode and enqueue,
+	// so a packet observed by many observers no longer costs a transaction each.
+	writeCh := make(chan *db.WriteItem, 8192)
+	var writerWG sync.WaitGroup
+	writerWG.Go(func() {
+		runWriter(database, writeCh)
+	})
+
 	var clients []mqtt.Client
 	connected := 0
 	for _, src := range cfg.MQTTSources {
@@ -104,7 +113,7 @@ func main() {
 		})
 		capSrc := src
 		opts.SetDefaultPublishHandler(func(_ mqtt.Client, m mqtt.Message) {
-			handleMsg(database, tag, capSrc, m, channelKeys, cfg.ScopeList)
+			handleMsg(writeCh, tag, capSrc, m, channelKeys, cfg.ScopeList)
 		})
 		c := mqtt.NewClient(opts)
 		if !c.Connect().WaitTimeout(30 * time.Second) {
@@ -125,6 +134,49 @@ func main() {
 	log.Println("shutting down")
 	for _, c := range clients {
 		c.Disconnect(2000)
+	}
+	// Stop accepting new writes, then let the writer flush what's buffered before
+	// the deferred database.Close runs.
+	close(writeCh)
+	writerWG.Wait()
+}
+
+// Writer batching bounds: flush when the batch reaches maxWriteBatch or every
+// writeFlushInterval, whichever comes first. The interval keeps latency bounded
+// on a quiet network; the size cap bounds transaction span on a busy one.
+const (
+	maxWriteBatch      = 512
+	writeFlushInterval = 100 * time.Millisecond
+)
+
+// runWriter drains writeCh, coalescing items into one transaction per flush.
+func runWriter(database *db.DB, ch <-chan *db.WriteItem) {
+	batch := make([]*db.WriteItem, 0, maxWriteBatch)
+	ticker := time.NewTicker(writeFlushInterval)
+	defer ticker.Stop()
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		if err := database.WriteBatch(batch); err != nil {
+			log.Printf("write batch (%d items): %v", len(batch), err)
+		}
+		batch = batch[:0]
+	}
+	for {
+		select {
+		case it, ok := <-ch:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, it)
+			if len(batch) >= maxWriteBatch {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
 	}
 }
 
@@ -149,7 +201,7 @@ func buildOpts(src config.MQTTSource) *mqtt.ClientOptions {
 	return opts
 }
 
-func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Message, channelKeys map[string]string, scopeList []string) {
+func handleMsg(writeCh chan<- *db.WriteItem, tag string, src config.MQTTSource, m mqtt.Message, channelKeys map[string]string, scopeList []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[%s] panic: %v", tag, r)
@@ -174,9 +226,7 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 		iata := normalizeRegion(parts[1])
 		meta := extractObsMeta(msg)
 		now := time.Now().UTC().Format(time.RFC3339)
-		if err := database.UpsertObserver(obsID, name, iata, now, meta); err != nil {
-			log.Printf("[%s] observer status: %v", tag, err)
-		}
+		writeCh <- &db.WriteItem{Observer: &db.ObserverUpsert{ID: obsID, Name: name, IATA: iata, Now: now, Meta: meta}}
 		return
 	}
 
@@ -248,21 +298,18 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 		obsRow.Score = &v
 	}
 
-	txID, _, err := database.InsertTransmission(txRow, obsRow)
-	if err != nil {
-		log.Printf("[%s] db insert: %v", tag, err)
-		return
-	}
-	_ = txID
+	item := &db.WriteItem{Tx: txRow, Obs: obsRow}
 
-	// Upsert node from ADVERT
+	// Attach node upsert from a valid ADVERT. An invalid advert still records the
+	// transmission/observation (as before), but skips the node and observer upsert.
 	if dec.Header.PayloadType == decoder.PayloadADVERT {
 		ok, reason := decoder.ValidateAdvert(&dec.Payload)
 		if !ok {
 			log.Printf("[%s] invalid advert: %s", tag, reason)
+			writeCh <- item
 			return
 		}
-		nodeRow := &db.NodeRow{
+		item.Node = &db.NodeRow{
 			PubKey:   dec.Payload.PubKey,
 			Name:     dec.Payload.Name,
 			Role:     decoder.AdvertRole(dec.Payload.Flags),
@@ -270,20 +317,21 @@ func handleMsg(database *db.DB, tag string, src config.MQTTSource, m mqtt.Messag
 			Lon:      dec.Payload.Lon,
 			LastSeen: now,
 		}
-		if err := database.UpsertNode(nodeRow); err != nil {
-			log.Printf("[%s] node upsert: %v", tag, err)
-		}
-		if dec.Payload.BatteryMv != nil || dec.Payload.TemperatureC != nil {
-			database.UpdateNodeTelemetry(dec.Payload.PubKey, dec.Payload.BatteryMv, dec.Payload.TemperatureC)
+		item.NodeBattery = dec.Payload.BatteryMv
+		item.NodeTempC = dec.Payload.TemperatureC
+	}
+
+	// Attach observer upsert.
+	if observerID != "" {
+		item.Observer = &db.ObserverUpsert{
+			ID:   observerID,
+			Name: strField(msg, "origin"),
+			IATA: region,
+			Now:  time.Now().UTC().Format(time.RFC3339),
 		}
 	}
 
-	// Upsert observer
-	if observerID != "" {
-		origin := strField(msg, "origin")
-		now2 := time.Now().UTC().Format(time.RFC3339)
-		database.UpsertObserver(observerID, origin, region, now2, nil)
-	}
+	writeCh <- item
 }
 
 func redecodeExisting(database *db.DB, channelKeys map[string]string) {
