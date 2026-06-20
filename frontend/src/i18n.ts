@@ -173,7 +173,7 @@ const en = {
   },
   map: {
     controls: 'Map Controls', nodeTypes: 'Node Types', byteSize: 'Byte Size',
-    display: 'Display', hashPrefixLabels: 'Hash prefix labels',
+    display: 'Display', hashPrefixLabels: 'Hash prefix labels', nodeTitleLabels: 'Node title labels',
     quickJump: 'Quick Jump', nodeNamePlaceholder: 'Node name or pubkey…',
     jump: 'Jump →', nodesVisible: '{{count}} nodes visible on map',
     liveFeed: 'Live Feed', waiting: 'Waiting…',
@@ -375,7 +375,7 @@ const pl: typeof en = {
   },
   map: {
     controls: 'Sterowanie mapą', nodeTypes: 'Typy węzłów', byteSize: 'Rozmiar bajtu',
-    display: 'Wyświetlanie', hashPrefixLabels: 'Etykiety prefiksu hash',
+    display: 'Wyświetlanie', hashPrefixLabels: 'Etykiety prefiksu hash', nodeTitleLabels: 'Etykiety nazw węzłów',
     quickJump: 'Szybki skok', nodeNamePlaceholder: 'Nazwa węzła lub klucz…',
     jump: 'Skocz →', nodesVisible: '{{count}} węzłów widocznych na mapie',
     liveFeed: 'Transmisja na żywo', waiting: 'Oczekiwanie…',
@@ -577,7 +577,7 @@ const de: typeof en = {
   },
   map: {
     controls: 'Kartensteuerung', nodeTypes: 'Knotentypen', byteSize: 'Byte-Größe',
-    display: 'Anzeige', hashPrefixLabels: 'Hash-Präfixbeschriftungen',
+    display: 'Anzeige', hashPrefixLabels: 'Hash-Präfixbeschriftungen', nodeTitleLabels: 'Knotennamen-Beschriftungen',
     quickJump: 'Schnellsprung', nodeNamePlaceholder: 'Knotenname oder PubKey…',
     jump: 'Springen →', nodesVisible: '{{count}} Knoten auf der Karte sichtbar',
     liveFeed: 'Live-Feed', waiting: 'Warten…',
@@ -766,7 +766,7 @@ const fr = {
   },
   map: {
     controls: 'Contrôles carte', nodeTypes: 'Types de nœuds', byteSize: 'Taille octet',
-    display: 'Affichage', hashPrefixLabels: 'Étiquettes de préfixe hash',
+    display: 'Affichage', hashPrefixLabels: 'Étiquettes de préfixe hash', nodeTitleLabels: 'Étiquettes des noms de nœuds',
     quickJump: 'Saut rapide', nodeNamePlaceholder: 'Nom ou clé publique…',
     jump: 'Aller →', nodesVisible: '{{count}} nœuds visibles',
     liveFeed: 'Flux en direct', waiting: 'En attente…',
@@ -946,7 +946,7 @@ const uk = {
   },
   map: {
     controls: 'Керування картою', nodeTypes: 'Типи вузлів', byteSize: 'Розмір байту',
-    display: 'Відображення', hashPrefixLabels: 'Мітки префіксів хешу',
+    display: 'Відображення', hashPrefixLabels: 'Мітки префіксів хешу', nodeTitleLabels: 'Мітки назв вузлів',
     quickJump: 'Швидкий перехід', nodeNamePlaceholder: 'Назва або публічний ключ…',
     jump: 'Перейти →', nodesVisible: '{{count}} вузлів на карті',
     liveFeed: 'Живий потік', waiting: 'Очікування…',
@@ -1126,7 +1126,7 @@ const ru = {
   },
   map: {
     controls: 'Управление картой', nodeTypes: 'Типы узлов', byteSize: 'Размер байта',
-    display: 'Отображение', hashPrefixLabels: 'Метки префиксов хеша',
+    display: 'Отображение', hashPrefixLabels: 'Метки префиксов хеша', nodeTitleLabels: 'Метки названий узлов',
     quickJump: 'Быстрый переход', nodeNamePlaceholder: 'Имя или публичный ключ…',
     jump: 'Перейти →', nodesVisible: '{{count}} узлов на карте',
     liveFeed: 'Прямой эфир', waiting: 'Ожидание…',
@@ -1306,7 +1306,7 @@ const nl = {
   },
   map: {
     controls: 'Kaartbesturing', nodeTypes: 'Knooppunttypen', byteSize: 'Bytegrootte',
-    display: 'Weergave', hashPrefixLabels: 'Hash-voorvoegsel labels',
+    display: 'Weergave', hashPrefixLabels: 'Hash-voorvoegsel labels', nodeTitleLabels: 'Labels met knooppuntnamen',
     quickJump: 'Snel springen', nodeNamePlaceholder: 'Naam of publieke sleutel…',
     jump: 'Gaan →', nodesVisible: '{{count}} knooppunten zichtbaar',
     liveFeed: 'Live feed', waiting: 'Wachten…',
@@ -1486,7 +1486,7 @@ const es = {
   },
   map: {
     controls: 'Controles del mapa', nodeTypes: 'Tipos de nodos', byteSize: 'Tamaño de byte',
-    display: 'Visualización', hashPrefixLabels: 'Etiquetas de prefijo hash',
+    display: 'Visualización', hashPrefixLabels: 'Etiquetas de prefijo hash', nodeTitleLabels: 'Etiquetas de nombres de nodos',
     quickJump: 'Salto rápido', nodeNamePlaceholder: 'Nombre o clave pública…',
     jump: 'Ir →', nodesVisible: '{{count}} nodos visibles',
     liveFeed: 'Transmisión en vivo', waiting: 'Esperando…',
@@ -1666,7 +1666,7 @@ const cs = {
   },
   map: {
     controls: 'Ovládání mapy', nodeTypes: 'Typy uzlů', byteSize: 'Velikost bajtu',
-    display: 'Zobrazení', hashPrefixLabels: 'Popisky předpon hashů',
+    display: 'Zobrazení', hashPrefixLabels: 'Popisky předpon hashů', nodeTitleLabels: 'Popisky názvů uzlů',
     quickJump: 'Rychlý přeskok', nodeNamePlaceholder: 'Název nebo veřejný klíč…',
     jump: 'Přeskočit →', nodesVisible: '{{count}} uzlů viditelných',
     liveFeed: 'Živý přenos', waiting: 'Čekání…',
@@ -1846,7 +1846,7 @@ const sk = {
   },
   map: {
     controls: 'Ovládanie mapy', nodeTypes: 'Typy uzlov', byteSize: 'Veľkosť bajtu',
-    display: 'Zobrazenie', hashPrefixLabels: 'Popisky predpôn hashov',
+    display: 'Zobrazenie', hashPrefixLabels: 'Popisky predpôn hashov', nodeTitleLabels: 'Menovky názvov uzlov',
     quickJump: 'Rýchly preskok', nodeNamePlaceholder: 'Názov alebo verejný kľúč…',
     jump: 'Preskočiť →', nodesVisible: '{{count}} uzlov viditeľných',
     liveFeed: 'Živý prenos', waiting: 'Čakanie…',
@@ -2026,7 +2026,7 @@ const it = {
   },
   map: {
     controls: 'Controlli mappa', nodeTypes: 'Tipi nodi', byteSize: 'Dimensione byte',
-    display: 'Visualizzazione', hashPrefixLabels: 'Etichette prefisso hash',
+    display: 'Visualizzazione', hashPrefixLabels: 'Etichette prefisso hash', nodeTitleLabels: 'Etichette nomi nodi',
     quickJump: 'Salto rapido', nodeNamePlaceholder: 'Nome o chiave pubblica…',
     jump: 'Vai →', nodesVisible: '{{count}} nodi visibili',
     liveFeed: 'Feed live', waiting: 'In attesa…',

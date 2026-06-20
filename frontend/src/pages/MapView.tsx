@@ -112,7 +112,8 @@ export default function MapView() {
   const [showHeatMap, setShowHeatMap] = useState(false)
   const [showNeighbors, setShowNeighbors] = useState(false)
   const [scopeFilter, setScopeFilter] = useState('all')
-  const [showLabels, setShowLabels] = useState(false)
+  const [showHashLabels, setShowHashLabels] = useState(false)
+  const [showTitleLabels, setShowTitleLabels] = useState(false)
   const [quickJump, setQuickJump] = useState('')
   const [iatas, setIatas] = useState<string[]>([])
   const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
@@ -143,15 +144,18 @@ export default function MapView() {
     }))
   }, [nodes])
 
-  function makeIcon(role: string, active: boolean, label?: string) {
+  function makeIcon(role: string, active: boolean, label?: { hash?: string; title?: string }) {
     const color  = roleColor(role)
     const stroke = theme.palette.mode === 'dark' ? '#111827' : '#ffffff'
     const svg    = roleMarkerSvg(role, color, active ? 1 : 0.35, stroke)
     const isDark = theme.palette.mode === 'dark'
     const labelBg     = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)'
     const labelBorder = isDark ? '' : `border:1px solid ${color}44;`
-    const html  = label
-      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${escapeHtml(label)}</span></div>`
+    const labelHtml = label
+      ? `${label.hash ? `<span style="font-weight:900;-webkit-text-stroke:0.25px currentColor">${escapeHtml(label.hash)}</span>` : ''}${label.hash && label.title ? ' · ' : ''}${label.title ? escapeHtml(label.title) : ''}`
+      : ''
+    const html  = labelHtml
+      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${labelHtml}</span></div>`
       : svg
     return L.divIcon({ html, className: '', iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -13] })
   }
@@ -480,7 +484,10 @@ export default function MapView() {
     nodes.forEach(n => {
       if (!passes(n)) return
       const active = new Date(n.lastSeen).getTime() > activeCut
-      const label  = showLabels ? (n.name || n.pubKey.slice(0, 8)) : undefined
+      const prefixBytes = nodeByteSizeRef.current.get(n.pubKey) ?? 1
+      const hashLabel  = showHashLabels ? n.pubKey.slice(0, prefixBytes * 2).toUpperCase() : ''
+      const titleLabel = showTitleLabels ? (n.name || n.pubKey.slice(0, 8)) : ''
+      const label  = hashLabel || titleLabel ? { hash: hashLabel, title: titleLabel } : undefined
       const icon   = makeIcon(n.role, active, label)
       const exist  = markersRef.current.get(n.pubKey)
       if (exist) { exist.setIcon(icon); (exist as any)._nodeRole = n.role; return }
@@ -497,7 +504,7 @@ export default function MapView() {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showLabels, geoCountries, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showHashLabels, showTitleLabels, geoCountries, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
@@ -731,11 +738,20 @@ export default function MapView() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Checkbox
                   size="small"
-                  checked={showLabels}
-                  onChange={e => setShowLabels(e.target.checked)}
+                  checked={showHashLabels}
+                  onChange={e => setShowHashLabels(e.target.checked)}
                   sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
                 />
                 <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>{t('map.hashPrefixLabels')}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Checkbox
+                  size="small"
+                  checked={showTitleLabels}
+                  onChange={e => setShowTitleLabels(e.target.checked)}
+                  sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
+                />
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>{t('map.nodeTitleLabels')}</Typography>
               </Box>
             </Box>
 
