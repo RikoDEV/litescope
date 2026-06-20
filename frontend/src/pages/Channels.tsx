@@ -166,6 +166,7 @@ export default function Channels() {
   const [seenCounts, setSeenCounts] = useState<Record<string, number>>(loadSeen)
   const [nodes, setNodes]           = useState<{ pubKey: string; name: string }[]>([])
   const [iatas, setIatas]           = useState<string[]>([])
+  const [sidebarReady, setSidebarReady] = useState(false)
   const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
   const [regionLock, setRegionLock]     = useState(false)
   const [hasMore, setHasMore]       = useState(false)
@@ -201,13 +202,21 @@ export default function Channels() {
     regionFilter.size > 0 ? { regions: [...regionFilter], lock: regionLock } : undefined
 
   useEffect(() => {
+    if (!sidebarReady) return
     api.channelsFiltered(channelParams()).then(chs => setChannels(applyNames(chs)))
     // Reload the open chat too — its history is filtered server-side as well.
     if (selected) selectChannelData(selected)
   }, [regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     api.nodes().then(res => setNodes((res.nodes ?? []).map(n => ({ pubKey: n.pubKey, name: n.name }))))
-    api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {})
+    Promise.all([
+      api.channelsFiltered(channelParams()).catch(() => []),
+      api.iatas().catch(() => []),
+    ]).then(([chs, codes]) => {
+      setChannels(applyNames(chs))
+      setIatas((codes ?? []).sort())
+      setSidebarReady(true)
+    })
   }, [])
 
   // Sync selected channel with URL path param
@@ -458,13 +467,17 @@ export default function Channels() {
               </IconButton>
             </Tooltip>
           </Box>
-          {iatas.length > 0 && (
-            <Box sx={{ px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
-              <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter}
-                lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
-            </Box>
+          {sidebarReady && (
+            <>
+              {iatas.length > 0 && (
+                <Box sx={{ px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+                  <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter}
+                    lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
+                </Box>
+              )}
+              <ChannelList channels={channels} selected={selected} onSelect={selectChannel} seenCounts={seenCounts} />
+            </>
           )}
-          <ChannelList channels={channels} selected={selected} onSelect={selectChannel} seenCounts={seenCounts} />
         </Paper>
       )}
 
