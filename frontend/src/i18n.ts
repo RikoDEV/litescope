@@ -381,7 +381,7 @@ const pl: typeof en = {
     liveFeed: 'Transmisja na żywo', waiting: 'Oczekiwanie…',
     repeaters: 'Przekaźniki', companions: 'Towarzysze', roomServers: 'Serwery pokoi', sensors: 'Czujniki',
     center: 'Wyśrodkuj', detailsLink: 'Szczegóły →',
-    layers: 'Warstwy', scopedRegions: 'Regiony zakresów', allScopes: 'Wszystkie zakresy',
+    layers: 'Warstwy', scopedRegions: 'Zakresy regionów', allScopes: 'Wszystkie regiony',
     scopeRegionSummary: '{{observers}} obserwatorów · {{observations}} obserwacji',
     dominantScope: 'Dominujący: {{scope}}',
     heatMap: 'Mapa ciepła', neighbors: 'Sąsiedzi', heatWeight: '{{count}} zdarzeń',
