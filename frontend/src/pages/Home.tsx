@@ -32,6 +32,23 @@ import { IataFlag } from '../utils/flags'
 import { ROLE_GLYPH, roleColor } from '../utils/roles'
 
 const OBSERVER_REFRESH_MS = 30_000
+const HEADER_STAT_SHAPES = [
+  '28px 28px 12px 28px',
+  '28px 12px 28px 28px',
+  '12px 28px 28px 28px',
+  '28px 28px 28px 12px',
+  '28px 12px 28px 12px',
+  '12px 28px 12px 28px',
+]
+
+function formatHeaderStat(value: number | string): { display: string; full: string } {
+  if (typeof value !== 'number') return { display: value, full: value }
+  const full = value.toLocaleString()
+  const display = Math.abs(value) >= 10_000
+    ? new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+    : full
+  return { display, full }
+}
 
 // ── component ─────────────────────────────────────────────────────────────────
 export default function Home() {
@@ -156,7 +173,7 @@ export default function Home() {
 
 
         {/* Stat cards — compact */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 1 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1 }}>
           {[
             { label: t('home.totalPackets'), value: stats?.totalPackets ?? '—',    color: md3.primary,   suffix: '' },
             { label: t('home.nodes'),        value: stats?.totalNodes ?? '—',      color: md3.tertiary,  suffix: '' },
@@ -164,22 +181,33 @@ export default function Home() {
             { label: t('home.observations'), value: rf?.totalObservations ?? '—',  color: '#f59e0b',     suffix: '' },
             { label: t('home.avgSnr'),       value: rf ? rf.snrSummary.avg.toFixed(1) : '—', color: '#14b8a6', suffix: ' dB' },
             { label: t('home.avgRssi'),      value: rf ? rf.rssiSummary.avg.toFixed(0) : '—', color: '#ec4899', suffix: ' dBm' },
-          ].map(c => (
-            <Box key={c.label} sx={{
-              px: 1.25, py: 0.875, borderRadius: 2,
-              background: alpha(c.color, 0.08),
-              border: `1px solid ${alpha(c.color, 0.18)}`,
-              backdropFilter: 'blur(8px)',
+          ].map((c, i) => {
+            const formatted = formatHeaderStat(c.value)
+            return <Card key={c.label} elevation={0} sx={{
+              border: 'none', borderRadius: HEADER_STAT_SHAPES[i % HEADER_STAT_SHAPES.length],
+              background: `linear-gradient(${alpha(c.color, 0.1)}, ${alpha(c.color, 0.1)}), ${md3.surfaceContainerHigh}`,
+              boxShadow: 'none', overflow: 'hidden',
+              minWidth: 0,
             }}>
-              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', fontSize: 10, mb: 0.15, lineHeight: 1.3 }}>
-                {c.label}
-              </Typography>
-              <Typography sx={{ fontSize: 20, fontWeight: 800, color: c.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                {typeof c.value === 'number' ? c.value.toLocaleString() : c.value}
-                <Box component="span" sx={{ fontSize: 11, fontWeight: 500, ml: 0.2 }}>{c.suffix}</Box>
-              </Typography>
-            </Box>
-          ))}
+              <CardContent sx={{ px: 1.5, py: 1.25, '&:last-child': { pb: 1.25 } }}>
+                <Typography variant="caption" sx={{
+                  color: md3.onSurfaceVariant, display: 'block', fontSize: 10,
+                  fontWeight: 500, letterSpacing: '0.35px', mb: 0.5, lineHeight: 1.2,
+                }}>
+                  {c.label}
+                </Typography>
+                <Typography title={formatted.full} sx={{
+                  fontSize: 22, fontWeight: 700, letterSpacing: '-0.2px',
+                  color: c.color, lineHeight: 1.1,
+                  fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {formatted.display}
+                  <Box component="span" sx={{ fontSize: 11, fontWeight: 500, letterSpacing: 0, ml: 0.25 }}>{c.suffix}</Box>
+                </Typography>
+              </CardContent>
+            </Card>
+          })}
         </Box>
       </Box>
 
@@ -266,26 +294,25 @@ export default function Home() {
               <Divider sx={{ my: 1.5 }} />
               {/* Observer chips */}
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                {observers.slice(0, 6).map(o => {
-                  const on = Date.now() - new Date(o.lastSeen).getTime() < 5 * 60_000
-                  return (
-                    <Tooltip key={o.id} title={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={12} />{o.iata ?? '—'} · {on ? t('common.online') : t('common.offline')}</Box>}>
-                      <Chip
-                        label={o.name || o.id.slice(0, 8)}
-                        size="small"
-                        icon={<Box sx={{ width: 6, height: 6, borderRadius: '50%', background: on ? '#22c55e' : md3.outline, ml: 0.5, flexShrink: 0 }} />}
-                        sx={{
-                          fontSize: 11, height: 22,
-                          background: alpha(on ? '#22c55e' : md3.outline, 0.1),
-                          color: on ? '#22c55e' : md3.onSurfaceVariant,
-                          border: `1px solid ${alpha(on ? '#22c55e' : md3.outline, 0.3)}`,
-                        }}
-                      />
-                    </Tooltip>
-                  )
-                })}
-                {observers.length > 6 && (
-                  <Chip label={`+${observers.length - 6}`} size="small" sx={{ fontSize: 11, height: 22, color: md3.outline }} />
+                {activeObservers.slice(0, 6).map(o => (
+                  <Tooltip key={o.id} title={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={o.iata} size={12} />{o.iata ?? '—'} · {t('common.online')}</Box>}>
+                    <Chip
+                      label={o.name || o.id.slice(0, 8)}
+                      size="small"
+                      icon={<Box sx={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', ml: 0.5, flexShrink: 0 }} />}
+                      sx={{
+                        fontSize: 11, height: 22,
+                        background: alpha('#22c55e', 0.1),
+                        color: '#22c55e',
+                        border: `1px solid ${alpha('#22c55e', 0.3)}`,
+                      }}
+                    />
+                  </Tooltip>
+                ))}
+                {activeObservers.length > 6 && (
+                  <Chip label={`+${activeObservers.length - 6}`} size="small" clickable
+                    onClick={() => navigate('/observers')}
+                    sx={{ fontSize: 11, height: 22, color: md3.primary }} />
                 )}
               </Box>
             </CardContent>
