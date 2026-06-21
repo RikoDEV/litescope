@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isContact, isLocation, parseMessageSegments } from './contacts'
+import { isContact, isLocation, MESSAGE_TOKEN_RE, parseMessageSegments } from './contacts'
 
 describe('parseMessageSegments', () => {
   it('preserves plain text when no rich tokens are present', () => {
@@ -32,5 +32,19 @@ describe('parseMessageSegments', () => {
 
   it('does not match low-precision comma-separated numbers', () => {
     expect(parseMessageSegments('try channel 1,2 today')).toEqual(['try channel 1,2 today'])
+  })
+})
+
+describe('MESSAGE_TOKEN_RE', () => {
+  it('parses comma-separated channels without requiring spaces', () => {
+    const text = `=> Ustawienia regionow:
+* waw: #warszawa,#test,
+   #bot,#meteo,#hydepark
+
+* pl-mz: #mazowsze`
+
+    expect(Array.from(text.matchAll(MESSAGE_TOKEN_RE), match => match[3])).toEqual([
+      'warszawa', 'test', 'bot', 'meteo', 'hydepark', 'mazowsze',
+    ])
   })
 })

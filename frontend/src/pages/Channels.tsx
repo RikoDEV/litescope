@@ -41,7 +41,7 @@ import { passesRegion } from '../utils/regions'
 import type { Channel, Packet, PacketDetail } from '../types'
 import { deduplicateObs } from '../utils/packets'
 import { hashColor } from '../utils/colors'
-import { parseMessageSegments, isContact, isLocation, type ContactShare, type LocationShare } from '../utils/contacts'
+import { MESSAGE_TOKEN_RE, parseMessageSegments, isContact, isLocation, type ContactShare, type LocationShare } from '../utils/contacts'
 import L from 'leaflet'
 import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
@@ -616,8 +616,6 @@ export default function Channels() {
 }
 
 // ── Message text with mention + channel parsing ───────────────────────────────
-const TOKEN_RE = /@\[([^\]]+)\]|(https?:\/\/[^\s]+)|#(\S+)/g
-
 function MessageText(props: {
   text: string
   onMentionClick: (name: string) => void
@@ -762,8 +760,8 @@ function InlineText({ text, onMentionClick, channels, onChannelClick }: {
   const theme = useTheme(); const md3 = theme.palette.md3
   const parts: React.ReactNode[] = []
   let last = 0; let m: RegExpExecArray | null; let i = 0
-  TOKEN_RE.lastIndex = 0
-  while ((m = TOKEN_RE.exec(text)) !== null) {
+  MESSAGE_TOKEN_RE.lastIndex = 0
+  while ((m = MESSAGE_TOKEN_RE.exec(text)) !== null) {
     if (m.index > last) parts.push(<span key={i++}>{text.slice(last, m.index)}</span>)
     if (m[1] !== undefined) {
       // @[mention]
