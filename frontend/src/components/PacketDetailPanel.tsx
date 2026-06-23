@@ -463,7 +463,10 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
   const [nodes, setNodes] = useState<Node[]>([])
   const [copied, setCopied] = useState(false)
   useEffect(() => { api.nodes().then(r => setNodes(r.nodes ?? [])) }, [])
-  const matchHop = (hex: string) => nodes.find(n => n.pubKey.toUpperCase().startsWith(hex.toUpperCase()))
+  // A path hop is a routing-hash prefix, so only repeaters can be on a path.
+  // Restrict resolution to repeaters; otherwise a companion whose pubkey shares
+  // the hop prefix would be shown in the path.
+  const matchHop = (hex: string) => nodes.find(n => n.role === 'repeater' && n.pubKey.toUpperCase().startsWith(hex.toUpperCase()))
 
   const obs = deduplicateObs(selected.observations ?? [])
   const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))

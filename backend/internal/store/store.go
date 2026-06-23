@@ -2022,8 +2022,10 @@ func (s *Store) computeTopNodes(limit int, by string, f AnalyticsFilter) ([]*Nod
 	if limit < len(nodes) {
 		nodes = nodes[:limit]
 	}
-	// Drop out-of-scope nodes (zero rank) when filtering.
-	if f.Active() {
+	// Drop zero-rank nodes: out-of-scope ones when filtering, and — when sorting
+	// by retransmits — any node that never relayed (companions now always rank 0
+	// here), so the list only ever shows actual repeaters.
+	if f.Active() || by == "retransmits" {
 		end := len(nodes)
 		for end > 0 && rank(nodes[end-1]) == 0 {
 			end--
@@ -2059,9 +2061,14 @@ func (s *Store) computeRetransmitCounts(f AnalyticsFilter) map[string]int {
 	// Index node pubKeys by their leading hex prefix at every observed hop length
 	// so a hop can be matched to candidate nodes without scanning every node. A
 	// short hop may collide with several pubKeys; each candidate is credited,
-	// which is the inherent limit of matching by hash prefix.
+	// which is the inherent limit of matching by hash prefix. Only routing nodes
+	// (repeaters) actually retransmit, so companions are excluded here — otherwise
+	// a hop colliding with a companion's prefix would wrongly credit it.
 	prefixIndex := make(map[string][]string)
-	for pk := range s.nodes {
+	for pk, n := range s.nodes {
+		if !participatesInRouting(n.Role) {
+			continue
+		}
 		lpk := strings.ToLower(pk)
 		for l := range lengths {
 			if len(lpk) >= l {
