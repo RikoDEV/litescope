@@ -438,13 +438,21 @@ export default function Packets() {
                 </TableRow>
               )}
               {filtered.map(p => {
+                let label = "";                
                 const dec   = p.decoded
                 const color = typeColor(p.payloadType)
-                const label = (dec?.name ?? dec?.sender ?? dec?.channel) as string | undefined
                 const msgText = dec?.text as string | undefined
                 const isSelected = selected?.hash === p.hash
                 const isExpanded = expandedHash === p.hash
                 const subObs = isExpanded && expandedDetail?.hash === p.hash ? deduplicateObs(expandedDetail.observations ?? []) : []
+
+                if (dec) {
+                  const hasDirection = ["TXT_MSG", "RESPONSE", "PATH", "REQ"].includes(dec.type);
+                  label = hasDirection 
+                    ? `${dec.srcHash} → ${dec.destHash}` 
+                    : (dec.name ?? dec.sender ?? dec.channel ?? "");
+                }
+
                 return [
                   <TableRow key={p.id} selected={isSelected} onClick={() => selectPacket(p)}>
                     <TableCell sx={{ p: 0, width: 32 }} onClick={p.obsCount > 1 ? e => toggleExpand(e, p) : undefined}>
