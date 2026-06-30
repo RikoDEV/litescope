@@ -50,6 +50,20 @@ const LH_MS: Record<string, number> = {
   '1h': 3600e3, '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*24*3600e3, '30d': 30*24*3600e3,
 }
 
+function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const r = 6371
+  const dLat = (bLat - aLat) * Math.PI / 180
+  const dLon = (bLon - aLon) * Math.PI / 180
+  const lat1 = aLat * Math.PI / 180
+  const lat2 = bLat * Math.PI / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+  return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+function formatDistanceKm(km: number) {
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km).toLocaleString()} km`
+}
+
 // Canonical role symbols/colours/markers are shared app-wide via utils/roles.
 const ROLE_SHAPES = ROLE_GLYPH
 
@@ -81,7 +95,9 @@ export default function MapView() {
   const markersRef   = useRef<Map<string, L.Marker>>(new Map())
   const scopeLayerRef = useRef<L.LayerGroup | null>(null)
   const heatCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const neighborLayerRef = useRef<L.LayerGroup | null>(null)
+  const neighborCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const neighborSegmentsRef = useRef<Array<{ link: DirectLink; ax: number; ay: number; bx: number; by: number }>>([])
+  const neighborTooltipRef = useRef<L.Tooltip | null>(null)
 
   const [nodes,    setNodes]    = useState<Node[]>([])
   const [scopeRegions, setScopeRegions] = useState<ScopeRegion[]>([])
@@ -191,7 +207,6 @@ export default function MapView() {
       },
     })
     cluster.addTo(map)
-    neighborLayerRef.current = L.layerGroup().addTo(map)
     scopeLayerRef.current = L.layerGroup().addTo(map)
 
     const heatCanvas = document.createElement('canvas')
@@ -199,12 +214,20 @@ export default function MapView() {
     el.appendChild(heatCanvas)
     heatCanvasRef.current = heatCanvas
 
+    const neighborCanvas = document.createElement('canvas')
+    neighborCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:430;opacity:0;'
+    el.appendChild(neighborCanvas)
+    neighborCanvasRef.current = neighborCanvas
+    neighborTooltipRef.current = L.tooltip({ sticky: true, opacity: 0.95, direction: 'top' })
+
     clusterGroup.current = cluster
     mapInstance.current = map
     return () => {
       heatCanvas.remove()
+      neighborCanvas.remove()
+      neighborTooltipRef.current?.remove()
       map.remove(); mapInstance.current = null; clusterGroup.current = null
-      scopeLayerRef.current = null; heatCanvasRef.current = null; neighborLayerRef.current = null
+      scopeLayerRef.current = null; heatCanvasRef.current = null; neighborCanvasRef.current = null; neighborTooltipRef.current = null
     }
   }, [])
 
@@ -369,34 +392,127 @@ export default function MapView() {
   }, [showHeatMap, heatPoints, tilesReady])
 
   useEffect(() => {
-    const layer = neighborLayerRef.current
-    if (!layer) return
-    layer.clearLayers()
-    if (!showNeighbors) return
-    const maxCount = Math.max(1, ...directLinks.map(l => l.count))
-    for (const link of directLinks) {
-      const intensity = Math.sqrt(link.count / maxCount)
-      const hasSignal = (link.signalCount ?? 0) > 0
-      const color = !hasSignal ? '#38bdf8' : link.avgSnr >= 8 ? '#22c55e' : link.avgSnr >= 0 ? '#f59e0b' : md3.error
+    const canvas = neighborCanvasRef.current
+    const map = mapInstance.current
+    const tooltip = neighborTooltipRef.current
+    if (!canvas || !map || !tooltip) return
+
+    let raf = 0
+    const lineDistanceSq = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+      const dx = bx - ax
+      const dy = by - ay
+      if (dx === 0 && dy === 0) return (px - ax) ** 2 + (py - ay) ** 2
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+      const x = ax + t * dx
+      const y = ay + t * dy
+      return (px - x) ** 2 + (py - y) ** 2
+    }
+    const draw = () => {
+      raf = 0
+      const dpr = Math.min(2, window.devicePixelRatio || 1)
+      const w = canvas.clientWidth
+      const h = canvas.clientHeight
+      if (w === 0 || h === 0) return
+      const bw = Math.round(w * dpr)
+      const bh = Math.round(h * dpr)
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw
+        canvas.height = bh
+      }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, w, h)
+      neighborSegmentsRef.current = []
+      canvas.style.opacity = showNeighbors && tilesReady ? '1' : '0'
+      if (!showNeighbors || !tilesReady || directLinks.length === 0) {
+        tooltip.remove()
+        return
+      }
+
+      const pad = 160
+      const visible: Array<{ link: DirectLink; ax: number; ay: number; bx: number; by: number }> = []
+      for (const link of directLinks) {
+        const a = map.latLngToContainerPoint([link.nodeA.lat, link.nodeA.lon])
+        const b = map.latLngToContainerPoint([link.nodeB.lat, link.nodeB.lon])
+        if ((a.x < -pad && b.x < -pad) || (a.y < -pad && b.y < -pad) || (a.x > w + pad && b.x > w + pad) || (a.y > h + pad && b.y > h + pad)) {
+          continue
+        }
+        visible.push({ link, ax: a.x, ay: a.y, bx: b.x, by: b.y })
+      }
+      const maxDrawn = map.getZoom() <= 5 ? 3500 : 9000
+      if (visible.length > maxDrawn) {
+        visible.sort((a, b) => b.link.count - a.link.count)
+        visible.length = maxDrawn
+      }
+      const maxCount = Math.max(1, ...visible.map(s => s.link.count))
+      visible.sort((a, b) => a.link.count - b.link.count)
+
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      for (const s of visible) {
+        const intensity = Math.sqrt(s.link.count / maxCount)
+        const hasSignal = (s.link.signalCount ?? 0) > 0
+        ctx.strokeStyle = !hasSignal ? '#38bdf8' : s.link.avgSnr >= 8 ? '#22c55e' : s.link.avgSnr >= 0 ? '#f59e0b' : md3.error
+        ctx.globalAlpha = 0.18 + intensity * 0.50
+        ctx.lineWidth = 0.8 + intensity * 3.4
+        ctx.beginPath()
+        ctx.moveTo(s.ax, s.ay)
+        ctx.lineTo(s.bx, s.by)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
+      neighborSegmentsRef.current = visible
+    }
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(draw)
+    }
+    const onMouseMove = (e: L.LeafletMouseEvent) => {
+      if (!showNeighbors || neighborSegmentsRef.current.length === 0) {
+        tooltip.remove()
+        return
+      }
+      const p = map.latLngToContainerPoint(e.latlng)
+      let best: { link: DirectLink; d: number } | null = null
+      for (const s of neighborSegmentsRef.current) {
+        const d = lineDistanceSq(p.x, p.y, s.ax, s.ay, s.bx, s.by)
+        if (d <= 100 && (!best || d < best.d)) best = { link: s.link, d }
+      }
+      if (!best) {
+        tooltip.remove()
+        return
+      }
+      const link = best.link
       const labelA = link.nodeA.name || link.nodeA.pubKey.slice(0, 10)
       const labelB = link.nodeB.name || link.nodeB.pubKey.slice(0, 10)
+      const hasSignal = (link.signalCount ?? 0) > 0
+      const dist = distanceKm(link.nodeA.lat, link.nodeA.lon, link.nodeB.lat, link.nodeB.lon)
       const signalHtml = hasSignal
         ? `<div style="color:#64748b">SNR ${link.avgSnr.toFixed(1)} · RSSI ${link.avgRssi.toFixed(1)}</div>`
         : ''
-      L.polyline([[link.nodeA.lat, link.nodeA.lon], [link.nodeB.lat, link.nodeB.lon]], {
-        color,
-        weight: 1.2 + intensity * 4,
-        opacity: 0.25 + intensity * 0.55,
-      }).bindTooltip(
-        `<div style="font-family:system-ui;min-width:170px">
+      tooltip
+        .setLatLng(e.latlng)
+        .setContent(`<div style="font-family:system-ui;min-width:170px">
           <b>${escapeHtml(labelA)} ↔ ${escapeHtml(labelB)}</b>
           <div>${escapeHtml(t('map.directPackets', { count: link.count.toLocaleString() }))}</div>
+          <div style="color:#64748b">${escapeHtml(formatDistanceKm(dist))}</div>
           ${signalHtml}
-        </div>`,
-        { sticky: true },
-      ).addTo(layer)
+        </div>`)
+      if (!map.hasLayer(tooltip)) tooltip.addTo(map)
     }
-  }, [showNeighbors, directLinks, md3.error, t])
+    const hideTooltip = () => tooltip.remove()
+    draw()
+    map.on('move zoom resize', schedule)
+    map.on('mousemove', onMouseMove)
+    map.on('mouseout zoomstart movestart', hideTooltip)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      map.off('move zoom resize', schedule)
+      map.off('mousemove', onMouseMove)
+      map.off('mouseout zoomstart movestart', hideTooltip)
+      tooltip.remove()
+    }
+  }, [showNeighbors, directLinks, md3.error, t, tilesReady])
 
   const scopeOptions = useMemo(() => {
     const set = new Set<string>()
