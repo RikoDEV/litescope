@@ -50,6 +50,16 @@ const LH_MS: Record<string, number> = {
   '1h': 3600e3, '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*24*3600e3, '30d': 30*24*3600e3,
 }
 
+type NeighborSegment = {
+  link: DirectLink
+  ax: number
+  ay: number
+  bx: number
+  by: number
+  cx: number
+  cy: number
+}
+
 function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number) {
   const r = 6371
   const dLat = (bLat - aLat) * Math.PI / 180
@@ -62,6 +72,15 @@ function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number) {
 
 function formatDistanceKm(km: number) {
   return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km).toLocaleString()} km`
+}
+
+function hashText(s: string) {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
 }
 
 // Canonical role symbols/colours/markers are shared app-wide via utils/roles.
@@ -96,7 +115,7 @@ export default function MapView() {
   const scopeLayerRef = useRef<L.LayerGroup | null>(null)
   const heatCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const neighborCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const neighborSegmentsRef = useRef<Array<{ link: DirectLink; ax: number; ay: number; bx: number; by: number }>>([])
+  const neighborSegmentsRef = useRef<NeighborSegment[]>([])
   const neighborTooltipRef = useRef<L.Tooltip | null>(null)
 
   const [nodes,    setNodes]    = useState<Node[]>([])
@@ -407,6 +426,21 @@ export default function MapView() {
       const y = ay + t * dy
       return (px - x) ** 2 + (py - y) ** 2
     }
+    const curveDistanceSq = (px: number, py: number, s: NeighborSegment) => {
+      let best = Infinity
+      let prevX = s.ax
+      let prevY = s.ay
+      for (let i = 1; i <= 12; i++) {
+        const t = i / 12
+        const mt = 1 - t
+        const x = mt * mt * s.ax + 2 * mt * t * s.cx + t * t * s.bx
+        const y = mt * mt * s.ay + 2 * mt * t * s.cy + t * t * s.by
+        best = Math.min(best, lineDistanceSq(px, py, prevX, prevY, x, y))
+        prevX = x
+        prevY = y
+      }
+      return best
+    }
     const draw = () => {
       raf = 0
       const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -431,19 +465,78 @@ export default function MapView() {
       }
 
       const pad = 160
-      const visible: Array<{ link: DirectLink; ax: number; ay: number; bx: number; by: number }> = []
+      const visible: NeighborSegment[] = []
       for (const link of directLinks) {
         const a = map.latLngToContainerPoint([link.nodeA.lat, link.nodeA.lon])
         const b = map.latLngToContainerPoint([link.nodeB.lat, link.nodeB.lon])
         if ((a.x < -pad && b.x < -pad) || (a.y < -pad && b.y < -pad) || (a.x > w + pad && b.x > w + pad) || (a.y > h + pad && b.y > h + pad)) {
           continue
         }
-        visible.push({ link, ax: a.x, ay: a.y, bx: b.x, by: b.y })
+        visible.push({ link, ax: a.x, ay: a.y, bx: b.x, by: b.y, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 })
       }
       const maxDrawn = map.getZoom() <= 5 ? 3500 : 9000
       if (visible.length > maxDrawn) {
         visible.sort((a, b) => b.link.count - a.link.count)
         visible.length = maxDrawn
+      }
+      for (const s of visible) {
+        const dx = s.bx - s.ax
+        const dy = s.by - s.ay
+        const len = Math.hypot(dx, dy)
+        const pairHash = hashText(`${s.link.nodeA.pubKey}|${s.link.nodeB.pubKey}`)
+        const sign = pairHash & 1 ? 1 : -1
+        const lane = ((pairHash >>> 1) % 5) - 2
+        if (len < 1) {
+          const angle = ((pairHash % 360) * Math.PI) / 180
+          const radius = 18 + ((pairHash >>> 8) % 26)
+          s.cx = s.ax + Math.cos(angle) * radius
+          s.cy = s.ay + Math.sin(angle) * radius
+          continue
+        }
+        const nx = -dy / len
+        const ny = dx / len
+        const curve = sign * Math.min(90, Math.max(14, len * 0.10 + lane * 7))
+        const endpointShift = sign * Math.min(7, Math.max(2, len * 0.018))
+        s.ax += nx * endpointShift
+        s.ay += ny * endpointShift
+        s.bx += nx * endpointShift
+        s.by += ny * endpointShift
+        s.cx = (s.ax + s.bx) / 2 + nx * curve
+        s.cy = (s.ay + s.by) / 2 + ny * curve
+      }
+      const groups = new Map<string, NeighborSegment[]>()
+      for (const s of visible) {
+        const ax = Math.round(s.ax / 4)
+        const ay = Math.round(s.ay / 4)
+        const bx = Math.round(s.bx / 4)
+        const by = Math.round(s.by / 4)
+        const k1 = `${ax}:${ay}`
+        const k2 = `${bx}:${by}`
+        const key = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`
+        const group = groups.get(key)
+        if (group) group.push(s)
+        else groups.set(key, [s])
+      }
+      for (const group of groups.values()) {
+        if (group.length === 1) continue
+        group.sort((a, b) => a.link.nodeA.pubKey.localeCompare(b.link.nodeA.pubKey) || a.link.nodeB.pubKey.localeCompare(b.link.nodeB.pubKey))
+        const mid = (group.length - 1) / 2
+        for (let i = 0; i < group.length; i++) {
+          const s = group[i]!
+          const dx = s.bx - s.ax
+          const dy = s.by - s.ay
+          const len = Math.hypot(dx, dy)
+          if (len < 1) {
+            const angle = (i / group.length) * Math.PI * 2
+            const radius = 10 + Math.min(32, group.length * 2)
+            s.cx = s.ax + Math.cos(angle) * radius
+            s.cy = s.ay + Math.sin(angle) * radius
+            continue
+          }
+          const offset = (i - mid) * 10
+          s.cx += (-dy / len) * offset
+          s.cy += (dx / len) * offset
+        }
       }
       const maxCount = Math.max(1, ...visible.map(s => s.link.count))
       visible.sort((a, b) => a.link.count - b.link.count)
@@ -458,7 +551,7 @@ export default function MapView() {
         ctx.lineWidth = 0.8 + intensity * 3.4
         ctx.beginPath()
         ctx.moveTo(s.ax, s.ay)
-        ctx.lineTo(s.bx, s.by)
+        ctx.quadraticCurveTo(s.cx, s.cy, s.bx, s.by)
         ctx.stroke()
       }
       ctx.globalAlpha = 1
@@ -475,7 +568,7 @@ export default function MapView() {
       const p = map.latLngToContainerPoint(e.latlng)
       let best: { link: DirectLink; d: number } | null = null
       for (const s of neighborSegmentsRef.current) {
-        const d = lineDistanceSq(p.x, p.y, s.ax, s.ay, s.bx, s.by)
+        const d = curveDistanceSq(p.x, p.y, s)
         if (d <= 100 && (!best || d < best.d)) best = { link: s.link, d }
       }
       if (!best) {
