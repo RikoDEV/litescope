@@ -42,6 +42,8 @@ func main() {
 	defer database.Close()
 	log.Printf("SQLite opened: %s", cfg.DBPath)
 
+	pruneDatabaseRetention(database, cfg.RetentionDays, "startup")
+
 	channelKeys := cfg.ChannelKeys
 	if len(channelKeys) == 0 {
 		log.Printf("no channel keys configured — GRP_TXT will not be decrypted")
@@ -57,20 +59,11 @@ func main() {
 	// Bound database growth: prune transmissions/observations past the retention
 	// window. The ingestor owns DB writes, so it owns DB retention.
 	if cfg.RetentionDays > 0 {
-		prune := func() {
-			cutoff := time.Now().UTC().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).Format(time.RFC3339)
-			if n, err := database.PruneOlderThan(cutoff); err != nil {
-				log.Printf("prune: %v", err)
-			} else if n > 0 {
-				log.Printf("pruned %d transmissions older than %d day(s)", n, cfg.RetentionDays)
-			}
-		}
-		prune()
 		go func() {
 			ticker := time.NewTicker(time.Hour)
 			defer ticker.Stop()
 			for range ticker.C {
-				prune()
+				pruneDatabaseRetention(database, cfg.RetentionDays, "scheduled")
 			}
 		}()
 	}
@@ -139,6 +132,21 @@ func main() {
 	// the deferred database.Close runs.
 	close(writeCh)
 	writerWG.Wait()
+}
+
+func pruneDatabaseRetention(database *db.DB, retentionDays int, label string) {
+	if retentionDays <= 0 {
+		return
+	}
+	start := time.Now()
+	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format(time.RFC3339)
+	n, err := database.PruneOlderThan(cutoff)
+	if err != nil {
+		log.Printf("%s DB retention prune: %v", label, err)
+		return
+	}
+	log.Printf("%s DB retention prune: pruned %d transmissions older than %d day(s) (duration=%s)",
+		label, n, retentionDays, time.Since(start).Round(time.Millisecond))
 }
 
 // Writer batching bounds: flush when the batch reaches maxWriteBatch or every

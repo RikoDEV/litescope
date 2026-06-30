@@ -38,6 +38,8 @@ func main() {
 	defer database.Close()
 	log.Printf("SQLite opened: %s", cfg.DBPath)
 
+	pruneDatabaseRetention(database, cfg.RetentionDays, "startup")
+
 	// Load everything into memory
 	loadStart := time.Now()
 	txs, obss, nodes, observers, err := database.LoadAll()
@@ -225,6 +227,21 @@ func main() {
 	if err := httpSrv.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+}
+
+func pruneDatabaseRetention(database *db.DB, retentionDays int, label string) {
+	if retentionDays <= 0 {
+		return
+	}
+	start := time.Now()
+	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format(time.RFC3339)
+	n, err := database.PruneOlderThan(cutoff)
+	if err != nil {
+		log.Printf("%s DB retention prune: %v", label, err)
+		return
+	}
+	log.Printf("%s DB retention prune: pruned %d transmissions older than %d day(s) (duration=%s)",
+		label, n, retentionDays, time.Since(start).Round(time.Millisecond))
 }
 
 func logLocationRepair(prefix string, stats store.LocationRepairStats) {
