@@ -520,8 +520,10 @@ export default function MapView() {
     if (pkt.payloadType === 4 && dec.pubKey) {
       const pubKey = dec.pubKey as string
       if (pkt.hopSize && pkt.hopSize > 0) nodeByteSizeRef.current.set(pubKey, pkt.hopSize)
-      const lat  = dec.lat as number | undefined
-      const lon  = dec.lon as number | undefined
+      const rawLat = dec.lat as number | undefined
+      const rawLon = dec.lon as number | undefined
+      const lat  = pkt.nodeLat ?? (hasValidLocation(rawLat, rawLon) ? rawLat : undefined)
+      const lon  = pkt.nodeLon ?? (hasValidLocation(rawLat, rawLon) ? rawLon : undefined)
       const name = dec.name as string | undefined
       setNodes(prev => {
         const idx   = prev.findIndex(n => n.pubKey === pubKey)

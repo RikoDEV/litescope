@@ -395,6 +395,55 @@ func TestMapHeatAndDirectLinks(t *testing.T) {
 	}
 }
 
+func TestMapLocationsRepairZeroAndSuspiciousAdvertCoords(t *testing.T) {
+	obsLat, obsLon := 52.0, 21.0
+	fakeLat, fakeLon := 40.7128, -74.0060
+	zeroLat, zeroLon := 0.0, 21.1
+	const fakeNode = "fakeNode"
+	const zeroNode = "zeroNode"
+	const obsNode = "obsNode"
+
+	s := New()
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "fake", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + fakeNode + `"}`},
+			{ID: 2, Hash: "zero", RawHex: "00", FirstSeen: "2024-01-01T00:00:01Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + zeroNode + `"}`},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: obsNode, ObserverIATA: "WAW", PathJSON: "[]", Timestamp: "2024-01-01T00:00:02Z"},
+			{ID: 2, TxID: 2, ObserverID: obsNode, ObserverIATA: "WAW", PathJSON: "[]", Timestamp: "2024-01-01T00:00:03Z"},
+		},
+		[]*db.NodeRow{
+			{PubKey: fakeNode, Name: "Fake GPS", Role: "repeater", Lat: &fakeLat, Lon: &fakeLon},
+			{PubKey: zeroNode, Name: "Unset GPS", Role: "repeater", Lat: &zeroLat, Lon: &zeroLon},
+			{PubKey: obsNode, Name: "Observer", Role: "repeater", Lat: &obsLat, Lon: &obsLon},
+		},
+		nil,
+	)
+
+	for _, pk := range []string{fakeNode, zeroNode} {
+		n := s.NodeByPubKey(pk)
+		if n == nil || n.Lat == nil || n.Lon == nil {
+			t.Fatalf("expected repaired location for %s, got %+v", pk, n)
+		}
+		if *n.Lat != obsLat || *n.Lon != obsLon {
+			t.Fatalf("expected %s to use observer consensus %.1f,%.1f, got %.4f,%.4f", pk, obsLat, obsLon, *n.Lat, *n.Lon)
+		}
+	}
+
+	for _, link := range s.DirectLinks(AnalyticsFilter{}) {
+		if link.NodeA.PubKey == fakeNode || link.NodeB.PubKey == fakeNode {
+			if link.NodeA.Lon == fakeLon || link.NodeB.Lon == fakeLon {
+				t.Fatalf("direct link leaked fake longitude: %+v", link)
+			}
+		}
+	}
+
+	if max := s.DistanceStats(AnalyticsFilter{}).Geo.MaxDistKm; max > 1 {
+		t.Fatalf("expected repaired geo distances near local observer, got max %.2f km", max)
+	}
+}
+
 func TestIATAsFiltersInvalidRegionSegments(t *testing.T) {
 	s := New()
 	s.Load(

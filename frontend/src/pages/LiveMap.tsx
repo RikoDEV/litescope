@@ -240,12 +240,13 @@ export default function LiveMap() {
     }
 
     // Resolution chain for origin:
-    // 1. GPS directly in decoded payload (adverts)
+    // 1. Server-repaired node location or GPS directly in decoded payload (adverts)
     // 2. Sender's last known location from nodesRef
     // 3. First resolvable intermediate hop (relay node)
     // 4. Observer location (at least show "packet arrived here")
     const senderPk = (dec?.pubKey ?? '') as string
     let origin: [number, number] | null =
+      validLoc(pkt.nodeLat, pkt.nodeLon) ??
       validLoc(dec?.lat as number | undefined, dec?.lon as number | undefined) ??
       (senderPk ? validLoc(findNode(senderPk)?.lat, findNode(senderPk)?.lon) : null)
 
@@ -288,11 +289,12 @@ export default function LiveMap() {
     // Update node positions from advert packets
     const dec = pkt.decoded
     if (pkt.payloadType === 4 && dec?.pubKey) {
-      const lat = dec.lat as number | undefined
-      const lon = dec.lon as number | undefined
+      const rawLat = dec.lat as number | undefined
+      const rawLon = dec.lon as number | undefined
+      const loc = validLatLon(pkt.nodeLat, pkt.nodeLon) ?? validLatLon(rawLat, rawLon)
       const pubKey = dec.pubKey as string
       const name   = dec.name as string | undefined
-      if (lat != null && lon != null) {
+      if (loc) {
         setNodes(prev => {
           const idx = prev.findIndex(n => n.pubKey === pubKey)
           const existing = idx >= 0 ? prev[idx] : undefined
@@ -300,7 +302,7 @@ export default function LiveMap() {
           const role  = flags?.type === 2 ? 'repeater' : flags?.type === 3 ? 'room' : flags?.type === 4 ? 'sensor' : 'companion'
           const updated: Node = {
             pubKey, name: name ?? pubKey.slice(0, 8), role,
-            lat, lon, lastSeen: pkt.firstSeen,
+            lat: loc[0], lon: loc[1], lastSeen: pkt.firstSeen,
             firstSeen: existing?.firstSeen ?? pkt.firstSeen,
             advertCount: existing ? existing.advertCount + 1 : 1,
           }
@@ -345,7 +347,9 @@ export default function LiveMap() {
     const involvedKeys = new Set<string>()
     const dec = pkt.decoded
 
-    const fromPayload = validLoc(dec?.lat as number | undefined, dec?.lon as number | undefined)
+    const fromPayload =
+      validLoc(pkt.nodeLat, pkt.nodeLon) ??
+      validLoc(dec?.lat as number | undefined, dec?.lon as number | undefined)
     if (fromPayload) points.push(fromPayload)
     const senderPk = (dec?.pubKey ?? '') as string
     if (senderPk) {

@@ -28,6 +28,8 @@ export interface Packet {
   bestObserver?: string | undefined
   regions?: string[] | undefined
   country?: string | undefined
+  nodeLat?: number | undefined
+  nodeLon?: number | undefined
   byteSize: number
   channelHash?: string | undefined
   decoded?: DecodedPayload | undefined

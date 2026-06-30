@@ -130,6 +130,8 @@ type Node struct {
 	Role        string
 	Lat         *float64
 	Lon         *float64
+	RawLat      *float64
+	RawLon      *float64
 	Country     string // ISO 3166-1 alpha-2, resolved from Lat/Lon (geo filtering)
 	LastSeen    string
 	FirstSeen   string
@@ -316,6 +318,7 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 	for _, r := range nodes {
 		s.nodes[r.PubKey] = nodeFromRow(r)
 	}
+	s.repairNodeLocationsLocked()
 	for _, r := range obs {
 		s.observers[r.ID] = observerFromRow(r)
 	}
@@ -388,6 +391,9 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		updated = append(updated, tx)
 	}
 	if mutated {
+		if s.repairNodeLocationsLocked() {
+			s.bumpNodeVersion()
+		}
 		s.bumpVersion()
 	}
 	return added, updated
@@ -542,6 +548,7 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) {
 		changed = true
 	}
 	if changed {
+		s.repairNodeLocationsLocked()
 		s.bumpVersion()
 		s.bumpNodeVersion()
 	}
@@ -892,7 +899,7 @@ func (s *Store) computeScopeRegions(f AnalyticsFilter) []ScopeRegion {
 				continue
 			}
 			n := observerNodes[o.ObserverID]
-			if n == nil || n.Lat == nil || n.Lon == nil {
+			if !hasUsableLocation(n) {
 				continue
 			}
 			region := normalizeIATA(o.ObserverIATA)
@@ -967,12 +974,12 @@ func (s *Store) nodeForObserverID(id string) *Node {
 	if id == "" {
 		return nil
 	}
-	if n := s.nodes[id]; n != nil && n.Lat != nil && n.Lon != nil {
+	if n := s.nodes[id]; hasUsableLocation(n) {
 		return n
 	}
 	uid := strings.ToUpper(id)
 	for pk, n := range s.nodes {
-		if n.Lat != nil && n.Lon != nil && strings.HasPrefix(strings.ToUpper(pk), uid) {
+		if hasUsableLocation(n) && strings.HasPrefix(strings.ToUpper(pk), uid) {
 			return n
 		}
 	}
@@ -994,7 +1001,7 @@ func (s *Store) computeMapHeat(f AnalyticsFilter) []MapHeatPoint {
 	}
 	byNode := make(map[string]*acc)
 	add := func(n *Node, packets, observations int) {
-		if n == nil || n.Lat == nil || n.Lon == nil {
+		if !hasUsableLocation(n) {
 			return
 		}
 		a := byNode[n.PubKey]
@@ -1076,7 +1083,7 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		}
 		pubKey, _ := dec["pubKey"].(string)
 		src := s.nodes[pubKey]
-		if src == nil || src.Lat == nil || src.Lon == nil {
+		if !hasUsableLocation(src) {
 			continue
 		}
 		for _, o := range tx.Observations {
@@ -1084,7 +1091,7 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 				continue
 			}
 			dst := observerNodes[o.ObserverID]
-			if dst == nil || dst.Lat == nil || dst.Lon == nil || dst.PubKey == src.PubKey {
+			if !hasUsableLocation(dst) || dst.PubKey == src.PubKey {
 				continue
 			}
 			a, b := src, dst
@@ -2269,29 +2276,140 @@ func obsFromRow(r *db.ObsRow) *Obs {
 	return o
 }
 
+const suspiciousAdvertLocationKm = 300.0
+
 func nodeFromRow(r *db.NodeRow) *Node {
+	lat, lon := normalizedLocation(r.Lat, r.Lon)
 	n := &Node{
-		PubKey: r.PubKey, Name: r.Name, Role: r.Role, Lat: r.Lat, Lon: r.Lon,
+		PubKey: r.PubKey, Name: r.Name, Role: r.Role, Lat: lat, Lon: lon,
+		RawLat: lat, RawLon: lon,
 		LastSeen: r.LastSeen, FirstSeen: r.FirstSeen, AdvertCount: r.AdvertCount,
 		BatteryMv: r.BatteryMv, TempC: r.TempC,
 	}
-	if r.Lat != nil && r.Lon != nil {
-		n.Country = geo.CountryAt(*r.Lat, *r.Lon)
-	}
+	setNodeCountry(n)
 	return n
 }
 
 func nodeMatchesRow(n *Node, r *db.NodeRow) bool {
+	lat, lon := normalizedLocation(r.Lat, r.Lon)
 	return n.PubKey == r.PubKey &&
 		n.Name == r.Name &&
 		n.Role == r.Role &&
-		ptrEqual(n.Lat, r.Lat) &&
-		ptrEqual(n.Lon, r.Lon) &&
+		ptrEqual(n.RawLat, lat) &&
+		ptrEqual(n.RawLon, lon) &&
 		n.LastSeen == r.LastSeen &&
 		n.FirstSeen == r.FirstSeen &&
 		n.AdvertCount == r.AdvertCount &&
 		ptrEqual(n.BatteryMv, r.BatteryMv) &&
 		ptrEqual(n.TempC, r.TempC)
+}
+
+func normalizedLocation(lat, lon *float64) (*float64, *float64) {
+	if lat == nil || lon == nil || *lat == 0 || *lon == 0 {
+		return nil, nil
+	}
+	latCopy, lonCopy := *lat, *lon
+	return &latCopy, &lonCopy
+}
+
+func hasUsableLocation(n *Node) bool {
+	return n != nil && n.Lat != nil && n.Lon != nil && *n.Lat != 0 && *n.Lon != 0
+}
+
+func hasUsableRawLocation(n *Node) bool {
+	return n != nil && n.RawLat != nil && n.RawLon != nil && *n.RawLat != 0 && *n.RawLon != 0
+}
+
+func setNodeCountry(n *Node) {
+	n.Country = ""
+	if hasUsableLocation(n) {
+		n.Country = geo.CountryAt(*n.Lat, *n.Lon)
+	}
+}
+
+// repairNodeLocationsLocked treats advertised node coordinates as untrusted
+// map coordinates. MeshCore nodes sometimes report unset zeros, and some nodes
+// publish stale/fake GPS points. When direct radio observations place a node
+// near located observers, use those observers as a local consensus fallback.
+// Caller must hold the store write lock. Returns true when an effective map
+// coordinate or derived country changed.
+func (s *Store) repairNodeLocationsLocked() bool {
+	before := make(map[string]struct {
+		lat, lon *float64
+		country  string
+	}, len(s.nodes))
+	for pk, n := range s.nodes {
+		before[pk] = struct {
+			lat, lon *float64
+			country  string
+		}{lat: n.Lat, lon: n.Lon, country: n.Country}
+	}
+	for _, n := range s.nodes {
+		n.Lat, n.Lon = n.RawLat, n.RawLon
+		setNodeCountry(n)
+	}
+	for pk, n := range s.nodes {
+		lat, lon, ok := s.directObserverConsensusLocked(pk)
+		if !ok {
+			continue
+		}
+		switch {
+		case !hasUsableLocation(n):
+			n.Lat, n.Lon = &lat, &lon
+			setNodeCountry(n)
+		case haversineKm(*n.Lat, *n.Lon, lat, lon) > suspiciousAdvertLocationKm:
+			n.Lat, n.Lon = &lat, &lon
+			setNodeCountry(n)
+		}
+	}
+	for pk, n := range s.nodes {
+		prev := before[pk]
+		if !ptrEqual(prev.lat, n.Lat) || !ptrEqual(prev.lon, n.Lon) || prev.country != n.Country {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) directObserverConsensusLocked(pk string) (float64, float64, bool) {
+	var latSum, lonSum float64
+	var count int
+	seen := make(map[string]bool)
+	for _, tx := range s.byNode[pk] {
+		for _, o := range tx.Observations {
+			if len(o.Path) > 0 || seen[o.ObserverID] {
+				continue
+			}
+			obsNode := s.rawNodeForObserverIDLocked(o.ObserverID)
+			if !hasUsableRawLocation(obsNode) || obsNode.PubKey == pk {
+				continue
+			}
+			seen[o.ObserverID] = true
+			latSum += *obsNode.RawLat
+			lonSum += *obsNode.RawLon
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, 0, false
+	}
+	return latSum / float64(count), lonSum / float64(count), true
+}
+
+func (s *Store) rawNodeForObserverIDLocked(id string) *Node {
+	if id == "" {
+		return nil
+	}
+	if n := s.nodes[id]; hasUsableRawLocation(n) {
+		return n
+	}
+	uid := strings.ToUpper(id)
+	for pk, n := range s.nodes {
+		if hasUsableRawLocation(n) && strings.HasPrefix(strings.ToUpper(pk), uid) {
+			return n
+		}
+	}
+	return nil
 }
 
 func observerFromRow(r *db.ObserverRow) *Observer {
@@ -3300,7 +3418,7 @@ func (s *Store) computeGeoDistStats() GeoDistData {
 	}
 	var nodes []geoNode
 	for _, n := range s.nodes {
-		if n.Lat == nil || n.Lon == nil {
+		if !hasUsableLocation(n) {
 			continue
 		}
 		nodes = append(nodes, geoNode{pubKey: n.PubKey, name: n.Name, lat: *n.Lat, lon: *n.Lon})

@@ -320,6 +320,7 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 		}
 		if it.Node != nil {
 			n := it.Node
+			normalizeNodeLocation(n)
 			if _, err := upNode.Exec(n.PubKey, n.Name, n.Role, n.Lat, n.Lon, n.LastSeen, n.LastSeen); err != nil {
 				return fmt.Errorf("upsert node: %w", err)
 			}
@@ -343,6 +344,15 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
+}
+
+func normalizeNodeLocation(n *NodeRow) {
+	if n == nil || n.Lat == nil || n.Lon == nil || *n.Lat == 0 || *n.Lon == 0 {
+		if n != nil {
+			n.Lat = nil
+			n.Lon = nil
+		}
+	}
 }
 
 // LoadAll loads all rows for server startup.
