@@ -946,14 +946,7 @@ func (s *Store) computeScopeRegions(f AnalyticsFilter) []ScopeRegion {
 	byRegion := make(map[string]*acc)
 	const unknownScope = "unknown"
 
-	for i := len(s.packets) - 1; i >= 0; i-- {
-		tx := s.packets[i]
-		if f.sinceMs > 0 {
-			firstSeen := parseTimeMillis(tx.FirstSeen)
-			if firstSeen > 0 && firstSeen < f.sinceMs {
-				break
-			}
-		}
+	for _, tx := range s.packets {
 		if !f.txOK(tx) {
 			continue
 		}
@@ -1081,14 +1074,7 @@ func (s *Store) computeMapHeat(f AnalyticsFilter) []MapHeatPoint {
 		observerNodes[id] = s.nodeForObserverID(id)
 	}
 
-	for i := len(s.packets) - 1; i >= 0; i-- {
-		tx := s.packets[i]
-		if f.sinceMs > 0 {
-			firstSeen := parseTimeMillis(tx.FirstSeen)
-			if firstSeen > 0 && firstSeen < f.sinceMs {
-				break
-			}
-		}
+	for _, tx := range s.packets {
 		if !f.txOK(tx) {
 			continue
 		}
@@ -1128,15 +1114,15 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 	directEvents, routeEvents, prefixIndex := s.directLinkSnapshot(f)
 
 	type acc struct {
-		a, b         directLinkNodeSnapshot
-		count        int
-		directCount  int
-		routeCount   int
-		snrSum       float64
-		snrN         int
-		rssiSum      float64
-		rssiN        int
-		lastSeen     string
+		a, b        directLinkNodeSnapshot
+		count       int
+		directCount int
+		routeCount  int
+		snrSum      float64
+		snrN        int
+		rssiSum     float64
+		rssiN       int
+		lastSeen    string
 	}
 	links := make(map[string]*acc)
 	addLink := func(a, b directLinkNodeSnapshot, signal directLinkSignal, direct bool, lastSeen string) {
@@ -1278,7 +1264,13 @@ func (s *Store) directLinkSnapshot(f AnalyticsFilter) ([]directLinkEvent, []rout
 
 	var directEvents []directLinkEvent
 	var routeEvents []routeLinkEvent
-	for _, tx := range s.packets {
+	for _, tx := range slices.Backward(s.packets) {
+		if f.sinceMs > 0 {
+			firstSeen := parseTimeMillis(tx.FirstSeen)
+			if firstSeen > 0 && firstSeen < f.sinceMs {
+				break
+			}
+		}
 		if !f.txOK(tx) {
 			continue
 		}
