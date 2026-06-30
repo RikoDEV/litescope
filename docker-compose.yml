@@ -4,6 +4,8 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: litescope-mqtt
+    cpus: 0.50
+    mem_limit: 128m
     env_file: .env
     command: >
       sh -c "mkdir -p /mosquitto/config &&
@@ -24,6 +26,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: litescope-backend
+    cpus: 2.00
+    mem_limit: 2g
     depends_on:
       - mosquitto
     volumes:
@@ -41,6 +45,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: litescope-frontend
+    cpus: 0.50
+    mem_limit: 128m
     env_file: .env
     restart: unless-stopped
     expose:
@@ -49,6 +55,8 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: litescope-caddy
+    cpus: 0.50
+    mem_limit: 128m
     ports:
       - "80:80"
       - "443:443"

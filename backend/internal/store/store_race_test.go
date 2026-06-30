@@ -470,6 +470,42 @@ func TestMapLocationsRepairZeroAndSuspiciousAdvertCoords(t *testing.T) {
 	}
 }
 
+func TestNodeMetadataRefreshPreservesRepairedLocation(t *testing.T) {
+	obsLat, obsLon := 52.0, 21.0
+	fakeLat, fakeLon := 40.7128, -74.0060
+	const fakeNode = "fakeNode"
+	const obsNode = "obsNode"
+
+	s := New()
+	s.Load(
+		[]*db.TxRow{{ID: 1, Hash: "fake", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + fakeNode + `"}`}},
+		[]*db.ObsRow{{ID: 1, TxID: 1, ObserverID: obsNode, ObserverIATA: "WAW", PathJSON: "[]", Timestamp: "2024-01-01T00:00:01Z"}},
+		[]*db.NodeRow{
+			{PubKey: fakeNode, Name: "Fake GPS", Role: "repeater", Lat: &fakeLat, Lon: &fakeLon, LastSeen: "2024-01-01T00:00:00Z", AdvertCount: 1},
+			{PubKey: obsNode, Name: "Observer", Role: "repeater", Lat: &obsLat, Lon: &obsLon},
+		},
+		nil,
+	)
+
+	n := s.NodeByPubKey(fakeNode)
+	if n == nil || n.Lat == nil || n.Lon == nil || *n.Lat != obsLat || *n.Lon != obsLon {
+		t.Fatalf("expected initial repaired location, got %+v", n)
+	}
+
+	stats := s.UpdateNodes([]*db.NodeRow{
+		{PubKey: fakeNode, Name: "Fake GPS", Role: "repeater", Lat: &fakeLat, Lon: &fakeLon, LastSeen: "2024-01-01T00:01:00Z", AdvertCount: 2},
+		{PubKey: obsNode, Name: "Observer", Role: "repeater", Lat: &obsLat, Lon: &obsLon},
+	})
+	if stats.Duration != 0 {
+		t.Fatalf("metadata-only refresh unexpectedly ran location repair: %+v", stats)
+	}
+
+	n = s.NodeByPubKey(fakeNode)
+	if n == nil || n.Lat == nil || n.Lon == nil || *n.Lat != obsLat || *n.Lon != obsLon {
+		t.Fatalf("metadata refresh lost repaired location, got %+v", n)
+	}
+}
+
 func TestIATAsFiltersInvalidRegionSegments(t *testing.T) {
 	s := New()
 	s.Load(

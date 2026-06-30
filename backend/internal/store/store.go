@@ -557,15 +557,27 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 	defer s.mu.Unlock()
 	stats := LocationRepairStats{}
 	changed := false
+	repairNeeded := false
 	for _, r := range rows {
-		if existing := s.nodes[r.PubKey]; existing != nil && nodeMatchesRow(existing, r) {
+		existing := s.nodes[r.PubKey]
+		if existing != nil && nodeMatchesRow(existing, r) {
 			continue
 		}
-		s.nodes[r.PubKey] = nodeFromRow(r)
+		next := nodeFromRow(r)
+		if existing == nil || nodeRawLocationChanged(existing, r) {
+			repairNeeded = true
+		} else {
+			next.Lat = existing.Lat
+			next.Lon = existing.Lon
+			next.Country = existing.Country
+		}
+		s.nodes[r.PubKey] = next
 		changed = true
 	}
-	if changed {
+	if repairNeeded {
 		stats = s.repairNodeLocationsLocked()
+	}
+	if changed {
 		s.bumpVersion()
 		s.bumpNodeVersion()
 	}
@@ -2367,6 +2379,11 @@ func nodeMatchesRow(n *Node, r *db.NodeRow) bool {
 		ptrEqual(n.TempC, r.TempC)
 }
 
+func nodeRawLocationChanged(n *Node, r *db.NodeRow) bool {
+	lat, lon := normalizedLocation(r.Lat, r.Lon)
+	return !ptrEqual(n.RawLat, lat) || !ptrEqual(n.RawLon, lon)
+}
+
 func normalizedLocation(lat, lon *float64) (*float64, *float64) {
 	if lat == nil || lon == nil || *lat == 0 || *lon == 0 {
 		return nil, nil
@@ -2398,6 +2415,11 @@ func setNodeCountry(n *Node) {
 func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 	start := time.Now()
 	stats := LocationRepairStats{Checked: len(s.nodes)}
+	type consensusAcc struct {
+		latSum, lonSum float64
+		count          int
+		seen           map[string]bool
+	}
 	before := make(map[string]struct {
 		lat, lon *float64
 		country  string
@@ -2419,12 +2441,41 @@ func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 		}
 	}
 	stats.ObserverNodes = len(observerNodes)
-	for pk, n := range s.nodes {
-		lat, lon, ok := s.directObserverConsensusLocked(pk, observerNodes)
-		if !ok {
+
+	consensus := make(map[string]*consensusAcc)
+	for pk, txs := range s.byNode {
+		for _, tx := range txs {
+			for _, o := range tx.Observations {
+				if len(o.Path) > 0 {
+					continue
+				}
+				obsNode := observerNodes[o.ObserverID]
+				if !hasUsableRawLocation(obsNode) || obsNode.PubKey == pk {
+					continue
+				}
+				a := consensus[pk]
+				if a == nil {
+					a = &consensusAcc{seen: make(map[string]bool)}
+					consensus[pk] = a
+				}
+				if a.seen[o.ObserverID] {
+					continue
+				}
+				a.seen[o.ObserverID] = true
+				a.latSum += *obsNode.RawLat
+				a.lonSum += *obsNode.RawLon
+				a.count++
+			}
+		}
+	}
+	stats.WithConsensus = len(consensus)
+
+	for pk, a := range consensus {
+		n := s.nodes[pk]
+		if n == nil || a.count == 0 {
 			continue
 		}
-		stats.WithConsensus++
+		lat, lon := a.latSum/float64(a.count), a.lonSum/float64(a.count)
 		switch {
 		case !hasUsableLocation(n):
 			n.Lat, n.Lon = &lat, &lon
@@ -2445,31 +2496,6 @@ func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 	stats.Duration = time.Since(start)
 	s.lastRepair = stats
 	return stats
-}
-
-func (s *Store) directObserverConsensusLocked(pk string, observerNodes map[string]*Node) (float64, float64, bool) {
-	var latSum, lonSum float64
-	var count int
-	seen := make(map[string]bool)
-	for _, tx := range s.byNode[pk] {
-		for _, o := range tx.Observations {
-			if len(o.Path) > 0 || seen[o.ObserverID] {
-				continue
-			}
-			obsNode := observerNodes[o.ObserverID]
-			if !hasUsableRawLocation(obsNode) || obsNode.PubKey == pk {
-				continue
-			}
-			seen[o.ObserverID] = true
-			latSum += *obsNode.RawLat
-			lonSum += *obsNode.RawLon
-			count++
-		}
-	}
-	if count == 0 {
-		return 0, 0, false
-	}
-	return latSum / float64(count), lonSum / float64(count), true
 }
 
 func (s *Store) rawNodeForObserverIDLocked(id string) *Node {
