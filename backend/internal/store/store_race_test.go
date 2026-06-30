@@ -395,6 +395,32 @@ func TestMapHeatAndDirectLinks(t *testing.T) {
 	}
 }
 
+func TestDirectLinksIncludeAdjacentRouteHops(t *testing.T) {
+	aLat, aLon := 51.97747, 20.06207
+	bLat, bLon := 52.195003, 20.481284
+	s := New()
+	s.Load(
+		[]*db.TxRow{{ID: 1, Hash: "route", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 5, DecodedJSON: `{}`}},
+		[]*db.ObsRow{{ID: 1, TxID: 1, ObserverID: "obs", PathJSON: `["42B2","B373"]`, Timestamp: "2024-01-01T00:00:01Z"}},
+		[]*db.NodeRow{
+			{PubKey: "b373156c12d601b9990ebe8dd243122de28645efb0ff5cbe2d4d36a69019ad72", Name: "RPT-WOLA-RAK", Role: "repeater", Lat: &aLat, Lon: &aLon},
+			{PubKey: "42b26efa4bd65c39b32c507cb05b5a82aa02738766c8524a88dce7fe70c8101a", Name: "WZ BIENIEWO", Role: "repeater", Lat: &bLat, Lon: &bLon},
+		},
+		nil,
+	)
+
+	links := s.DirectLinks(AnalyticsFilter{})
+	if len(links) != 1 {
+		t.Fatalf("expected one route-hop link, got %+v", links)
+	}
+	if links[0].Count != 1 || links[0].RouteCount != 1 || links[0].DirectCount != 0 {
+		t.Fatalf("unexpected route-hop link counters: %+v", links[0])
+	}
+	if links[0].NodeA.PubKey != "42b26efa4bd65c39b32c507cb05b5a82aa02738766c8524a88dce7fe70c8101a" || links[0].NodeB.PubKey != "b373156c12d601b9990ebe8dd243122de28645efb0ff5cbe2d4d36a69019ad72" {
+		t.Fatalf("unexpected route-hop endpoints: %+v", links[0])
+	}
+}
+
 func TestMapLocationsRepairZeroAndSuspiciousAdvertCoords(t *testing.T) {
 	obsLat, obsLon := 52.0, 21.0
 	fakeLat, fakeLon := 40.7128, -74.0060

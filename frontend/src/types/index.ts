@@ -109,8 +109,11 @@ export interface DirectLink {
   nodeA: DirectLinkNode
   nodeB: DirectLinkNode
   count: number
+  directCount?: number
+  routeCount?: number
   avgSnr: number
   avgRssi: number
+  signalCount?: number
   lastSeen: string
 }
 

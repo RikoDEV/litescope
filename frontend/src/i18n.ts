@@ -183,7 +183,7 @@ const en = {
     scopeRegionSummary: '{{observers}} observers · {{observations}} observations',
     dominantScope: 'Dominant: {{scope}}',
     heatMap: 'Heat map', neighbors: 'Neighbors', heatWeight: '{{count}} seen events',
-    heatBreakdown: '{{packets}} packets · {{observations}} observations', directPackets: '{{count}} direct packets',
+    heatBreakdown: '{{packets}} packets · {{observations}} observations', directPackets: '{{count}} packets',
   },
   notFound: {
     title: 'Page not found',
@@ -385,7 +385,7 @@ const pl: typeof en = {
     scopeRegionSummary: '{{observers}} obserwatorów · {{observations}} obserwacji',
     dominantScope: 'Dominujący: {{scope}}',
     heatMap: 'Mapa ciepła', neighbors: 'Sąsiedzi', heatWeight: '{{count}} zdarzeń',
-    heatBreakdown: '{{packets}} pakietów · {{observations}} obserwacji', directPackets: '{{count}} pakietów bezpośrednich',
+    heatBreakdown: '{{packets}} pakietów · {{observations}} obserwacji', directPackets: '{{count}} pakietów',
   },
   notFound: {
     title: 'Strona nie istnieje',
@@ -587,7 +587,7 @@ const de: typeof en = {
     scopeRegionSummary: '{{observers}} Beobachter · {{observations}} Beobachtungen',
     dominantScope: 'Dominant: {{scope}}',
     heatMap: 'Heatmap', neighbors: 'Nachbarn', heatWeight: '{{count}} Ereignisse',
-    heatBreakdown: '{{packets}} Pakete · {{observations}} Beobachtungen', directPackets: '{{count}} direkte Pakete',
+    heatBreakdown: '{{packets}} Pakete · {{observations}} Beobachtungen', directPackets: '{{count}} Pakete',
   },
   notFound: {
     title: 'Seite nicht gefunden',
@@ -776,7 +776,7 @@ const fr = {
     scopeRegionSummary: '{{observers}} observateurs · {{observations}} observations',
     dominantScope: 'Dominant : {{scope}}',
     heatMap: 'Carte de chaleur', neighbors: 'Voisins', heatWeight: '{{count}} événements vus',
-    heatBreakdown: '{{packets}} paquets · {{observations}} observations', directPackets: '{{count}} paquets directs',
+    heatBreakdown: '{{packets}} paquets · {{observations}} observations', directPackets: '{{count}} paquets',
   },
   notFound: {
     title: 'Page introuvable',
@@ -956,7 +956,7 @@ const uk = {
     scopeRegionSummary: '{{observers}} спостерігачів · {{observations}} спостережень',
     dominantScope: 'Домінує: {{scope}}',
     heatMap: 'Теплова карта', neighbors: 'Сусіди', heatWeight: '{{count}} подій',
-    heatBreakdown: '{{packets}} пакетів · {{observations}} спостережень', directPackets: '{{count}} прямих пакетів',
+    heatBreakdown: '{{packets}} пакетів · {{observations}} спостережень', directPackets: '{{count}} пакетів',
   },
   notFound: {
     title: 'Сторінку не знайдено',
@@ -1136,7 +1136,7 @@ const ru = {
     scopeRegionSummary: '{{observers}} наблюдателей · {{observations}} наблюдений',
     dominantScope: 'Доминирует: {{scope}}',
     heatMap: 'Тепловая карта', neighbors: 'Соседи', heatWeight: '{{count}} событий',
-    heatBreakdown: '{{packets}} пакетов · {{observations}} наблюдений', directPackets: '{{count}} прямых пакетов',
+    heatBreakdown: '{{packets}} пакетов · {{observations}} наблюдений', directPackets: '{{count}} пакетов',
   },
   notFound: {
     title: 'Страница не найдена',
@@ -1316,7 +1316,7 @@ const nl = {
     scopeRegionSummary: '{{observers}} waarnemers · {{observations}} waarnemingen',
     dominantScope: 'Dominant: {{scope}}',
     heatMap: 'Heatmap', neighbors: 'Buren', heatWeight: '{{count}} gebeurtenissen',
-    heatBreakdown: '{{packets}} pakketten · {{observations}} waarnemingen', directPackets: '{{count}} directe pakketten',
+    heatBreakdown: '{{packets}} pakketten · {{observations}} waarnemingen', directPackets: '{{count}} pakketten',
   },
   notFound: {
     title: 'Pagina niet gevonden',
@@ -1496,7 +1496,7 @@ const es = {
     scopeRegionSummary: '{{observers}} observadores · {{observations}} observaciones',
     dominantScope: 'Dominante: {{scope}}',
     heatMap: 'Mapa de calor', neighbors: 'Vecinos', heatWeight: '{{count}} eventos vistos',
-    heatBreakdown: '{{packets}} paquetes · {{observations}} observaciones', directPackets: '{{count}} paquetes directos',
+    heatBreakdown: '{{packets}} paquetes · {{observations}} observaciones', directPackets: '{{count}} paquetes',
   },
   notFound: {
     title: 'Página no encontrada',
@@ -1676,7 +1676,7 @@ const cs = {
     scopeRegionSummary: '{{observers}} pozorovatelů · {{observations}} pozorování',
     dominantScope: 'Dominantní: {{scope}}',
     heatMap: 'Heat mapa', neighbors: 'Sousedé', heatWeight: '{{count}} událostí',
-    heatBreakdown: '{{packets}} paketů · {{observations}} pozorování', directPackets: '{{count}} přímých paketů',
+    heatBreakdown: '{{packets}} paketů · {{observations}} pozorování', directPackets: '{{count}} paketů',
   },
   notFound: {
     title: 'Stránka nenalezena',
@@ -1856,7 +1856,7 @@ const sk = {
     scopeRegionSummary: '{{observers}} pozorovateľov · {{observations}} pozorovaní',
     dominantScope: 'Dominantné: {{scope}}',
     heatMap: 'Heat mapa', neighbors: 'Susedia', heatWeight: '{{count}} udalostí',
-    heatBreakdown: '{{packets}} paketov · {{observations}} pozorovaní', directPackets: '{{count}} priamych paketov',
+    heatBreakdown: '{{packets}} paketov · {{observations}} pozorovaní', directPackets: '{{count}} paketov',
   },
   notFound: {
     title: 'Stránka nenájdená',
@@ -2036,7 +2036,7 @@ const it = {
     scopeRegionSummary: '{{observers}} osservatori · {{observations}} osservazioni',
     dominantScope: 'Dominante: {{scope}}',
     heatMap: 'Mappa calore', neighbors: 'Vicini', heatWeight: '{{count}} eventi visti',
-    heatBreakdown: '{{packets}} pacchetti · {{observations}} osservazioni', directPackets: '{{count}} pacchetti diretti',
+    heatBreakdown: '{{packets}} pacchetti · {{observations}} osservazioni', directPackets: '{{count}} pacchetti',
   },
   notFound: {
     title: 'Pagina non trovata',

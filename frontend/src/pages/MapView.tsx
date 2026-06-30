@@ -376,9 +376,13 @@ export default function MapView() {
     const maxCount = Math.max(1, ...directLinks.map(l => l.count))
     for (const link of directLinks) {
       const intensity = Math.sqrt(link.count / maxCount)
-      const color = link.avgSnr >= 8 ? '#22c55e' : link.avgSnr >= 0 ? '#f59e0b' : md3.error
+      const hasSignal = (link.signalCount ?? 0) > 0
+      const color = !hasSignal ? '#38bdf8' : link.avgSnr >= 8 ? '#22c55e' : link.avgSnr >= 0 ? '#f59e0b' : md3.error
       const labelA = link.nodeA.name || link.nodeA.pubKey.slice(0, 10)
       const labelB = link.nodeB.name || link.nodeB.pubKey.slice(0, 10)
+      const signalHtml = hasSignal
+        ? `<div style="color:#64748b">SNR ${link.avgSnr.toFixed(1)} · RSSI ${link.avgRssi.toFixed(1)}</div>`
+        : ''
       L.polyline([[link.nodeA.lat, link.nodeA.lon], [link.nodeB.lat, link.nodeB.lon]], {
         color,
         weight: 1.2 + intensity * 4,
@@ -387,7 +391,7 @@ export default function MapView() {
         `<div style="font-family:system-ui;min-width:170px">
           <b>${escapeHtml(labelA)} ↔ ${escapeHtml(labelB)}</b>
           <div>${escapeHtml(t('map.directPackets', { count: link.count.toLocaleString() }))}</div>
-          <div style="color:#64748b">SNR ${link.avgSnr.toFixed(1)} · RSSI ${link.avgRssi.toFixed(1)}</div>
+          ${signalHtml}
         </div>`,
         { sticky: true },
       ).addTo(layer)

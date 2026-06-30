@@ -1066,6 +1066,8 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 	type acc struct {
 		a, b         *Node
 		count        int
+		directCount  int
+		routeCount   int
 		snrSum       float64
 		snrN         int
 		rssiSum      float64
@@ -1073,38 +1075,22 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		lastSeen     string
 	}
 	links := make(map[string]*acc)
-	for _, tx := range s.packets {
-		if !f.txOK(tx) {
-			continue
+	addLink := func(a, b *Node, o *Obs, direct bool) {
+		if !hasUsableLocation(a) || !hasUsableLocation(b) || a.PubKey == b.PubKey {
+			return
 		}
-		dec := tx.Decoded()
-		if dec == nil {
-			continue
+		if a.PubKey > b.PubKey {
+			a, b = b, a
 		}
-		pubKey, _ := dec["pubKey"].(string)
-		src := s.nodes[pubKey]
-		if !hasUsableLocation(src) {
-			continue
+		key := a.PubKey + "|" + b.PubKey
+		l := links[key]
+		if l == nil {
+			l = &acc{a: a, b: b}
+			links[key] = l
 		}
-		for _, o := range tx.Observations {
-			if !f.obsOK(o) || len(o.Path) > 0 {
-				continue
-			}
-			dst := observerNodes[o.ObserverID]
-			if !hasUsableLocation(dst) || dst.PubKey == src.PubKey {
-				continue
-			}
-			a, b := src, dst
-			if a.PubKey > b.PubKey {
-				a, b = b, a
-			}
-			key := a.PubKey + "|" + b.PubKey
-			l := links[key]
-			if l == nil {
-				l = &acc{a: a, b: b}
-				links[key] = l
-			}
-			l.count++
+		l.count++
+		if direct {
+			l.directCount++
 			if o.SNR != nil {
 				l.snrSum += *o.SNR
 				l.snrN++
@@ -1113,8 +1099,47 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 				l.rssiSum += *o.RSSI
 				l.rssiN++
 			}
-			if o.Timestamp > l.lastSeen {
-				l.lastSeen = o.Timestamp
+		} else {
+			l.routeCount++
+		}
+		if o.Timestamp > l.lastSeen {
+			l.lastSeen = o.Timestamp
+		}
+	}
+
+	prefixIndex := s.routingPrefixIndexLocked()
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		if dec := tx.Decoded(); dec != nil {
+			pubKey, _ := dec["pubKey"].(string)
+			src := s.nodes[pubKey]
+			if hasUsableLocation(src) {
+				for _, o := range tx.Observations {
+					if !f.obsOK(o) || len(o.Path) > 0 {
+						continue
+					}
+					dst := observerNodes[o.ObserverID]
+					addLink(src, dst, o, true)
+				}
+			}
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) || len(o.Path) < 2 {
+				continue
+			}
+			for i := 0; i+1 < len(o.Path); i++ {
+				if !isHexHop(o.Path[i]) || !isHexHop(o.Path[i+1]) {
+					continue
+				}
+				fromNodes := prefixIndex[strings.ToLower(o.Path[i])]
+				toNodes := prefixIndex[strings.ToLower(o.Path[i+1])]
+				for _, from := range fromNodes {
+					for _, to := range toNodes {
+						addLink(from, to, o, false)
+					}
+				}
 			}
 		}
 	}
@@ -1125,6 +1150,7 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 			NodeA: DirectLinkNode{PubKey: l.a.PubKey, Name: l.a.Name, Role: l.a.Role, Lat: *l.a.Lat, Lon: *l.a.Lon},
 			NodeB: DirectLinkNode{PubKey: l.b.PubKey, Name: l.b.Name, Role: l.b.Role, Lat: *l.b.Lat, Lon: *l.b.Lon},
 			Count: l.count, LastSeen: l.lastSeen,
+			DirectCount: l.directCount, RouteCount: l.routeCount,
 		}
 		if l.snrN > 0 {
 			row.AvgSNR = l.snrSum / float64(l.snrN)
@@ -1132,10 +1158,29 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		if l.rssiN > 0 {
 			row.AvgRSSI = l.rssiSum / float64(l.rssiN)
 		}
+		if l.snrN > 0 || l.rssiN > 0 {
+			row.SignalCount = max(l.snrN, l.rssiN)
+		}
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
 	return out
+}
+
+func (s *Store) routingPrefixIndexLocked() map[string][]*Node {
+	prefixIndex := make(map[string][]*Node)
+	for pk, n := range s.nodes {
+		if !hasUsableLocation(n) || !participatesInRouting(n.Role) {
+			continue
+		}
+		lpk := strings.ToLower(pk)
+		for l := range s.relayHopLengths {
+			if len(lpk) >= l {
+				prefixIndex[lpk[:l]] = append(prefixIndex[lpk[:l]], n)
+			}
+		}
+	}
+	return prefixIndex
 }
 
 // normalizeIATA returns the uppercase IATA code, or "" when the value is not a
@@ -3149,12 +3194,15 @@ type MapHeatPoint struct {
 }
 
 type DirectLink struct {
-	NodeA   DirectLinkNode `json:"nodeA"`
-	NodeB   DirectLinkNode `json:"nodeB"`
-	Count   int            `json:"count"`
-	AvgSNR  float64        `json:"avgSnr"`
-	AvgRSSI float64        `json:"avgRssi"`
-	LastSeen string         `json:"lastSeen"`
+	NodeA       DirectLinkNode `json:"nodeA"`
+	NodeB       DirectLinkNode `json:"nodeB"`
+	Count       int            `json:"count"`
+	DirectCount int            `json:"directCount,omitempty"`
+	RouteCount  int            `json:"routeCount,omitempty"`
+	AvgSNR      float64        `json:"avgSnr"`
+	AvgRSSI     float64        `json:"avgRssi"`
+	SignalCount int            `json:"signalCount,omitempty"`
+	LastSeen    string         `json:"lastSeen"`
 }
 
 type DirectLinkNode struct {
