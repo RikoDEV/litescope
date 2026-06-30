@@ -155,6 +155,17 @@ type Observer struct {
 	NoiseFloor *float64
 }
 
+// LocationRepairStats summarizes the node coordinate repair pass.
+type LocationRepairStats struct {
+	Checked            int
+	ObserverNodes      int
+	WithConsensus      int
+	RepairedMissing    int
+	RepairedSuspicious int
+	Changed            int
+	Duration           time.Duration
+}
+
 // Store is the in-memory packet store with indexed lookup.
 type Store struct {
 	mu         sync.RWMutex
@@ -174,6 +185,7 @@ type Store struct {
 	observers       map[string]*Observer
 	lastTxID        int64
 	lastObsID       int64
+	lastRepair      LocationRepairStats
 
 	// version bumps on every mutation; the analytics cache keys off it so a
 	// result is reused only while the underlying data is unchanged.
@@ -214,6 +226,13 @@ func New() *Store {
 		observers:       make(map[string]*Observer),
 		cache:           make(map[string]cacheEntry),
 	}
+}
+
+// LastLocationRepairStats returns the last node coordinate repair summary.
+func (s *Store) LastLocationRepairStats() LocationRepairStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastRepair
 }
 
 // bumpVersion invalidates the analytics cache. Caller must hold the write lock.
@@ -391,9 +410,6 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		updated = append(updated, tx)
 	}
 	if mutated {
-		if s.repairNodeLocationsLocked() {
-			s.bumpNodeVersion()
-		}
 		s.bumpVersion()
 	}
 	return added, updated
@@ -536,9 +552,10 @@ func (s *Store) indexRelayHops(tx *Tx, o *Obs) {
 }
 
 // UpdateNodes merges new node rows into the in-memory node map.
-func (s *Store) UpdateNodes(rows []*db.NodeRow) {
+func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	stats := LocationRepairStats{}
 	changed := false
 	for _, r := range rows {
 		if existing := s.nodes[r.PubKey]; existing != nil && nodeMatchesRow(existing, r) {
@@ -548,10 +565,11 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) {
 		changed = true
 	}
 	if changed {
-		s.repairNodeLocationsLocked()
+		stats = s.repairNodeLocationsLocked()
 		s.bumpVersion()
 		s.bumpNodeVersion()
 	}
+	return stats
 }
 
 // UpdateObservers merges new observer rows into the in-memory observer map.
@@ -2376,9 +2394,10 @@ func setNodeCountry(n *Node) {
 // map coordinates. MeshCore nodes sometimes report unset zeros, and some nodes
 // publish stale/fake GPS points. When direct radio observations place a node
 // near located observers, use those observers as a local consensus fallback.
-// Caller must hold the store write lock. Returns true when an effective map
-// coordinate or derived country changed.
-func (s *Store) repairNodeLocationsLocked() bool {
+// Caller must hold the store write lock.
+func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
+	start := time.Now()
+	stats := LocationRepairStats{Checked: len(s.nodes)}
 	before := make(map[string]struct {
 		lat, lon *float64
 		country  string
@@ -2393,30 +2412,42 @@ func (s *Store) repairNodeLocationsLocked() bool {
 		n.Lat, n.Lon = n.RawLat, n.RawLon
 		setNodeCountry(n)
 	}
+	observerNodes := make(map[string]*Node, len(s.byObserver))
+	for id := range s.byObserver {
+		if n := s.rawNodeForObserverIDLocked(id); n != nil {
+			observerNodes[id] = n
+		}
+	}
+	stats.ObserverNodes = len(observerNodes)
 	for pk, n := range s.nodes {
-		lat, lon, ok := s.directObserverConsensusLocked(pk)
+		lat, lon, ok := s.directObserverConsensusLocked(pk, observerNodes)
 		if !ok {
 			continue
 		}
+		stats.WithConsensus++
 		switch {
 		case !hasUsableLocation(n):
 			n.Lat, n.Lon = &lat, &lon
 			setNodeCountry(n)
+			stats.RepairedMissing++
 		case haversineKm(*n.Lat, *n.Lon, lat, lon) > suspiciousAdvertLocationKm:
 			n.Lat, n.Lon = &lat, &lon
 			setNodeCountry(n)
+			stats.RepairedSuspicious++
 		}
 	}
 	for pk, n := range s.nodes {
 		prev := before[pk]
 		if !ptrEqual(prev.lat, n.Lat) || !ptrEqual(prev.lon, n.Lon) || prev.country != n.Country {
-			return true
+			stats.Changed++
 		}
 	}
-	return false
+	stats.Duration = time.Since(start)
+	s.lastRepair = stats
+	return stats
 }
 
-func (s *Store) directObserverConsensusLocked(pk string) (float64, float64, bool) {
+func (s *Store) directObserverConsensusLocked(pk string, observerNodes map[string]*Node) (float64, float64, bool) {
 	var latSum, lonSum float64
 	var count int
 	seen := make(map[string]bool)
@@ -2425,7 +2456,7 @@ func (s *Store) directObserverConsensusLocked(pk string) (float64, float64, bool
 			if len(o.Path) > 0 || seen[o.ObserverID] {
 				continue
 			}
-			obsNode := s.rawNodeForObserverIDLocked(o.ObserverID)
+			obsNode := observerNodes[o.ObserverID]
 			if !hasUsableRawLocation(obsNode) || obsNode.PubKey == pk {
 				continue
 			}

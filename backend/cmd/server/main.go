@@ -52,6 +52,7 @@ func main() {
 	lastTxID, lastObsID := st.LastIDs()
 	log.Printf("loaded %d packets, %d observations, %d nodes, %d observers (db=%s, index=%s)",
 		len(txs), len(obss), len(nodes), len(observers), dbLoadDur.Round(time.Millisecond), indexDur.Round(time.Millisecond))
+	logLocationRepair("startup", st.LastLocationRepairStats())
 
 	hub := api.NewHub(cfg.AllowedOrigins)
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
@@ -62,10 +63,26 @@ func main() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			if nodeRows, err := database.LoadNodeUpdates(); err == nil {
-				st.UpdateNodes(nodeRows)
+			nodeLoadStart := time.Now()
+			nodeRows, err := database.LoadNodeUpdates()
+			nodeLoadDur := time.Since(nodeLoadStart)
+			if err != nil {
+				log.Printf("node refresh: %v", err)
+			} else {
+				nodeUpdateStart := time.Now()
+				repairStats := st.UpdateNodes(nodeRows)
+				nodeUpdateDur := time.Since(nodeUpdateStart)
+				if repairStats.Duration > 0 {
+					log.Printf("node refresh: rows=%d db=%s update=%s",
+						len(nodeRows), nodeLoadDur.Round(time.Millisecond), nodeUpdateDur.Round(time.Millisecond))
+					logLocationRepair("node refresh", repairStats)
+				}
 			}
-			if obsRows, err := database.LoadObserverUpdates(); err == nil {
+
+			obsRows, err := database.LoadObserverUpdates()
+			if err != nil {
+				log.Printf("observer refresh: %v", err)
+			} else {
 				st.UpdateObservers(obsRows)
 			}
 		}
@@ -208,6 +225,19 @@ func main() {
 	if err := httpSrv.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+}
+
+func logLocationRepair(prefix string, stats store.LocationRepairStats) {
+	log.Printf("%s location repair: checked=%d observerNodes=%d consensus=%d repairedMissing=%d repairedSuspicious=%d changed=%d duration=%s",
+		prefix,
+		stats.Checked,
+		stats.ObserverNodes,
+		stats.WithConsensus,
+		stats.RepairedMissing,
+		stats.RepairedSuspicious,
+		stats.Changed,
+		stats.Duration.Round(time.Millisecond),
+	)
 }
 
 func init() {
