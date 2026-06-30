@@ -164,8 +164,16 @@ func queryInt64(r *http.Request, key string, def int64) int64 {
 // every analytics endpoint: hours (time window, 0/absent = all time), regions
 // (comma-separated IATA codes) and lock (exclusive region matching).
 func analyticsFilter(r *http.Request) store.AnalyticsFilter {
+	return analyticsFilterWithDefaultHours(r, 0)
+}
+
+func analyticsFilterWithDefaultHours(r *http.Request, defaultHours int) store.AnalyticsFilter {
 	q := r.URL.Query()
-	hours := min(queryInt(r, "hours", 0), 168) // cap at 7 days
+	hours := defaultHours
+	if q.Get("hours") != "" {
+		hours = queryInt(r, "hours", 0)
+	}
+	hours = min(hours, 168) // cap at 7 days
 	var regions []string
 	if v := q.Get("regions"); v != "" {
 		regions = strings.Split(v, ",")
@@ -577,7 +585,7 @@ func (s *Server) getAnalyticsMapHeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.DirectLinks(analyticsFilter(r)))
+	writeJSON(w, s.Store.DirectLinks(analyticsFilterWithDefaultHours(r, 24)))
 }
 
 func (s *Server) getAnalyticsDistance(w http.ResponseWriter, r *http.Request) {

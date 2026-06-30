@@ -297,6 +297,11 @@ export default function MapView() {
     }
   }, [lastHeardFilter, regionFilter])
 
+  const neighborParams = useMemo(() => ({
+    ...scopeParams,
+    hours: scopeParams.hours ?? 24,
+  }), [scopeParams])
+
   useEffect(() => {
     if (!showScopeRegions) return
     let cancelled = false
@@ -320,7 +325,7 @@ export default function MapView() {
           .catch(() => { if (!cancelled) setHeatPoints([]) })
       }
       if (showNeighbors) {
-        api.analyticsDirectLinks(scopeParams)
+        api.analyticsDirectLinks(neighborParams)
           .then(links => { if (!cancelled) setDirectLinks(links ?? []) })
           .catch(() => { if (!cancelled) setDirectLinks([]) })
       }
@@ -328,7 +333,7 @@ export default function MapView() {
     load()
     const id = window.setInterval(load, 30_000)
     return () => { cancelled = true; window.clearInterval(id) }
-  }, [showHeatMap, showNeighbors, scopeParams])
+  }, [showHeatMap, showNeighbors, scopeParams, neighborParams])
 
   useEffect(() => {
     const canvas = heatCanvasRef.current

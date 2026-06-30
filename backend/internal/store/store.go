@@ -946,7 +946,14 @@ func (s *Store) computeScopeRegions(f AnalyticsFilter) []ScopeRegion {
 	byRegion := make(map[string]*acc)
 	const unknownScope = "unknown"
 
-	for _, tx := range s.packets {
+	for i := len(s.packets) - 1; i >= 0; i-- {
+		tx := s.packets[i]
+		if f.sinceMs > 0 {
+			firstSeen := parseTimeMillis(tx.FirstSeen)
+			if firstSeen > 0 && firstSeen < f.sinceMs {
+				break
+			}
+		}
 		if !f.txOK(tx) {
 			continue
 		}
@@ -1074,7 +1081,14 @@ func (s *Store) computeMapHeat(f AnalyticsFilter) []MapHeatPoint {
 		observerNodes[id] = s.nodeForObserverID(id)
 	}
 
-	for _, tx := range s.packets {
+	for i := len(s.packets) - 1; i >= 0; i-- {
+		tx := s.packets[i]
+		if f.sinceMs > 0 {
+			firstSeen := parseTimeMillis(tx.FirstSeen)
+			if firstSeen > 0 && firstSeen < f.sinceMs {
+				break
+			}
+		}
 		if !f.txOK(tx) {
 			continue
 		}
