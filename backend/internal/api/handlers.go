@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"maps"
 	"net/http"
 	"slices"
@@ -33,6 +34,7 @@ func (s *Server) Router() *mux.Router {
 	r.Use(corsMiddleware(s.AllowedOrigins))
 	r.HandleFunc("/ws", s.Hub.ServeWS)
 	api := r.PathPrefix("/api").Subrouter()
+	api.Use(slowRequestMiddleware(2 * time.Second))
 
 	api.HandleFunc("/packets", s.listPackets).Methods("GET", "OPTIONS")
 	api.HandleFunc("/packets/{hash}", s.getPacket).Methods("GET", "OPTIONS")
@@ -64,6 +66,30 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/decode", s.decodePacket).Methods("POST", "OPTIONS")
 
 	return r
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusRecorder) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func slowRequestMiddleware(threshold time.Duration) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(rec, r)
+			if dur := time.Since(start); dur >= threshold {
+				log.Printf("slow request: %s %s status=%d duration=%s",
+					r.Method, r.URL.RequestURI(), rec.status, dur.Round(time.Millisecond))
+			}
+		})
+	}
 }
 
 // originAllowed reports whether an Origin header value passes the allowlist.

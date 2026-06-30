@@ -193,12 +193,17 @@ type Store struct {
 	nodeVersion atomic.Uint64
 	cacheMu     sync.Mutex
 	cache       map[string]cacheEntry
+	cacheFlight map[string]cacheFlight
 }
 
 type cacheEntry struct {
 	version uint64
 	at      time.Time
 	value   any
+}
+
+type cacheFlight struct {
+	done chan struct{}
 }
 
 // analyticsCacheTTL bounds how long a memoized analytics result is reused even
@@ -225,6 +230,7 @@ func New() *Store {
 		nodes:           make(map[string]*Node),
 		observers:       make(map[string]*Observer),
 		cache:           make(map[string]cacheEntry),
+		cacheFlight:     make(map[string]cacheFlight),
 	}
 }
 
@@ -242,8 +248,9 @@ func (s *Store) bumpVersion() { s.version.Add(1) }
 func (s *Store) bumpNodeVersion() { s.nodeVersion.Add(1) }
 
 // cachedAnalytics memoizes a no-arg analytics computation by store version.
-// compute() is run outside the cache lock (it takes the store read lock itself),
-// so concurrent callers never serialize on the cache and at worst recompute once.
+// compute() is run outside the cache lock (it usually takes the store read lock
+// itself), while same-key callers wait for the first computation to publish a
+// cached result instead of duplicating expensive full-history scans.
 func cachedAnalytics[T any](s *Store, key string, compute func() T) T {
 	return cachedByVersion(s, key, s.version.Load(), compute)
 }
@@ -262,14 +269,32 @@ func cachedAnalyticsForFilter[T any](s *Store, key string, f AnalyticsFilter, co
 }
 
 func cachedByVersion[T any](s *Store, key string, cur uint64, compute func() T) T {
-	s.cacheMu.Lock()
-	e, ok := s.cache[key]
-	s.cacheMu.Unlock()
-	// Reuse when the underlying data is unchanged (version match) or when the
-	// cached value is still within the staleness budget.
-	if ok && (e.version == cur || time.Since(e.at) < analyticsCacheTTL) {
-		return e.value.(T)
+	var flight cacheFlight
+	for {
+		s.cacheMu.Lock()
+		e, ok := s.cache[key]
+		if ok && (e.version == cur || time.Since(e.at) < analyticsCacheTTL) {
+			s.cacheMu.Unlock()
+			return e.value.(T)
+		}
+		if f, ok := s.cacheFlight[key]; ok {
+			s.cacheMu.Unlock()
+			<-f.done
+			continue
+		}
+		flight = cacheFlight{done: make(chan struct{})}
+		s.cacheFlight[key] = flight
+		s.cacheMu.Unlock()
+		break
 	}
+
+	defer func() {
+		s.cacheMu.Lock()
+		delete(s.cacheFlight, key)
+		close(flight.done)
+		s.cacheMu.Unlock()
+	}()
+
 	val := compute()
 	s.cacheMu.Lock()
 	s.cache[key] = cacheEntry{version: cur, at: time.Now(), value: val}
@@ -307,6 +332,7 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 	s.nodes = make(map[string]*Node, len(nodes))
 	s.observers = make(map[string]*Observer, len(obs))
 	s.cache = make(map[string]cacheEntry)
+	s.cacheFlight = make(map[string]cacheFlight)
 	s.lastTxID = 0
 	s.lastObsID = 0
 
@@ -1085,16 +1111,10 @@ func (s *Store) DirectLinks(f AnalyticsFilter) []DirectLink {
 }
 
 func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	observerNodes := make(map[string]*Node, len(s.byObserver))
-	for id := range s.byObserver {
-		observerNodes[id] = s.nodeForObserverID(id)
-	}
+	directEvents, routeEvents, prefixIndex := s.directLinkSnapshot(f)
 
 	type acc struct {
-		a, b         *Node
+		a, b         directLinkNodeSnapshot
 		count        int
 		directCount  int
 		routeCount   int
@@ -1105,8 +1125,8 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		lastSeen     string
 	}
 	links := make(map[string]*acc)
-	addLink := func(a, b *Node, o *Obs, direct bool) {
-		if !hasUsableLocation(a) || !hasUsableLocation(b) || a.PubKey == b.PubKey {
+	addLink := func(a, b directLinkNodeSnapshot, signal directLinkSignal, direct bool, lastSeen string) {
+		if a.PubKey == "" || b.PubKey == "" || a.PubKey == b.PubKey {
 			return
 		}
 		if a.PubKey > b.PubKey {
@@ -1121,54 +1141,35 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		l.count++
 		if direct {
 			l.directCount++
-			if o.SNR != nil {
-				l.snrSum += *o.SNR
+			if signal.hasSNR {
+				l.snrSum += signal.snr
 				l.snrN++
 			}
-			if o.RSSI != nil {
-				l.rssiSum += *o.RSSI
+			if signal.hasRSSI {
+				l.rssiSum += signal.rssi
 				l.rssiN++
 			}
 		} else {
 			l.routeCount++
 		}
-		if o.Timestamp > l.lastSeen {
-			l.lastSeen = o.Timestamp
+		if lastSeen > l.lastSeen {
+			l.lastSeen = lastSeen
 		}
 	}
 
-	prefixIndex := s.routingPrefixIndexLocked()
-	for _, tx := range s.packets {
-		if !f.txOK(tx) {
-			continue
-		}
-		if dec := tx.Decoded(); dec != nil {
-			pubKey, _ := dec["pubKey"].(string)
-			src := s.nodes[pubKey]
-			if hasUsableLocation(src) {
-				for _, o := range tx.Observations {
-					if !f.obsOK(o) || len(o.Path) > 0 {
-						continue
-					}
-					dst := observerNodes[o.ObserverID]
-					addLink(src, dst, o, true)
-				}
-			}
-		}
-		for _, o := range tx.Observations {
-			if !f.obsOK(o) || len(o.Path) < 2 {
+	for _, e := range directEvents {
+		addLink(e.a, e.b, e.signal, true, e.lastSeen)
+	}
+	for _, e := range routeEvents {
+		for i := 0; i+1 < len(e.path); i++ {
+			if !isHexHop(e.path[i]) || !isHexHop(e.path[i+1]) {
 				continue
 			}
-			for i := 0; i+1 < len(o.Path); i++ {
-				if !isHexHop(o.Path[i]) || !isHexHop(o.Path[i+1]) {
-					continue
-				}
-				fromNodes := prefixIndex[strings.ToLower(o.Path[i])]
-				toNodes := prefixIndex[strings.ToLower(o.Path[i+1])]
-				for _, from := range fromNodes {
-					for _, to := range toNodes {
-						addLink(from, to, o, false)
-					}
+			fromNodes := prefixIndex[strings.ToLower(e.path[i])]
+			toNodes := prefixIndex[strings.ToLower(e.path[i+1])]
+			for _, from := range fromNodes {
+				for _, to := range toNodes {
+					addLink(from, to, directLinkSignal{}, false, e.lastSeen)
 				}
 			}
 		}
@@ -1177,8 +1178,8 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 	out := make([]DirectLink, 0, len(links))
 	for _, l := range links {
 		row := DirectLink{
-			NodeA: DirectLinkNode{PubKey: l.a.PubKey, Name: l.a.Name, Role: l.a.Role, Lat: *l.a.Lat, Lon: *l.a.Lon},
-			NodeB: DirectLinkNode{PubKey: l.b.PubKey, Name: l.b.Name, Role: l.b.Role, Lat: *l.b.Lat, Lon: *l.b.Lon},
+			NodeA: DirectLinkNode{PubKey: l.a.PubKey, Name: l.a.Name, Role: l.a.Role, Lat: l.a.Lat, Lon: l.a.Lon},
+			NodeB: DirectLinkNode{PubKey: l.b.PubKey, Name: l.b.Name, Role: l.b.Role, Lat: l.b.Lat, Lon: l.b.Lon},
 			Count: l.count, LastSeen: l.lastSeen,
 			DirectCount: l.directCount, RouteCount: l.routeCount,
 		}
@@ -1195,6 +1196,111 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
 	return out
+}
+
+type directLinkNodeSnapshot struct {
+	PubKey string
+	Name   string
+	Role   string
+	Lat    float64
+	Lon    float64
+}
+
+type directLinkSignal struct {
+	snr     float64
+	hasSNR  bool
+	rssi    float64
+	hasRSSI bool
+}
+
+type directLinkEvent struct {
+	a, b     directLinkNodeSnapshot
+	signal   directLinkSignal
+	lastSeen string
+}
+
+type routeLinkEvent struct {
+	path     []string
+	lastSeen string
+}
+
+func (s *Store) directLinkSnapshot(f AnalyticsFilter) ([]directLinkEvent, []routeLinkEvent, map[string][]directLinkNodeSnapshot) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	nodes := make(map[string]directLinkNodeSnapshot, len(s.nodes))
+	for pk, n := range s.nodes {
+		if !hasUsableLocation(n) {
+			continue
+		}
+		nodes[pk] = directLinkNodeSnapshot{
+			PubKey: n.PubKey, Name: n.Name, Role: n.Role,
+			Lat: *n.Lat, Lon: *n.Lon,
+		}
+	}
+
+	observerNodes := make(map[string]directLinkNodeSnapshot, len(s.byObserver))
+	for id := range s.byObserver {
+		if n := s.nodeForObserverID(id); hasUsableLocation(n) {
+			observerNodes[id] = directLinkNodeSnapshot{
+				PubKey: n.PubKey, Name: n.Name, Role: n.Role,
+				Lat: *n.Lat, Lon: *n.Lon,
+			}
+		}
+	}
+
+	prefixIndex := make(map[string][]directLinkNodeSnapshot)
+	for pk, n := range nodes {
+		if !participatesInRouting(n.Role) {
+			continue
+		}
+		lpk := strings.ToLower(pk)
+		for l := range s.relayHopLengths {
+			if len(lpk) >= l {
+				prefixIndex[lpk[:l]] = append(prefixIndex[lpk[:l]], n)
+			}
+		}
+	}
+
+	var directEvents []directLinkEvent
+	var routeEvents []routeLinkEvent
+	for _, tx := range s.packets {
+		if !f.txOK(tx) {
+			continue
+		}
+		if dec := tx.Decoded(); dec != nil {
+			pubKey, _ := dec["pubKey"].(string)
+			src, srcOK := nodes[pubKey]
+			if srcOK {
+				for _, o := range tx.Observations {
+					if !f.obsOK(o) || len(o.Path) > 0 {
+						continue
+					}
+					dst, dstOK := observerNodes[o.ObserverID]
+					if !dstOK {
+						continue
+					}
+					signal := directLinkSignal{}
+					if o.SNR != nil {
+						signal.snr = *o.SNR
+						signal.hasSNR = true
+					}
+					if o.RSSI != nil {
+						signal.rssi = *o.RSSI
+						signal.hasRSSI = true
+					}
+					directEvents = append(directEvents, directLinkEvent{a: src, b: dst, signal: signal, lastSeen: o.Timestamp})
+				}
+			}
+		}
+		for _, o := range tx.Observations {
+			if !f.obsOK(o) || len(o.Path) < 2 {
+				continue
+			}
+			routeEvents = append(routeEvents, routeLinkEvent{path: append([]string(nil), o.Path...), lastSeen: o.Timestamp})
+		}
+	}
+	return directEvents, routeEvents, prefixIndex
 }
 
 func (s *Store) routingPrefixIndexLocked() map[string][]*Node {
