@@ -17,6 +17,7 @@ import Checkbox from '@mui/material/Checkbox'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
+import Slider from '@mui/material/Slider'
 import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
 import { alpha, useTheme } from '@mui/material/styles'
@@ -116,7 +117,7 @@ export default function MapView() {
   const heatCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const neighborCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const neighborSegmentsRef = useRef<NeighborSegment[]>([])
-  const neighborTooltipRef = useRef<L.Tooltip | null>(null)
+  const neighborTooltipRef = useRef<HTMLDivElement | null>(null)
 
   const [nodes,    setNodes]    = useState<Node[]>([])
   const [scopeRegions, setScopeRegions] = useState<ScopeRegion[]>([])
@@ -146,6 +147,7 @@ export default function MapView() {
   const [showScopeRegions, setShowScopeRegions] = useState(false)
   const [showHeatMap, setShowHeatMap] = useState(false)
   const [showNeighbors, setShowNeighbors] = useState(false)
+  const [neighborThreshold, setNeighborThreshold] = useState(1)
   const [scopeFilter, setScopeFilter] = useState('all')
   const [showHashLabels, setShowHashLabels] = useState(false)
   const [showTitleLabels, setShowTitleLabels] = useState(false)
@@ -237,7 +239,22 @@ export default function MapView() {
     neighborCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:430;opacity:0;'
     el.appendChild(neighborCanvas)
     neighborCanvasRef.current = neighborCanvas
-    neighborTooltipRef.current = L.tooltip({ sticky: true, opacity: 0.95, direction: 'top' })
+
+    // A Leaflet L.tooltip lives inside .leaflet-tooltip-pane, a child of the
+    // pan-transformed .leaflet-map-pane. That pane is its own stacking
+    // context (CSS transform), so any sibling of it -- like neighborCanvas
+    // above, which must stay outside that transform to keep its container-
+    // space draw math correct while panning -- paints entirely above or
+    // below the *whole* map-pane regardless of the tooltip's own z-index.
+    // Using a plain positioned div here instead keeps the tooltip in the
+    // same (untransformed) stacking context as the canvas, so a higher
+    // z-index reliably wins.
+    const neighborTooltip = document.createElement('div')
+    neighborTooltip.style.cssText = 'position:absolute;pointer-events:none;z-index:440;display:none;transform:translate(-50%,-100%) translateY(-10px);'
+      + 'background:#fff;color:#1e293b;border-radius:4px;padding:6px 8px;font-size:12px;line-height:1.4;'
+      + 'box-shadow:0 1px 5px rgba(0,0,0,0.4);white-space:nowrap;'
+    el.appendChild(neighborTooltip)
+    neighborTooltipRef.current = neighborTooltip
 
     clusterGroup.current = cluster
     mapInstance.current = map
@@ -465,13 +482,16 @@ export default function MapView() {
       neighborSegmentsRef.current = []
       canvas.style.opacity = showNeighbors && tilesReady ? '1' : '0'
       if (!showNeighbors || !tilesReady || directLinks.length === 0) {
-        tooltip.remove()
+        tooltip.style.display = 'none'
         return
       }
 
       const pad = 160
+      const focusPubKey = selected?.pubKey
       const visible: NeighborSegment[] = []
       for (const link of directLinks) {
+        if (link.count < neighborThreshold) continue
+        if (focusPubKey && link.nodeA.pubKey !== focusPubKey && link.nodeB.pubKey !== focusPubKey) continue
         const a = map.latLngToContainerPoint([link.nodeA.lat, link.nodeA.lon])
         const b = map.latLngToContainerPoint([link.nodeB.lat, link.nodeB.lon])
         if ((a.x < -pad && b.x < -pad) || (a.y < -pad && b.y < -pad) || (a.x > w + pad && b.x > w + pad) || (a.y > h + pad && b.y > h + pad)) {
@@ -551,13 +571,42 @@ export default function MapView() {
       for (const s of visible) {
         const intensity = Math.sqrt(s.link.count / maxCount)
         const hasSignal = (s.link.signalCount ?? 0) > 0
-        ctx.strokeStyle = !hasSignal ? '#38bdf8' : s.link.avgSnr >= 8 ? '#22c55e' : s.link.avgSnr >= 0 ? '#f59e0b' : md3.error
+        const color = !hasSignal ? '#38bdf8' : s.link.avgSnr >= 8 ? '#22c55e' : s.link.avgSnr >= 0 ? '#f59e0b' : md3.error
+        ctx.strokeStyle = color
         ctx.globalAlpha = 0.18 + intensity * 0.50
         ctx.lineWidth = 0.8 + intensity * 3.4
         ctx.beginPath()
         ctx.moveTo(s.ax, s.ay)
         ctx.quadraticCurveTo(s.cx, s.cy, s.bx, s.by)
         ctx.stroke()
+
+        // A quadratic bezier's tangent at t=0.5 always equals B-A, so the
+        // dominant flow direction (whichever side the packet mostly travels
+        // toward) can be drawn as a fixed arrowhead at the curve's midpoint
+        // regardless of how much the curve bends.
+        const { aToBCount, bToACount } = s.link
+        const total = aToBCount + bToACount
+        if (total === 0) continue
+        const dominance = Math.max(aToBCount, bToACount) / total
+        if (dominance < 0.65) continue
+        const toB = aToBCount >= bToACount
+        const mx = 0.25 * s.ax + 0.5 * s.cx + 0.25 * s.bx
+        const my = 0.25 * s.ay + 0.5 * s.cy + 0.25 * s.by
+        const dirX = toB ? s.bx - s.ax : s.ax - s.bx
+        const dirY = toB ? s.by - s.ay : s.ay - s.by
+        const dirLen = Math.hypot(dirX, dirY)
+        if (dirLen < 1) continue
+        const ux = dirX / dirLen
+        const uy = dirY / dirLen
+        const arrowLen = 5 + intensity * 4
+        ctx.globalAlpha = Math.min(1, 0.35 + intensity * 0.5)
+        ctx.fillStyle = color
+        ctx.beginPath()
+        ctx.moveTo(mx + ux * arrowLen, my + uy * arrowLen)
+        ctx.lineTo(mx - uy * arrowLen * 0.55, my + ux * arrowLen * 0.55)
+        ctx.lineTo(mx + uy * arrowLen * 0.55, my - ux * arrowLen * 0.55)
+        ctx.closePath()
+        ctx.fill()
       }
       ctx.globalAlpha = 1
       neighborSegmentsRef.current = visible
@@ -567,7 +616,7 @@ export default function MapView() {
     }
     const onMouseMove = (e: L.LeafletMouseEvent) => {
       if (!showNeighbors || neighborSegmentsRef.current.length === 0) {
-        tooltip.remove()
+        tooltip.style.display = 'none'
         return
       }
       const p = map.latLngToContainerPoint(e.latlng)
@@ -577,7 +626,7 @@ export default function MapView() {
         if (d <= 100 && (!best || d < best.d)) best = { link: s.link, d }
       }
       if (!best) {
-        tooltip.remove()
+        tooltip.style.display = 'none'
         return
       }
       const link = best.link
@@ -588,17 +637,15 @@ export default function MapView() {
       const signalHtml = hasSignal
         ? `<div style="color:#64748b">SNR ${link.avgSnr.toFixed(1)} · RSSI ${link.avgRssi.toFixed(1)}</div>`
         : ''
-      tooltip
-        .setLatLng(e.latlng)
-        .setContent(`<div style="font-family:system-ui;min-width:170px">
-          <b>${escapeHtml(labelA)} ↔ ${escapeHtml(labelB)}</b>
-          <div>${escapeHtml(t('map.directPackets', { count: link.count.toLocaleString() }))}</div>
-          <div style="color:#64748b">${escapeHtml(formatDistanceKm(dist))}</div>
-          ${signalHtml}
-        </div>`)
-      if (!map.hasLayer(tooltip)) tooltip.addTo(map)
+      tooltip.innerHTML = `<b>${escapeHtml(labelA)} ↔ ${escapeHtml(labelB)}</b>
+        <div>${escapeHtml(t('map.directPackets', { count: link.count.toLocaleString() }))}</div>
+        <div style="color:#64748b">${escapeHtml(formatDistanceKm(dist))}</div>
+        ${signalHtml}`
+      tooltip.style.left = `${p.x}px`
+      tooltip.style.top = `${p.y}px`
+      tooltip.style.display = 'block'
     }
-    const hideTooltip = () => tooltip.remove()
+    const hideTooltip = () => { tooltip.style.display = 'none' }
     draw()
     map.on('move zoom resize', schedule)
     map.on('mousemove', onMouseMove)
@@ -608,9 +655,9 @@ export default function MapView() {
       map.off('move zoom resize', schedule)
       map.off('mousemove', onMouseMove)
       map.off('mouseout zoomstart movestart', hideTooltip)
-      tooltip.remove()
+      tooltip.style.display = 'none'
     }
-  }, [showNeighbors, directLinks, md3.error, t, tilesReady])
+  }, [showNeighbors, directLinks, md3.error, t, tilesReady, neighborThreshold, selected])
 
   const scopeOptions = useMemo(() => {
     const set = new Set<string>()
@@ -893,6 +940,22 @@ export default function MapView() {
                   <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{directLinks.length}</Typography>
                 )}
               </Box>
+              {showNeighbors && (
+                <Box sx={{ pl: 3, pr: 1, mb: 0.4 }}>
+                  <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, display: 'block' }}>
+                    {t('map.neighborThreshold', { count: neighborThreshold })}
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={neighborThreshold}
+                    onChange={(_, v) => setNeighborThreshold(v as number)}
+                    min={1}
+                    max={20}
+                    step={1}
+                    sx={{ color: '#14b8a6', py: 0.5 }}
+                  />
+                </Box>
+              )}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: showScopeRegions ? 0.75 : 0 }}>
                 <Checkbox
                   size="small"

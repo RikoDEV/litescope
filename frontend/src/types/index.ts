@@ -111,6 +111,8 @@ export interface DirectLink {
   count: number
   directCount?: number
   routeCount?: number
+  aToBCount: number
+  bToACount: number
   avgSnr: number
   avgRssi: number
   signalCount?: number

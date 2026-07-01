@@ -1118,6 +1118,8 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		count       int
 		directCount int
 		routeCount  int
+		aToBCount   int
+		bToACount   int
 		snrSum      float64
 		snrN        int
 		rssiSum     float64
@@ -1125,12 +1127,18 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 		lastSeen    string
 	}
 	links := make(map[string]*acc)
+	// addLink is called with (a, b) in the packet's actual flow direction (sender
+	// then receiver, or earlier hop then next hop); the a/b swap below only
+	// canonicalizes the map key, so track which side ended up as NodeA/NodeB to
+	// preserve the dominant flow direction for the UI.
 	addLink := func(a, b directLinkNodeSnapshot, signal directLinkSignal, direct bool, lastSeen string) {
 		if a.PubKey == "" || b.PubKey == "" || a.PubKey == b.PubKey {
 			return
 		}
+		forward := true
 		if a.PubKey > b.PubKey {
 			a, b = b, a
+			forward = false
 		}
 		key := a.PubKey + "|" + b.PubKey
 		l := links[key]
@@ -1139,6 +1147,11 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 			links[key] = l
 		}
 		l.count++
+		if forward {
+			l.aToBCount++
+		} else {
+			l.bToACount++
+		}
 		if direct {
 			l.directCount++
 			if signal.hasSNR {
@@ -1196,6 +1209,7 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 			NodeB: DirectLinkNode{PubKey: l.b.PubKey, Name: l.b.Name, Role: l.b.Role, Lat: l.b.Lat, Lon: l.b.Lon},
 			Count: l.count, LastSeen: l.lastSeen,
 			DirectCount: l.directCount, RouteCount: l.routeCount,
+			AToBCount: l.aToBCount, BToACount: l.bToACount,
 		}
 		if l.snrN > 0 {
 			row.AvgSNR = l.snrSum / float64(l.snrN)
@@ -3382,6 +3396,8 @@ type DirectLink struct {
 	Count       int            `json:"count"`
 	DirectCount int            `json:"directCount,omitempty"`
 	RouteCount  int            `json:"routeCount,omitempty"`
+	AToBCount   int            `json:"aToBCount"`
+	BToACount   int            `json:"bToACount"`
 	AvgSNR      float64        `json:"avgSnr"`
 	AvgRSSI     float64        `json:"avgRssi"`
 	SignalCount int            `json:"signalCount,omitempty"`

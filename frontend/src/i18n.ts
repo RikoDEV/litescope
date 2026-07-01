@@ -184,6 +184,7 @@ const en = {
     dominantScope: 'Dominant: {{scope}}',
     heatMap: 'Heat map', neighbors: 'Neighbors', heatWeight: '{{count}} seen events',
     heatBreakdown: '{{packets}} packets · {{observations}} observations', directPackets: '{{count}} packets',
+    neighborThreshold: 'Min. packets: {{count}}',
   },
   notFound: {
     title: 'Page not found',
@@ -386,6 +387,7 @@ const pl: typeof en = {
     dominantScope: 'Dominujący: {{scope}}',
     heatMap: 'Mapa ciepła', neighbors: 'Sąsiedzi', heatWeight: '{{count}} zdarzeń',
     heatBreakdown: '{{packets}} pakietów · {{observations}} obserwacji', directPackets: '{{count}} pakietów',
+    neighborThreshold: 'Min. pakietów: {{count}}',
   },
   notFound: {
     title: 'Strona nie istnieje',
@@ -588,6 +590,7 @@ const de: typeof en = {
     dominantScope: 'Dominant: {{scope}}',
     heatMap: 'Heatmap', neighbors: 'Nachbarn', heatWeight: '{{count}} Ereignisse',
     heatBreakdown: '{{packets}} Pakete · {{observations}} Beobachtungen', directPackets: '{{count}} Pakete',
+    neighborThreshold: 'Min. Pakete: {{count}}',
   },
   notFound: {
     title: 'Seite nicht gefunden',
@@ -777,6 +780,7 @@ const fr = {
     dominantScope: 'Dominant : {{scope}}',
     heatMap: 'Carte de chaleur', neighbors: 'Voisins', heatWeight: '{{count}} événements vus',
     heatBreakdown: '{{packets}} paquets · {{observations}} observations', directPackets: '{{count}} paquets',
+    neighborThreshold: 'Min. paquets : {{count}}',
   },
   notFound: {
     title: 'Page introuvable',
@@ -957,6 +961,7 @@ const uk = {
     dominantScope: 'Домінує: {{scope}}',
     heatMap: 'Теплова карта', neighbors: 'Сусіди', heatWeight: '{{count}} подій',
     heatBreakdown: '{{packets}} пакетів · {{observations}} спостережень', directPackets: '{{count}} пакетів',
+    neighborThreshold: 'Мін. пакетів: {{count}}',
   },
   notFound: {
     title: 'Сторінку не знайдено',
@@ -1137,6 +1142,7 @@ const ru = {
     dominantScope: 'Доминирует: {{scope}}',
     heatMap: 'Тепловая карта', neighbors: 'Соседи', heatWeight: '{{count}} событий',
     heatBreakdown: '{{packets}} пакетов · {{observations}} наблюдений', directPackets: '{{count}} пакетов',
+    neighborThreshold: 'Мин. пакетов: {{count}}',
   },
   notFound: {
     title: 'Страница не найдена',
@@ -1317,6 +1323,7 @@ const nl = {
     dominantScope: 'Dominant: {{scope}}',
     heatMap: 'Heatmap', neighbors: 'Buren', heatWeight: '{{count}} gebeurtenissen',
     heatBreakdown: '{{packets}} pakketten · {{observations}} waarnemingen', directPackets: '{{count}} pakketten',
+    neighborThreshold: 'Min. pakketten: {{count}}',
   },
   notFound: {
     title: 'Pagina niet gevonden',
@@ -1497,6 +1504,7 @@ const es = {
     dominantScope: 'Dominante: {{scope}}',
     heatMap: 'Mapa de calor', neighbors: 'Vecinos', heatWeight: '{{count}} eventos vistos',
     heatBreakdown: '{{packets}} paquetes · {{observations}} observaciones', directPackets: '{{count}} paquetes',
+    neighborThreshold: 'Mín. paquetes: {{count}}',
   },
   notFound: {
     title: 'Página no encontrada',
@@ -1677,6 +1685,7 @@ const cs = {
     dominantScope: 'Dominantní: {{scope}}',
     heatMap: 'Heat mapa', neighbors: 'Sousedé', heatWeight: '{{count}} událostí',
     heatBreakdown: '{{packets}} paketů · {{observations}} pozorování', directPackets: '{{count}} paketů',
+    neighborThreshold: 'Min. paketů: {{count}}',
   },
   notFound: {
     title: 'Stránka nenalezena',
@@ -1857,6 +1866,7 @@ const sk = {
     dominantScope: 'Dominantné: {{scope}}',
     heatMap: 'Heat mapa', neighbors: 'Susedia', heatWeight: '{{count}} udalostí',
     heatBreakdown: '{{packets}} paketov · {{observations}} pozorovaní', directPackets: '{{count}} paketov',
+    neighborThreshold: 'Min. paketov: {{count}}',
   },
   notFound: {
     title: 'Stránka nenájdená',
@@ -2037,6 +2047,7 @@ const it = {
     dominantScope: 'Dominante: {{scope}}',
     heatMap: 'Mappa calore', neighbors: 'Vicini', heatWeight: '{{count}} eventi visti',
     heatBreakdown: '{{packets}} pacchetti · {{observations}} osservazioni', directPackets: '{{count}} pacchetti',
+    neighborThreshold: 'Min. pacchetti: {{count}}',
   },
   notFound: {
     title: 'Pagina non trovata',
