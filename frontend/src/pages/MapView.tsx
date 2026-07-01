@@ -746,10 +746,37 @@ export default function MapView() {
       if (!n || !passes(n)) { cluster?.removeLayer(m); markersRef.current.delete(key) }
     })
 
+    // Nodes sharing (near-)identical coordinates -- most often several
+    // guessed locations landing on the same observer's consensus point --
+    // would otherwise render as a single indistinguishable marker. Fan them
+    // out into a small ring so each stays visible and clickable. Grouping
+    // and ring position are both derived from sorted pubKeys, so the layout
+    // is stable across re-renders instead of shuffling.
+    const passingNodes = nodes.filter(passes)
+    const coordGroups = new Map<string, Node[]>()
+    for (const n of passingNodes) {
+      const key = `${n.lat!.toFixed(4)}:${n.lon!.toFixed(4)}`
+      const group = coordGroups.get(key)
+      if (group) group.push(n)
+      else coordGroups.set(key, [n])
+    }
+    const jitter = new Map<string, [number, number]>()
+    for (const group of coordGroups.values()) {
+      if (group.length < 2) continue
+      group.sort((a, b) => a.pubKey.localeCompare(b.pubKey))
+      const radiusM = 35 + Math.min(group.length, 8) * 6
+      group.forEach((n, i) => {
+        const angle = (i / group.length) * Math.PI * 2
+        const latRad = (n.lat! * Math.PI) / 180
+        const dLat = (radiusM * Math.cos(angle)) / 111320
+        const dLon = (radiusM * Math.sin(angle)) / (111320 * Math.cos(latRad))
+        jitter.set(n.pubKey, [dLat, dLon])
+      })
+    }
+
     // Add / update matching nodes
     const toAdd: L.Marker[] = []
-    nodes.forEach(n => {
-      if (!passes(n)) return
+    passingNodes.forEach(n => {
       const active = new Date(n.lastSeen).getTime() > activeCut
       const prefixBytes = nodeByteSizeRef.current.get(n.pubKey) ?? 1
       const hashLabel  = showHashLabels ? n.pubKey.slice(0, prefixBytes * 2).toUpperCase() : ''
@@ -758,7 +785,8 @@ export default function MapView() {
       const icon   = makeIcon(n.role, active, label)
       const exist  = markersRef.current.get(n.pubKey)
       if (exist) { exist.setIcon(icon); (exist as any)._nodeRole = n.role; return }
-      const m = L.marker([n.lat!, n.lon!], { icon }).bindPopup(makePopup(n));
+      const [dLat, dLon] = jitter.get(n.pubKey) ?? [0, 0]
+      const m = L.marker([n.lat! + dLat, n.lon! + dLon], { icon }).bindPopup(makePopup(n));
       (m as any)._nodeRole = n.role
       m.on('click', () => selectNode(n))
       markersRef.current.set(n.pubKey, m)
