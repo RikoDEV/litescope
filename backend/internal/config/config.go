@@ -23,6 +23,11 @@ type Config struct {
 	// keeps everything — unbounded, fine for short-lived or low-volume setups, but
 	// memory and per-request analytics cost grow with history on a busy network.
 	RetentionDays int `json:"retentionDays"`
+	// DisableLocationRepair turns off the observer-consensus fallback that fills
+	// in or corrects node coordinates when the advertised GPS is missing or
+	// implausible. Off (repair enabled) by default; set true to always trust
+	// advertised coordinates as-is, even when absent.
+	DisableLocationRepair bool `json:"disableLocationRepair"`
 }
 
 type MQTTSource struct {

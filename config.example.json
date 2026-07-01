@@ -17,5 +17,6 @@
   "hashChannels": [],
   "scopeList": [],
   "allowedOrigins": ["*"],
-  "retentionDays": 0
+  "retentionDays": 0,
+  "disableLocationRepair": false
 }

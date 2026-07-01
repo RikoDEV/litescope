@@ -135,7 +135,13 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   // older than this are pruned hourly from the in-memory store (server) and the
   // SQLite database (ingestor), bounding memory and analytics cost on busy
   // networks. Nodes/observers and their lifetime counters are kept.
-  "retentionDays": 0
+  "retentionDays": 0,
+
+  // When a node's advertised GPS is missing or looks wrong, the server can fall
+  // back to a consensus of the observers that heard it directly, flagging the
+  // result as approximate in the UI. false (default) keeps this on; set true to
+  // always trust advertised coordinates as-is, even when absent.
+  "disableLocationRepair": false
 }
 ```
 

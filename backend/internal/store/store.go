@@ -189,6 +189,10 @@ type Store struct {
 	lastTxID        int64
 	lastObsID       int64
 	lastRepair      LocationRepairStats
+	// locationRepairEnabled gates repairNodeLocationsLocked; true by default
+	// (set in New) so existing callers/tests keep today's behavior unless a
+	// host opts out via config.
+	locationRepairEnabled bool
 
 	// version bumps on every mutation; the analytics cache keys off it so a
 	// result is reused only while the underlying data is unchanged.
@@ -223,18 +227,28 @@ const analyticsCacheMaxEntries = 128
 
 func New() *Store {
 	return &Store{
-		byHash:          make(map[string]*Tx),
-		byTxID:          make(map[int64]*Tx),
-		byObsID:         make(map[int64]*Obs),
-		byObserver:      make(map[string][]*Obs),
-		byNode:          make(map[string][]*Tx),
-		byRelayHop:      make(map[string][]*Tx),
-		relayHopLengths: make(map[int]struct{}),
-		nodes:           make(map[string]*Node),
-		observers:       make(map[string]*Observer),
-		cache:           make(map[string]cacheEntry),
-		cacheFlight:     make(map[string]cacheFlight),
+		byHash:                make(map[string]*Tx),
+		byTxID:                make(map[int64]*Tx),
+		byObsID:               make(map[int64]*Obs),
+		byObserver:            make(map[string][]*Obs),
+		byNode:                make(map[string][]*Tx),
+		byRelayHop:            make(map[string][]*Tx),
+		relayHopLengths:       make(map[int]struct{}),
+		nodes:                 make(map[string]*Node),
+		observers:             make(map[string]*Observer),
+		cache:                 make(map[string]cacheEntry),
+		cacheFlight:           make(map[string]cacheFlight),
+		locationRepairEnabled: true,
 	}
+}
+
+// SetLocationRepairEnabled toggles the observer-consensus location repair
+// pass. Must be called before Load/UpdateNodes to take effect on initial
+// data; defaults to enabled (see New).
+func (s *Store) SetLocationRepairEnabled(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.locationRepairEnabled = enabled
 }
 
 // LastLocationRepairStats returns the last node coordinate repair summary.
@@ -366,7 +380,9 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 	for _, r := range nodes {
 		s.nodes[r.PubKey] = nodeFromRow(r)
 	}
-	s.repairNodeLocationsLocked()
+	if s.locationRepairEnabled {
+		s.repairNodeLocationsLocked()
+	}
 	for _, r := range obs {
 		s.observers[r.ID] = observerFromRow(r)
 	}
@@ -604,7 +620,7 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 		s.nodes[r.PubKey] = next
 		changed = true
 	}
-	if repairNeeded {
+	if repairNeeded && s.locationRepairEnabled {
 		stats = s.repairNodeLocationsLocked()
 	}
 	if changed {

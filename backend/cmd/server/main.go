@@ -49,12 +49,17 @@ func main() {
 	dbLoadDur := time.Since(loadStart)
 	indexStart := time.Now()
 	st := store.New()
+	st.SetLocationRepairEnabled(!cfg.DisableLocationRepair)
 	st.Load(txs, obss, nodes, observers)
 	indexDur := time.Since(indexStart)
 	lastTxID, lastObsID := st.LastIDs()
 	log.Printf("loaded %d packets, %d observations, %d nodes, %d observers (db=%s, index=%s)",
 		len(txs), len(obss), len(nodes), len(observers), dbLoadDur.Round(time.Millisecond), indexDur.Round(time.Millisecond))
-	logLocationRepair("startup", st.LastLocationRepairStats())
+	if cfg.DisableLocationRepair {
+		log.Printf("location repair disabled via config (disableLocationRepair=true)")
+	} else {
+		logLocationRepair("startup", st.LastLocationRepairStats())
+	}
 
 	hub := api.NewHub(cfg.AllowedOrigins)
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
