@@ -1110,10 +1110,6 @@ func (s *Store) DirectLinks(f AnalyticsFilter) []DirectLink {
 	return cachedAnalyticsForFilter(s, "directLinks", f, func() []DirectLink { return s.computeDirectLinks(f) })
 }
 
-// maxHopCandidates bounds how many nodes a single hash-prefix hop is allowed
-// to match when inferring routed links; see the cross-product comment below.
-const maxHopCandidates = 8
-
 func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 	directEvents, routeEvents, prefixIndex := s.directLinkSnapshot(f)
 
@@ -1173,12 +1169,16 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 			toNodes := prefixIndex[strings.ToLower(e.path[i+1])]
 			// A hop is a short hash prefix and can collide with several nodes
 			// (documented, inherent). Pairing every candidate on one hop with
-			// every candidate on the next is O(len(fromNodes)*len(toNodes)); on
-			// a large mesh with many routed observations that cross product
-			// dominates runtime while the store's RLock is held, stalling the
-			// 1s ingest poll behind it. Beyond maxHopCandidates the match is
-			// too ambiguous to be a meaningful link anyway, so skip it.
-			if len(fromNodes) > maxHopCandidates || len(toNodes) > maxHopCandidates {
+			// every candidate on the next both (a) draws a spurious edge for
+			// every wrong combination -- turning a couple of ambiguous hops
+			// into an apparent mesh where every node links to every other --
+			// and (b) is O(len(fromNodes)*len(toNodes)) per hop transition,
+			// which dominated runtime while the store's RLock was held and
+			// stalled the 1s ingest poll behind it on large datasets. Only
+			// infer a routed link when both hops resolve to exactly one
+			// candidate; anything more ambiguous can't be attributed to a
+			// specific node pair, so skip it rather than guess.
+			if len(fromNodes) != 1 || len(toNodes) != 1 {
 				continue
 			}
 			for _, from := range fromNodes {
