@@ -14,6 +14,7 @@ import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
+import Tooltip from '@mui/material/Tooltip'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
@@ -237,7 +238,13 @@ export default function Nodes() {
                       <Chip label={n.role} size="small" sx={{ background: alpha(color, 0.15), color, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
                     </TableCell>
                     <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 12 }}>
-                      {n.lat != null ? `${n.lat.toFixed(2)}, ${n.lon?.toFixed(2)}` : '—'}
+                      {n.lat != null ? (
+                        n.locationApprox ? (
+                          <Tooltip title={t('nodes.locationApprox')} arrow placement="top">
+                            <span style={{ cursor: 'help' }}>≈ {n.lat.toFixed(2)}, {n.lon?.toFixed(2)}</span>
+                          </Tooltip>
+                        ) : `${n.lat.toFixed(2)}, ${n.lon?.toFixed(2)}`
+                      ) : '—'}
                     </TableCell>
                     <TableCell sx={{ color: md3.primary, fontWeight: 700 }}>{n.advertCount}</TableCell>
                     <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>

@@ -687,6 +687,7 @@ type nodeSummary struct {
 	Role            string   `json:"role"`
 	Lat             *float64 `json:"lat"`
 	Lon             *float64 `json:"lon"`
+	LocationApprox  bool     `json:"locationApprox,omitempty"`
 	LastSeen        string   `json:"lastSeen"`
 	FirstSeen       string   `json:"firstSeen"`
 	AdvertCount     int      `json:"advertCount"`
@@ -746,7 +747,8 @@ func txDetail(tx *store.Tx) packetDetail {
 func summarizeNode(n *store.Node) nodeSummary {
 	return nodeSummary{
 		PubKey: n.PubKey, Name: n.Name, Role: n.Role, Lat: n.Lat, Lon: n.Lon,
-		LastSeen: n.LastSeen, FirstSeen: n.FirstSeen, AdvertCount: n.AdvertCount,
+		LocationApprox: n.LocationApprox,
+		LastSeen:       n.LastSeen, FirstSeen: n.FirstSeen, AdvertCount: n.AdvertCount,
 		Country:   n.Country,
 		BatteryMv: n.BatteryMv, TempC: n.TempC,
 	}

@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Divider from '@mui/material/Divider'
+import MuiTooltip from '@mui/material/Tooltip'
 import { alpha, useTheme, type SxProps, type Theme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
@@ -129,11 +130,21 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
             { l: t('nodes.pktsToday'),  v: overview ? String(overview.packetsToday) : '…' },
             { l: t('nodes.avgHops'),    v: overview ? overview.avgHops.toFixed(1) : '…' },
             ...(overview?.avgSnr != null ? [{ l: t('nodes.avgSnr'), v: `${overview.avgSnr.toFixed(1)} dB` }] : []),
-            ...(selected.lat != null ? [{ l: t('common.location'), v: `${selected.lat.toFixed(4)}, ${selected.lon?.toFixed(4)}` }] : []),
-          ].map(({ l, v }) => (
+            ...(selected.lat != null ? [{
+              l: t('common.location'),
+              v: `${selected.locationApprox ? '≈ ' : ''}${selected.lat.toFixed(4)}, ${selected.lon?.toFixed(4)}`,
+              hint: selected.locationApprox ? t('nodes.locationApprox') : undefined,
+            }] : []),
+          ].map(({ l, v, hint }) => (
             <Box key={l} sx={{ background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75 }}>
               <Typography variant="caption" sx={{ color: md3.outline, display: 'block', fontSize: 10 }}>{l}</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12 }}>{v}</Typography>
+              {hint ? (
+                <MuiTooltip title={hint} arrow placement="top">
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12, width: 'fit-content', cursor: 'help' }}>{v}</Typography>
+                </MuiTooltip>
+              ) : (
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12 }}>{v}</Typography>
+              )}
             </Box>
           ))}
         </Box>

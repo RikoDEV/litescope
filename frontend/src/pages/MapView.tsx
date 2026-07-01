@@ -151,6 +151,7 @@ export default function MapView() {
   const [scopeFilter, setScopeFilter] = useState('all')
   const [showHashLabels, setShowHashLabels] = useState(false)
   const [showTitleLabels, setShowTitleLabels] = useState(false)
+  const [hideApproxLocation, setHideApproxLocation] = useState(false)
   const [quickJump, setQuickJump] = useState('')
   const [iatas, setIatas] = useState<string[]>([])
   const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
@@ -722,6 +723,7 @@ export default function MapView() {
 
     const passes = (n: Node) => {
       if (!hasValidLocation(n.lat, n.lon)) return false
+      if (hideApproxLocation && n.locationApprox) return false
       if (!roleVis[n.role as keyof typeof roleVis]) return false
       if (!passesGeo(n.country, geoCountries)) return false
       const lastTs = new Date(n.lastSeen).getTime()
@@ -769,7 +771,7 @@ export default function MapView() {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showHashLabels, showTitleLabels, geoCountries, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showHashLabels, showTitleLabels, hideApproxLocation, geoCountries, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
@@ -1035,6 +1037,15 @@ export default function MapView() {
                   sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
                 />
                 <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>{t('map.nodeTitleLabels')}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Checkbox
+                  size="small"
+                  checked={hideApproxLocation}
+                  onChange={e => setHideApproxLocation(e.target.checked)}
+                  sx={{ p: 0.25, color: md3.primary, '&.Mui-checked': { color: md3.primary } }}
+                />
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>{t('map.hideApproxLocation')}</Typography>
               </Box>
             </Box>
 

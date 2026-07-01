@@ -59,6 +59,7 @@ export interface Node {
   role: string
   lat: number | null
   lon: number | null
+  locationApprox?: boolean | undefined
   lastSeen: string
   firstSeen: string
   advertCount: number

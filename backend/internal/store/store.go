@@ -132,6 +132,9 @@ type Node struct {
 	Lon         *float64
 	RawLat      *float64
 	RawLon      *float64
+	// LocationApprox is true when Lat/Lon came from the observer-consensus
+	// repair fallback rather than the node's own advertised GPS fix.
+	LocationApprox bool
 	Country     string // ISO 3166-1 alpha-2, resolved from Lat/Lon (geo filtering)
 	LastSeen    string
 	FirstSeen   string
@@ -596,6 +599,7 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 			next.Lat = existing.Lat
 			next.Lon = existing.Lon
 			next.Country = existing.Country
+			next.LocationApprox = existing.LocationApprox
 		}
 		s.nodes[r.PubKey] = next
 		changed = true
@@ -2572,6 +2576,7 @@ func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 	}
 	for _, n := range s.nodes {
 		n.Lat, n.Lon = n.RawLat, n.RawLon
+		n.LocationApprox = false
 		setNodeCountry(n)
 	}
 	observerNodes := make(map[string]*Node, len(s.byObserver))
@@ -2619,10 +2624,12 @@ func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 		switch {
 		case !hasUsableLocation(n):
 			n.Lat, n.Lon = &lat, &lon
+			n.LocationApprox = true
 			setNodeCountry(n)
 			stats.RepairedMissing++
 		case haversineKm(*n.Lat, *n.Lon, lat, lon) > suspiciousAdvertLocationKm:
 			n.Lat, n.Lon = &lat, &lon
+			n.LocationApprox = true
 			setNodeCountry(n)
 			stats.RepairedSuspicious++
 		}

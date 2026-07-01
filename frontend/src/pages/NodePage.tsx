@@ -404,7 +404,15 @@ export default function NodePage() {
             {/* Mini map */}
             {hasMap && (
               <Card>
-                <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📍</Box>} label={`${node.lat!.toFixed(5)}, ${node.lon!.toFixed(5)}`} />
+                {node.locationApprox ? (
+                  <Tooltip title={t('nodes.locationApprox')} arrow placement="top">
+                    <span style={{ cursor: 'help', width: 'fit-content' }}>
+                      <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📍</Box>} label={`≈ ${node.lat!.toFixed(5)}, ${node.lon!.toFixed(5)}`} />
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📍</Box>} label={`${node.lat!.toFixed(5)}, ${node.lon!.toFixed(5)}`} />
+                )}
                 <NodeMiniMap lat={node.lat!} lon={node.lon!} color={color} />
               </Card>
             )}
