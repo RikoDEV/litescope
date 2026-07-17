@@ -161,6 +161,34 @@ export default function MapView() {
   // pubKey → byte size of its most recent advert packet (built from VCR buffer)
   const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
 
+  // pubKeys currently allowed to render as markers under the active filters
+  // (role, status, last-heard, byte size, approx-location, region). Shared
+  // with the Neighbors canvas layer so link lines never connect a node the
+  // filters have hidden.
+  const visibleNodePubKeys = useMemo(() => {
+    const now       = Date.now()
+    const activeCut = now - ACTIVE_MS
+    const lhCut     = lastHeardFilter ? now - (LH_MS[lastHeardFilter] ?? 0) : 0
+    const set = new Set<string>()
+    for (const n of nodes) {
+      if (!hasValidLocation(n.lat, n.lon)) continue
+      if (hideApproxLocation && n.locationApprox) continue
+      if (!roleVis[n.role as keyof typeof roleVis]) continue
+      if (!passesGeo(n.country, geoCountries)) continue
+      const lastTs = new Date(n.lastSeen).getTime()
+      const active = lastTs > activeCut
+      if (statusFilter === 'active' && !active) continue
+      if (statusFilter === 'stale'  && active)  continue
+      if (lhCut && lastTs < lhCut) continue
+      if (byteSizeFilter !== 'all') {
+        const bs = nodeByteSizeRef.current.get(n.pubKey)
+        if (bs == null || bs !== parseInt(byteSizeFilter)) continue
+      }
+      set.add(n.pubKey)
+    }
+    return set
+  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, hideApproxLocation, geoCountries])
+
   const roleColor = (r: string) => roleColorFn(r, md3)
   const scopeColor = useCallback((scope: string) => {
     if (scope === 'unknown') return md3.outline
@@ -492,6 +520,7 @@ export default function MapView() {
       const visible: NeighborSegment[] = []
       for (const link of directLinks) {
         if (link.count < neighborThreshold) continue
+        if (!visibleNodePubKeys.has(link.nodeA.pubKey) || !visibleNodePubKeys.has(link.nodeB.pubKey)) continue
         if (focusPubKey && link.nodeA.pubKey !== focusPubKey && link.nodeB.pubKey !== focusPubKey) continue
         const a = map.latLngToContainerPoint([link.nodeA.lat, link.nodeA.lon])
         const b = map.latLngToContainerPoint([link.nodeB.lat, link.nodeB.lon])
@@ -658,7 +687,7 @@ export default function MapView() {
       map.off('mouseout zoomstart movestart', hideTooltip)
       tooltip.style.display = 'none'
     }
-  }, [showNeighbors, directLinks, md3.error, t, tilesReady, neighborThreshold, selected])
+  }, [showNeighbors, directLinks, md3.error, t, tilesReady, neighborThreshold, selected, visibleNodePubKeys])
 
   const scopeOptions = useMemo(() => {
     const set = new Set<string>()
@@ -717,33 +746,13 @@ export default function MapView() {
   // Sync markers with current filters
   useEffect(() => {
     const map = mapInstance.current; if (!map) return
-    const now        = Date.now()
-    const activeCut  = now - ACTIVE_MS
-    const lhCut      = lastHeardFilter ? now - (LH_MS[lastHeardFilter] ?? 0) : 0
-
-    const passes = (n: Node) => {
-      if (!hasValidLocation(n.lat, n.lon)) return false
-      if (hideApproxLocation && n.locationApprox) return false
-      if (!roleVis[n.role as keyof typeof roleVis]) return false
-      if (!passesGeo(n.country, geoCountries)) return false
-      const lastTs = new Date(n.lastSeen).getTime()
-      const active = lastTs > activeCut
-      if (statusFilter === 'active' && !active) return false
-      if (statusFilter === 'stale'  && active)  return false
-      if (lhCut && lastTs < lhCut) return false
-      if (byteSizeFilter !== 'all') {
-        const bs = nodeByteSizeRef.current.get(n.pubKey)
-        if (bs == null || bs !== parseInt(byteSizeFilter)) return false
-      }
-      return true
-    }
+    const activeCut = Date.now() - ACTIVE_MS
 
     const cluster = clusterGroup.current
 
     // Remove markers that no longer match
     markersRef.current.forEach((m, key) => {
-      const n = nodes.find(nd => nd.pubKey === key)
-      if (!n || !passes(n)) { cluster?.removeLayer(m); markersRef.current.delete(key) }
+      if (!visibleNodePubKeys.has(key)) { cluster?.removeLayer(m); markersRef.current.delete(key) }
     })
 
     // Nodes sharing (near-)identical coordinates -- most often several
@@ -752,7 +761,7 @@ export default function MapView() {
     // out into a small ring so each stays visible and clickable. Grouping
     // and ring position are both derived from sorted pubKeys, so the layout
     // is stable across re-renders instead of shuffling.
-    const passingNodes = nodes.filter(passes)
+    const passingNodes = nodes.filter(n => visibleNodePubKeys.has(n.pubKey))
     const coordGroups = new Map<string, Node[]>()
     for (const n of passingNodes) {
       const key = `${n.lat!.toFixed(4)}:${n.lon!.toFixed(4)}`
@@ -799,7 +808,7 @@ export default function MapView() {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
-  }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, showHashLabels, showTitleLabels, hideApproxLocation, geoCountries, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, visibleNodePubKeys, showHashLabels, showTitleLabels, theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // WebSocket
   useEffect(() => {
