@@ -1303,7 +1303,18 @@ func (s *Store) directLinkSnapshot(f AnalyticsFilter) ([]directLinkEvent, []rout
 			continue
 		}
 		lpk := strings.ToLower(pk)
+		// A node's own routing hop hashes are sized by its current advertised
+		// hash mode, not by every length ever seen network-wide. Without this,
+		// a node that switched to a 2/3-byte hash still gets indexed under its
+		// stale 1-byte prefix, so a genuinely 1-byte (often unlocated/hidden)
+		// node's hop can be misattributed to it as the sole remaining
+		// candidate once the real sender is filtered out (issue: neighbor
+		// links kept drawing to switched nodes after a hash-size change).
+		selfSize, _ := s.currentAdvertHash(pk, f) // byte size; relayHopLengths keys are hex-char length
 		for l := range s.relayHopLengths {
+			if selfSize != 0 && l != selfSize*2 {
+				continue
+			}
 			if len(lpk) >= l {
 				prefixIndex[lpk[:l]] = append(prefixIndex[lpk[:l]], n)
 			}

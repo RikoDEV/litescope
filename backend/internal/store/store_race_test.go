@@ -421,6 +421,44 @@ func TestDirectLinksIncludeAdjacentRouteHops(t *testing.T) {
 	}
 }
 
+// TestDirectLinksIgnoreStaleHopsAfterHashSizeSwitch guards against neighbor
+// links being drawn to a node for a routing hop whose length no longer
+// matches that node's currently advertised hash size. Before this a node
+// that switched to a 2-byte hash still absorbed stale 1-byte hops that
+// collided with its pubkey prefix, mis-attributing a different (often
+// unlocated/hidden) 1-byte node's relay to it.
+func TestDirectLinksIgnoreStaleHopsAfterHashSizeSwitch(t *testing.T) {
+	switchedLat, switchedLon := 51.97747, 20.06207
+	otherLat, otherLon := 52.195003, 20.481284
+	const switchedNode = "42b26efa4bd65c39b32c507cb05b5a82aa02738766c8524a88dce7fe70c8101a"
+	const otherNode = "b373156c12d601b9990ebe8dd243122de28645efb0ff5cbe2d4d36a69019ad72"
+
+	s := New()
+	s.Load(
+		[]*db.TxRow{
+			// switchedNode's own advert, whose path self-hop ("42B2") shows it
+			// now uses a 2-byte hash.
+			{ID: 1, Hash: "advert", RawHex: "00", FirstSeen: "2024-01-02T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + switchedNode + `"}`},
+			// A stale route packet using 1-byte hops from before the switch.
+			{ID: 2, Hash: "route", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 5, DecodedJSON: `{}`},
+		},
+		[]*db.ObsRow{
+			{ID: 1, TxID: 1, ObserverID: "obs", PathJSON: `["42B2"]`, Timestamp: "2024-01-02T00:00:01Z"},
+			{ID: 2, TxID: 2, ObserverID: "obs", PathJSON: `["42","b3"]`, Timestamp: "2024-01-01T00:00:01Z"},
+		},
+		[]*db.NodeRow{
+			{PubKey: switchedNode, Name: "Switched", Role: "repeater", Lat: &switchedLat, Lon: &switchedLon},
+			{PubKey: otherNode, Name: "Other", Role: "repeater", Lat: &otherLat, Lon: &otherLon},
+		},
+		nil,
+	)
+
+	links := s.DirectLinks(AnalyticsFilter{})
+	if len(links) != 0 {
+		t.Fatalf("expected stale 1-byte hop not to be attributed to a node that switched to a 2-byte hash, got %+v", links)
+	}
+}
+
 func TestMapLocationsRepairZeroAndSuspiciousAdvertCoords(t *testing.T) {
 	obsLat, obsLon := 52.0, 21.0
 	fakeLat, fakeLon := 40.7128, -74.0060
