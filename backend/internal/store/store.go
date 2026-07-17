@@ -1193,45 +1193,13 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 	for _, e := range directEvents {
 		addLink(e.a, e.b, e.signal, true, e.lastSeen)
 	}
-	// A node's routing hop hash length can change when it switches path-hash
-	// mode (1/2/3 bytes), so a hop hex string that used to uniquely identify
-	// it can go stale and collide with a different, unrelated node's prefix
-	// once the real (often unlocated) sender of that old length ages out of
-	// consideration. recentHashSize learns each node's current hop length
-	// from the freshest routeEvent it was unambiguously seen in -- routeEvents
-	// is walked newest-first (see directLinkSnapshot's backward packet scan),
-	// so the first write per node here is always its most recent sighting --
-	// and is used below to discard candidates whose learned length no longer
-	// matches the hop being resolved, instead of trusting a stale collision.
-	recentHashSize := make(map[string]int)
-	filterStale := func(candidates []directLinkNodeSnapshot, hopLen int) []directLinkNodeSnapshot {
-		out := make([]directLinkNodeSnapshot, 0, len(candidates))
-		for _, n := range candidates {
-			if sz, ok := recentHashSize[n.PubKey]; ok && sz != hopLen {
-				continue
-			}
-			out = append(out, n)
-		}
-		return out
-	}
 	for _, e := range routeEvents {
 		for i := 0; i+1 < len(e.path); i++ {
 			if !isHexHop(e.path[i]) || !isHexHop(e.path[i+1]) {
 				continue
 			}
-			fromKey, toKey := strings.ToLower(e.path[i]), strings.ToLower(e.path[i+1])
-			allFrom := prefixIndex[fromKey]
-			allTo := prefixIndex[toKey]
-			if len(allFrom) == 1 {
-				if _, ok := recentHashSize[allFrom[0].PubKey]; !ok {
-					recentHashSize[allFrom[0].PubKey] = len(fromKey)
-				}
-			}
-			if len(allTo) == 1 {
-				if _, ok := recentHashSize[allTo[0].PubKey]; !ok {
-					recentHashSize[allTo[0].PubKey] = len(toKey)
-				}
-			}
+			fromNodes := prefixIndex[strings.ToLower(e.path[i])]
+			toNodes := prefixIndex[strings.ToLower(e.path[i+1])]
 			// A hop is a short hash prefix and can collide with several nodes
 			// (documented, inherent). Pairing every candidate on one hop with
 			// every candidate on the next both (a) draws a spurious edge for
@@ -1243,8 +1211,6 @@ func (s *Store) computeDirectLinks(f AnalyticsFilter) []DirectLink {
 			// infer a routed link when both hops resolve to exactly one
 			// candidate; anything more ambiguous can't be attributed to a
 			// specific node pair, so skip it rather than guess.
-			fromNodes := filterStale(allFrom, len(fromKey))
-			toNodes := filterStale(allTo, len(toKey))
 			if len(fromNodes) != 1 || len(toNodes) != 1 {
 				continue
 			}
@@ -1337,7 +1303,18 @@ func (s *Store) directLinkSnapshot(f AnalyticsFilter) ([]directLinkEvent, []rout
 			continue
 		}
 		lpk := strings.ToLower(pk)
+		// A node's own routing hop hashes are sized by its current advertised
+		// hash mode, not by every length ever seen network-wide. Without this,
+		// a node that switched to a 2/3-byte hash still gets indexed under its
+		// stale 1-byte prefix, so a genuinely 1-byte (often unlocated/hidden)
+		// node's hop can be misattributed to it as the sole remaining
+		// candidate once the real sender is filtered out (issue: neighbor
+		// links kept drawing to switched nodes after a hash-size change).
+		selfSize, _ := s.currentAdvertHash(pk, f) // byte size; relayHopLengths keys are hex-char length
 		for l := range s.relayHopLengths {
+			if selfSize != 0 && l != selfSize*2 {
+				continue
+			}
 			if len(lpk) >= l {
 				prefixIndex[lpk[:l]] = append(prefixIndex[lpk[:l]], n)
 			}

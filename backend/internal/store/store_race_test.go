@@ -423,13 +423,10 @@ func TestDirectLinksIncludeAdjacentRouteHops(t *testing.T) {
 
 // TestDirectLinksIgnoreStaleHopsAfterHashSizeSwitch guards against neighbor
 // links being drawn to a node for a routing hop whose length no longer
-// matches its most recently observed hash size. Before this, a node that
-// switched to a 2-byte hash still absorbed stale 1-byte hops that collided
-// with its pubkey prefix, mis-attributing a different (often
-// unlocated/hidden) 1-byte node's relay to it. The fix learns each node's
-// current hop length from the freshest route packet it was unambiguously
-// seen in, and discards candidates whose learned length disagrees with an
-// older hop.
+// matches that node's currently advertised hash size. Before this a node
+// that switched to a 2-byte hash still absorbed stale 1-byte hops that
+// collided with its pubkey prefix, mis-attributing a different (often
+// unlocated/hidden) 1-byte node's relay to it.
 func TestDirectLinksIgnoreStaleHopsAfterHashSizeSwitch(t *testing.T) {
 	switchedLat, switchedLon := 51.97747, 20.06207
 	otherLat, otherLon := 52.195003, 20.481284
@@ -439,14 +436,15 @@ func TestDirectLinksIgnoreStaleHopsAfterHashSizeSwitch(t *testing.T) {
 	s := New()
 	s.Load(
 		[]*db.TxRow{
+			// switchedNode's own advert, whose path self-hop ("42B2") shows it
+			// now uses a 2-byte hash.
+			{ID: 1, Hash: "advert", RawHex: "00", FirstSeen: "2024-01-02T00:00:00Z", PayloadType: 4, DecodedJSON: `{"pubKey":"` + switchedNode + `"}`},
 			// A stale route packet using 1-byte hops from before the switch.
-			{ID: 1, Hash: "stale", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 5, DecodedJSON: `{}`},
-			// A current route packet using 2-byte hops, observed after the switch.
-			{ID: 2, Hash: "current", RawHex: "00", FirstSeen: "2024-01-02T00:00:00Z", PayloadType: 5, DecodedJSON: `{}`},
+			{ID: 2, Hash: "route", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 5, DecodedJSON: `{}`},
 		},
 		[]*db.ObsRow{
-			{ID: 1, TxID: 1, ObserverID: "obs", PathJSON: `["42","b3"]`, Timestamp: "2024-01-01T00:00:01Z"},
-			{ID: 2, TxID: 2, ObserverID: "obs", PathJSON: `["42B2","B373"]`, Timestamp: "2024-01-02T00:00:01Z"},
+			{ID: 1, TxID: 1, ObserverID: "obs", PathJSON: `["42B2"]`, Timestamp: "2024-01-02T00:00:01Z"},
+			{ID: 2, TxID: 2, ObserverID: "obs", PathJSON: `["42","b3"]`, Timestamp: "2024-01-01T00:00:01Z"},
 		},
 		[]*db.NodeRow{
 			{PubKey: switchedNode, Name: "Switched", Role: "repeater", Lat: &switchedLat, Lon: &switchedLon},
@@ -456,11 +454,8 @@ func TestDirectLinksIgnoreStaleHopsAfterHashSizeSwitch(t *testing.T) {
 	)
 
 	links := s.DirectLinks(AnalyticsFilter{})
-	if len(links) != 1 {
-		t.Fatalf("expected exactly one current link, got %+v", links)
-	}
-	if links[0].RouteCount != 1 {
-		t.Fatalf("expected the stale 1-byte hop to be excluded from the route count, got %+v", links[0])
+	if len(links) != 0 {
+		t.Fatalf("expected stale 1-byte hop not to be attributed to a node that switched to a 2-byte hash, got %+v", links)
 	}
 }
 
