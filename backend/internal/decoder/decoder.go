@@ -414,15 +414,13 @@ func normalizeName(name string) string {
 	return name
 }
 
-func payloadHashSize(pathHashSize int) int {
-	if pathHashSize >= 1 && pathHashSize <= 3 {
-		return pathHashSize
-	}
-	return 1
-}
+// Payload destHash/srcHash identity hashes are always 1 byte, independent of
+// the routing path's hash size (see issue #15) — path.HashSize only sizes
+// the route hops, not the payload's identity fields.
+const payloadHashSize = 1
 
-func decodeEncryptedPayload(typeName string, buf []byte, hashSize int) Payload {
-	hs := payloadHashSize(hashSize)
+func decodeEncryptedPayload(typeName string, buf []byte) Payload {
+	const hs = payloadHashSize
 	need := hs*2 + 2
 	if len(buf) < need {
 		return Payload{Type: typeName, Error: "too short", RawHex: hex.EncodeToString(buf)}
@@ -443,8 +441,8 @@ func decodeAck(buf []byte) Payload {
 	return Payload{Type: "ACK", ExtraHash: fmt.Sprintf("%08x", binary.LittleEndian.Uint32(buf[0:4]))}
 }
 
-func decodeAnonReq(buf []byte, hashSize int) Payload {
-	hs := payloadHashSize(hashSize)
+func decodeAnonReq(buf []byte) Payload {
+	const hs = payloadHashSize
 	need := hs + 32 + 2
 	if len(buf) < need {
 		return Payload{Type: "ANON_REQ", Error: "too short", RawHex: hex.EncodeToString(buf)}
@@ -458,8 +456,8 @@ func decodeAnonReq(buf []byte, hashSize int) Payload {
 	}
 }
 
-func decodePathPayload(buf []byte, hashSize int) Payload {
-	hs := payloadHashSize(hashSize)
+func decodePathPayload(buf []byte) Payload {
+	const hs = payloadHashSize
 	need := hs*2 + 2
 	if len(buf) < need {
 		return Payload{Type: "PATH", Error: "too short", RawHex: hex.EncodeToString(buf)}
@@ -513,14 +511,14 @@ func decodeControl(buf []byte) Payload {
 	return Payload{Type: "CONTROL", CtrlFlags: fmt.Sprintf("%02x", buf[0]), CtrlZeroHop: &zeroHop, CtrlLength: &l, RawHex: hex.EncodeToString(buf)}
 }
 
-func decodePayload(pt int, buf []byte, keys map[string]string, hashSize int) Payload {
+func decodePayload(pt int, buf []byte, keys map[string]string) Payload {
 	switch pt {
 	case PayloadREQ:
-		return decodeEncryptedPayload("REQ", buf, hashSize)
+		return decodeEncryptedPayload("REQ", buf)
 	case PayloadRESPONSE:
-		return decodeEncryptedPayload("RESPONSE", buf, hashSize)
+		return decodeEncryptedPayload("RESPONSE", buf)
 	case PayloadTXTMSG:
-		return decodeEncryptedPayload("TXT_MSG", buf, hashSize)
+		return decodeEncryptedPayload("TXT_MSG", buf)
 	case PayloadACK:
 		return decodeAck(buf)
 	case PayloadADVERT:
@@ -528,9 +526,9 @@ func decodePayload(pt int, buf []byte, keys map[string]string, hashSize int) Pay
 	case PayloadGRPTXT:
 		return decodeGrpTxt(buf, keys)
 	case PayloadANONREQ:
-		return decodeAnonReq(buf, hashSize)
+		return decodeAnonReq(buf)
 	case PayloadPATH:
-		return decodePathPayload(buf, hashSize)
+		return decodePathPayload(buf)
 	case PayloadTRACE:
 		return decodeTrace(buf)
 	case PayloadMULTI:
@@ -598,7 +596,7 @@ func DecodePacket(hexStr string, channelKeys map[string]string) (*DecodedPacket,
 	if len(payloadBuf) > maxPacketPayload {
 		return nil, fmt.Errorf("payload too large")
 	}
-	payload := decodePayload(hdr.PayloadType, payloadBuf, channelKeys, path.HashSize)
+	payload := decodePayload(hdr.PayloadType, payloadBuf, channelKeys)
 	var anomaly string
 	if hdr.PayloadType == PayloadTRACE && payload.Error != "" {
 		anomaly = fmt.Sprintf("TRACE payload decode failed: %s", payload.Error)
