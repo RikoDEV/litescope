@@ -18,6 +18,7 @@ const Analytics   = lazy(() => import('./pages/Analytics'))
 const Decoder     = lazy(() => import('./pages/Decoder'))
 const NotFound    = lazy(() => import('./pages/NotFound'))
 const PacketTrace = lazy(() => import('./pages/PacketTrace'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="analytics" element={<Analytics />} />
           <Route path="analytics/:tab" element={<Analytics />} />
           <Route path="decode" element={<Decoder />} />
+          <Route path="privacy" element={<PrivacyPolicy />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

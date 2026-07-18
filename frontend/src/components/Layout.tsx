@@ -14,7 +14,6 @@ import { stream } from '../services/stream'
 import { useThemeMode } from '../ThemeModeProvider'
 import { LANGUAGES } from '../i18n'
 import { FlagByCC } from '../utils/flags'
-import CookieBanner from './CookieBanner'
 import ErrorBoundary from './ErrorBoundary'
 import Seo from './Seo'
 import SpotlightSearch from './SpotlightSearch'
@@ -320,6 +319,11 @@ export default function Layout() {
             whiteSpace: 'nowrap',
           }}>{t('footer.tagline')}</Typography>
           <Box sx={{ flex: 1 }} />
+          <Typography component={NavLink} to="/privacy" variant="caption"
+            sx={{ display: { xs: 'none', sm: 'inline' }, color: md3.onSurfaceVariant, textDecoration: 'none', fontSize: { sm: 10, md: 12 }, whiteSpace: 'nowrap', '&:hover': { color: md3.primary, textDecoration: 'underline' } }}>
+            {t('footer.privacyPolicy')}
+          </Typography>
+          <Box sx={{ display: { xs: 'none', sm: 'block' }, width: 3, height: 3, borderRadius: '50%', background: md3.outline }} />
           <Typography component="a" href={buildIssueUrl()} target="_blank" rel="noopener noreferrer" variant="caption"
             sx={{ display: { xs: 'none', sm: 'inline' }, color: md3.onSurfaceVariant, textDecoration: 'none', fontSize: { sm: 10, md: 12 }, whiteSpace: 'nowrap', '&:hover': { color: md3.error, textDecoration: 'underline' } }}>
             {t('error.reportIssue')}
@@ -432,7 +436,6 @@ export default function Layout() {
 
       </Box>
       </Box>
-      <CookieBanner />
       <SpotlightSearch />
     </>
   )

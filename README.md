@@ -234,6 +234,10 @@ cp frontend/.env.example frontend/.env.local
 When empty the frontend uses relative URLs, which works with the Vite proxy in dev and Caddy/nginx in production.
 For Docker deployments, `VITE_SITE_URL` is read from `.env` when the frontend container starts and rewrites the served `robots.txt`/`sitemap.xml`.
 
+### Custom privacy policy
+
+The built-in `/privacy` page ships a generic policy. To replace it with your own, place a `privacy.md` file at the frontend's web root (e.g. mount it over `/usr/share/nginx/html/privacy.md` in the Docker image, or drop it in `frontend/public/` before building). If `/privacy.md` exists it's rendered in full instead of the default policy; headings (`#`/`##`/`###`), paragraphs, and `-`/`*` lists are supported.
+
 ---
 
 ## Deployment

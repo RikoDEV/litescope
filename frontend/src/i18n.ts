@@ -16,9 +16,9 @@ const en = {
     status: 'Status', lastSeen: 'Last Seen', firstSeen: 'First Seen',
     type: 'Type', route: 'Route', name: 'Name', role: 'Role', model: 'Model',
     battery: 'Battery', uptime: 'Uptime', packets: 'Packets', adverts: 'Adverts', retransmits: 'Retransmits',
-    location: 'Location', anyTime: 'Any time', unknown: 'Unknown',
+    location: 'Location', anyTime: 'Any time', unknown: 'Unknown', back: 'Back',
   },
-  footer: { tagline: 'MeshCore Network Analyzer' },
+  footer: { tagline: 'MeshCore Network Analyzer', privacyPolicy: 'Privacy Policy' },
   settings: { theme: 'Theme', mode: 'Mode', accentColor: 'Accent color', language: 'Language', lightMode: 'Light mode', darkMode: 'Dark mode' },
   home: {
     subtitle: 'MeshCore Network Analyzer',
@@ -199,11 +199,42 @@ const en = {
     reload: 'Reload page', goHome: 'Go to Home', copyError: 'Copy error', copied: 'Copied!',
     reportIssue: 'Report issue',
   },
-  cookie: {
-    title: 'We use browser storage',
-    body: 'liteScope saves your preferences (theme, language, channel keys) and minor usage data in localStorage. Nothing is sent to third parties.',
-    acceptAll: 'Accept all', acceptNecessary: 'Necessary only',
-    necessary: 'Necessary storage: theme, language, channel keys.',
+  privacy: {
+    title: 'Privacy Policy',
+    sections: [
+      {
+        heading: 'Overview',
+        body: 'liteScope is self-hosted, open-source software. This instance is deployed and operated by whoever runs the server it is served from, not by the liteScope project itself. That operator controls the data described below — for questions about a specific instance, contact its operator directly.',
+      },
+      {
+        heading: 'What data this application processes',
+        body: 'liteScope ingests MeshCore mesh-network radio telemetry from observers connected to it over MQTT: packet contents, node public keys and names, signal strength (SNR/RSSI), routing hops, and any GPS coordinates a node chooses to broadcast in its own adverts. This is diagnostic data about a radio network, not personal account data — liteScope has no user accounts, logins, or registration, and does not knowingly collect data about the people operating the physical devices beyond what those devices broadcast on the mesh.',
+      },
+      {
+        heading: 'Cookies and browser storage',
+        body: 'liteScope does not use cookies. It stores a small amount of data in your browser\'s localStorage: your theme and language preference, and any channel decryption keys you add to decode encrypted mesh messages. This data stays on your device, is used only to decrypt messages locally in your browser, and is never transmitted anywhere.',
+      },
+      {
+        heading: 'Third parties',
+        body: 'liteScope makes no network requests to third-party services. All data shown in the UI comes from the liteScope server you are connected to.',
+      },
+      {
+        heading: 'Data retention',
+        body: 'How long telemetry is retained is configured by the instance operator (retention can be unlimited or a fixed number of days). Node and observer records, along with their lifetime counters, are kept even after older packet history is pruned.',
+      },
+      {
+        heading: 'Your choices',
+        body: 'You can clear your theme, language, and channel-key preferences at any time by clearing this site\'s data in your browser settings — no consent banner is needed because nothing beyond these local, functional preferences is stored.',
+      },
+      {
+        heading: 'Contact',
+        body: 'For privacy questions about a specific liteScope deployment, contact that instance\'s operator. To report an issue with the liteScope project itself, use the "Report issue" link in the footer.',
+      },
+    ],
+    analyticsHeading: 'Analytics',
+    analyticsNone: 'This instance does not run any analytics, advertising, or tracking scripts.',
+    analyticsUmami: 'This instance uses Umami, a self-hosted, cookie-free analytics tool, to collect anonymized, aggregate usage statistics (e.g. page views). Umami does not use cookies, does not track you across sites, and does not collect personally identifiable information.',
+    customNotice: 'This page has been customized by the operator of this liteScope instance.',
   },
 }
 
@@ -221,9 +252,9 @@ const pl: typeof en = {
     status: 'Status', lastSeen: 'Ostatnio', firstSeen: 'Pierwszy raz',
     type: 'Typ', route: 'Trasa', name: 'Nazwa', role: 'Rola', model: 'Model',
     battery: 'Bateria', uptime: 'Czas pracy', packets: 'Pakiety', adverts: 'Ogłoszenia', retransmits: 'Retransmisje',
-    location: 'Lokalizacja', anyTime: 'Dowolny czas', unknown: 'Nieznany',
+    location: 'Lokalizacja', anyTime: 'Dowolny czas', unknown: 'Nieznany', back: 'Wstecz',
   },
-  footer: { tagline: 'Analizator sieci MeshCore' },
+  footer: { tagline: 'Analizator sieci MeshCore', privacyPolicy: 'Polityka prywatności' },
   settings: { theme: 'Motyw', mode: 'Tryb', accentColor: 'Kolor akcentu', language: 'Język', lightMode: 'Tryb jasny', darkMode: 'Tryb ciemny' },
   home: {
     subtitle: 'Analizator sieci MeshCore',
@@ -404,11 +435,42 @@ const pl: typeof en = {
     reload: 'Odśwież stronę', goHome: 'Strona główna', copyError: 'Kopiuj błąd', copied: 'Skopiowano!',
     reportIssue: 'Zgłoś problem',
   },
-  cookie: {
-    title: 'Używamy pamięci przeglądarki',
-    body: 'liteScope zapisuje Twoje preferencje (motyw, język, klucze kanałów) oraz drobne dane użytkowania w localStorage. Nic nie jest wysyłane do stron trzecich.',
-    acceptAll: 'Akceptuj wszystko', acceptNecessary: 'Tylko niezbędne',
-    necessary: 'Niezbędna pamięć: motyw, język, klucze kanałów.',
+  privacy: {
+    title: 'Polityka prywatności',
+    sections: [
+      {
+        heading: 'Przegląd',
+        body: 'liteScope to samodzielnie hostowane, otwartoźródłowe oprogramowanie. Ta instancja jest wdrażana i obsługiwana przez podmiot uruchamiający serwer, na którym działa — nie przez sam projekt liteScope. To ten operator kontroluje opisane poniżej dane; w sprawie konkretnej instancji skontaktuj się bezpośrednio z jej operatorem.',
+      },
+      {
+        heading: 'Jakie dane przetwarza ta aplikacja',
+        body: 'liteScope pobiera telemetrię radiową sieci mesh MeshCore od obserwatorów podłączonych przez MQTT: zawartość pakietów, klucze publiczne i nazwy węzłów, siłę sygnału (SNR/RSSI), przeskoki trasy oraz współrzędne GPS, jeśli węzeł zdecyduje się je nadawać we własnych ogłoszeniach. Są to dane diagnostyczne sieci radiowej, a nie dane konta osobistego — liteScope nie ma kont użytkowników, logowania ani rejestracji i świadomie nie zbiera danych o osobach obsługujących fizyczne urządzenia poza tym, co te urządzenia nadają w sieci mesh.',
+      },
+      {
+        heading: 'Pliki cookie i pamięć przeglądarki',
+        body: 'liteScope nie używa plików cookie. Przechowuje niewielką ilość danych w localStorage przeglądarki: preferencje motywu i języka oraz dodane przez Ciebie klucze do odszyfrowywania wiadomości kanałów. Dane te pozostają na Twoim urządzeniu, służą wyłącznie do lokalnego odszyfrowywania wiadomości w przeglądarce i nigdy nie są nigdzie przesyłane.',
+      },
+      {
+        heading: 'Strony trzecie',
+        body: 'liteScope nie wykonuje żadnych zapytań sieciowych do usług stron trzecich. Wszystkie dane widoczne w interfejsie pochodzą z serwera liteScope, z którym jesteś połączony.',
+      },
+      {
+        heading: 'Przechowywanie danych',
+        body: 'Czas przechowywania telemetrii ustala operator instancji (przechowywanie może być nieograniczone lub ograniczone do określonej liczby dni). Rekordy węzłów i obserwatorów, wraz z ich licznikami życiowymi, są zachowywane nawet po usunięciu starszej historii pakietów.',
+      },
+      {
+        heading: 'Twój wybór',
+        body: 'Możesz w każdej chwili usunąć preferencje motywu, języka i kluczy kanałów, czyszcząc dane tej strony w ustawieniach przeglądarki — baner zgody nie jest potrzebny, ponieważ przechowywane są wyłącznie te lokalne, funkcjonalne preferencje.',
+      },
+      {
+        heading: 'Kontakt',
+        body: 'W sprawach dotyczących prywatności konkretnego wdrożenia liteScope skontaktuj się z operatorem tej instancji. Aby zgłosić problem z samym projektem liteScope, użyj linku „Zgłoś problem” w stopce.',
+      },
+    ],
+    analyticsHeading: 'Analityka',
+    analyticsNone: 'Ta instancja nie uruchamia żadnych skryptów analitycznych, reklamowych ani śledzących.',
+    analyticsUmami: 'Ta instancja korzysta z Umami, samodzielnie hostowanego narzędzia analitycznego niewykorzystującego plików cookie, do zbierania zanonimizowanych, zagregowanych statystyk użytkowania (np. odsłon stron). Umami nie używa plików cookie, nie śledzi Cię między witrynami i nie zbiera danych umożliwiających identyfikację osoby.',
+    customNotice: 'Ta strona została dostosowana przez operatora tej instancji liteScope.',
   },
 }
 
@@ -426,9 +488,9 @@ const de: typeof en = {
     status: 'Status', lastSeen: 'Zuletzt', firstSeen: 'Erstmals',
     type: 'Typ', route: 'Route', name: 'Name', role: 'Rolle', model: 'Modell',
     battery: 'Akku', uptime: 'Laufzeit', packets: 'Pakete', adverts: 'Anzeigen', retransmits: 'Weiterleitungen',
-    location: 'Standort', anyTime: 'Jederzeit', unknown: 'Unbekannt',
+    location: 'Standort', anyTime: 'Jederzeit', unknown: 'Unbekannt', back: 'Zurück',
   },
-  footer: { tagline: 'MeshCore Netzwerk-Analysetool' },
+  footer: { tagline: 'MeshCore Netzwerk-Analysetool', privacyPolicy: 'Datenschutz' },
   settings: { theme: 'Design', mode: 'Modus', accentColor: 'Akzentfarbe', language: 'Sprache', lightMode: 'Heller Modus', darkMode: 'Dunkler Modus' },
   home: {
     subtitle: 'MeshCore Netzwerk-Analysetool',
@@ -609,11 +671,42 @@ const de: typeof en = {
     reload: 'Seite neu laden', goHome: 'Startseite', copyError: 'Fehler kopieren', copied: 'Kopiert!',
     reportIssue: 'Problem melden',
   },
-  cookie: {
-    title: 'Wir verwenden Browser-Speicher',
-    body: 'liteScope speichert Ihre Einstellungen (Design, Sprache, Kanalschlüssel) und geringe Nutzungsdaten im localStorage. Es werden keine Daten an Dritte gesendet.',
-    acceptAll: 'Alle akzeptieren', acceptNecessary: 'Nur notwendige',
-    necessary: 'Notwendiger Speicher: Design, Sprache, Kanalschlüssel.',
+  privacy: {
+    title: 'Datenschutzerklärung',
+    sections: [
+      {
+        heading: 'Überblick',
+        body: 'liteScope ist selbst gehostete Open-Source-Software. Diese Instanz wird von der Person oder Organisation betrieben, die den Server bereitstellt, auf dem sie läuft — nicht vom liteScope-Projekt selbst. Diese*r Betreiber*in kontrolliert die unten beschriebenen Daten; bei Fragen zu einer bestimmten Instanz wenden Sie sich bitte direkt an deren Betreiber*in.',
+      },
+      {
+        heading: 'Welche Daten diese Anwendung verarbeitet',
+        body: 'liteScope empfängt MeshCore-Mesh-Funktelemetrie von angeschlossenen Beobachtern über MQTT: Paketinhalte, öffentliche Schlüssel und Namen von Knoten, Signalstärke (SNR/RSSI), Routing-Hops sowie GPS-Koordinaten, sofern ein Knoten diese in seinen eigenen Adverts sendet. Dies sind Diagnosedaten eines Funknetzwerks, keine personenbezogenen Kontodaten — liteScope verfügt über keine Benutzerkonten, Anmeldung oder Registrierung und sammelt bewusst keine Daten über die Betreiber der physischen Geräte, außer dem, was diese Geräte im Mesh senden.',
+      },
+      {
+        heading: 'Cookies und Browser-Speicher',
+        body: 'liteScope verwendet keine Cookies. Es speichert eine geringe Menge an Daten im localStorage Ihres Browsers: Ihre Design- und Sprachpräferenz sowie alle von Ihnen hinzugefügten Kanalschlüssel zur Entschlüsselung von Nachrichten. Diese Daten verbleiben auf Ihrem Gerät, dienen ausschließlich der lokalen Entschlüsselung im Browser und werden niemals übertragen.',
+      },
+      {
+        heading: 'Dritte',
+        body: 'liteScope stellt keine Netzwerkanfragen an Drittanbieterdienste. Alle in der Oberfläche angezeigten Daten stammen vom liteScope-Server, mit dem Sie verbunden sind.',
+      },
+      {
+        heading: 'Datenspeicherung',
+        body: 'Wie lange Telemetriedaten aufbewahrt werden, legt der Instanzbetreiber fest (unbegrenzt oder eine feste Anzahl von Tagen). Knoten- und Beobachterdatensätze samt ihrer Lebenszeit-Zähler bleiben auch nach dem Bereinigen älterer Pakethistorie erhalten.',
+      },
+      {
+        heading: 'Ihre Wahlmöglichkeiten',
+        body: 'Sie können Ihre Design-, Sprach- und Kanalschlüssel-Präferenzen jederzeit löschen, indem Sie die Website-Daten in Ihren Browsereinstellungen löschen — ein Cookie-Banner ist nicht nötig, da ausschließlich diese lokalen, funktionalen Einstellungen gespeichert werden.',
+      },
+      {
+        heading: 'Kontakt',
+        body: 'Bei Datenschutzfragen zu einer bestimmten liteScope-Instanz wenden Sie sich an deren Betreiber*in. Um ein Problem mit dem liteScope-Projekt selbst zu melden, nutzen Sie den Link „Problem melden" in der Fußzeile.',
+      },
+    ],
+    analyticsHeading: 'Analyse',
+    analyticsNone: 'Diese Instanz führt keine Analyse-, Werbe- oder Tracking-Skripte aus.',
+    analyticsUmami: 'Diese Instanz verwendet Umami, ein selbst gehostetes, cookiefreies Analysetool, um anonymisierte, aggregierte Nutzungsstatistiken (z. B. Seitenaufrufe) zu erfassen. Umami verwendet keine Cookies, verfolgt Sie nicht über Websites hinweg und sammelt keine personenbezogenen Daten.',
+    customNotice: 'Diese Seite wurde vom Betreiber dieser liteScope-Instanz angepasst.',
   },
 }
 
@@ -795,12 +888,6 @@ const fr = {
     subtitle: 'Le chemin suivi n\'existe pas. Il a peut-être été déplacé ou l\'URL est incorrecte.',
     goHome: 'Retour à l\'accueil',
   },
-  cookie: {
-    title: 'Nous utilisons le stockage du navigateur',
-    body: 'liteScope enregistre vos préférences (thème, langue, clés de canal) et des données d\'utilisation mineures dans localStorage. Rien n\'est envoyé à des tiers.',
-    acceptAll: 'Tout accepter', acceptNecessary: 'Nécessaire seulement',
-    necessary: 'Stockage nécessaire : thème, langue, clés de canal.',
-  },
 }
 
 const uk = {
@@ -977,12 +1064,6 @@ const uk = {
     title: 'Сторінку не знайдено',
     subtitle: 'Шлях не існує. Можливо, його переміщено або URL неправильний.',
     goHome: 'На головну',
-  },
-  cookie: {
-    title: 'Ми використовуємо пам\'ять браузера',
-    body: 'liteScope зберігає ваші налаштування (тема, мова, ключі каналів) та незначні дані використання в localStorage. Нічого не передається третім сторонам.',
-    acceptAll: 'Прийняти все', acceptNecessary: 'Лише необхідне',
-    necessary: 'Необхідна пам\'ять: тема, мова, ключі каналів.',
   },
 }
 
@@ -1161,12 +1242,6 @@ const ru = {
     subtitle: 'Путь не существует. Возможно, он был перемещён или URL неверный.',
     goHome: 'На главную',
   },
-  cookie: {
-    title: 'Мы используем хранилище браузера',
-    body: 'liteScope сохраняет ваши настройки (тема, язык, ключи каналов) и незначительные данные использования в localStorage. Никакие данные не передаются третьим лицам.',
-    acceptAll: 'Принять всё', acceptNecessary: 'Только необходимое',
-    necessary: 'Необходимое хранилище: тема, язык, ключи каналов.',
-  },
 }
 
 const nl = {
@@ -1343,12 +1418,6 @@ const nl = {
     title: 'Pagina niet gevonden',
     subtitle: 'Het pad bestaat niet. Het is mogelijk verplaatst of de URL is onjuist.',
     goHome: 'Naar home',
-  },
-  cookie: {
-    title: 'We gebruiken browseropslag',
-    body: 'liteScope slaat uw voorkeuren (thema, taal, kanaalsleutels) en kleine gebruiksgegevens op in localStorage. Er wordt niets naar derden verzonden.',
-    acceptAll: 'Alles accepteren', acceptNecessary: 'Alleen noodzakelijk',
-    necessary: 'Noodzakelijke opslag: thema, taal, kanaalsleutels.',
   },
 }
 
@@ -1527,12 +1596,6 @@ const es = {
     subtitle: 'La ruta no existe. Puede haber sido movida o la URL es incorrecta.',
     goHome: 'Ir al inicio',
   },
-  cookie: {
-    title: 'Usamos almacenamiento del navegador',
-    body: 'liteScope guarda sus preferencias (tema, idioma, claves de canal) y datos de uso menores en localStorage. Nada se envía a terceros.',
-    acceptAll: 'Aceptar todo', acceptNecessary: 'Solo necesario',
-    necessary: 'Almacenamiento necesario: tema, idioma, claves de canal.',
-  },
 }
 
 const cs = {
@@ -1709,12 +1772,6 @@ const cs = {
     title: 'Stránka nenalezena',
     subtitle: 'Cesta neexistuje. Mohla být přesunuta nebo je URL nesprávná.',
     goHome: 'Zpět na domovskou stránku',
-  },
-  cookie: {
-    title: 'Používáme úložiště prohlížeče',
-    body: 'liteScope ukládá vaše předvolby (motiv, jazyk, klíče kanálů) a drobná data o používání do localStorage. Nic není odesíláno třetím stranám.',
-    acceptAll: 'Přijmout vše', acceptNecessary: 'Pouze nezbytné',
-    necessary: 'Nezbytné úložiště: motiv, jazyk, klíče kanálů.',
   },
 }
 
@@ -1893,12 +1950,6 @@ const sk = {
     subtitle: 'Cesta neexistuje. Mohla byť presunutá alebo URL je nesprávna.',
     goHome: 'Späť na domovskú stránku',
   },
-  cookie: {
-    title: 'Používame úložisko prehliadača',
-    body: 'liteScope ukladá vaše predvoľby (motív, jazyk, kľúče kanálov) a drobné údaje o používaní do localStorage. Nič sa neposiela tretím stranám.',
-    acceptAll: 'Prijať všetko', acceptNecessary: 'Len nevyhnutné',
-    necessary: 'Nevyhnutné úložisko: motív, jazyk, kľúče kanálov.',
-  },
 }
 
 const it = {
@@ -2075,12 +2126,6 @@ const it = {
     title: 'Pagina non trovata',
     subtitle: 'Il percorso non esiste. Potrebbe essere stato spostato o l\'URL è errato.',
     goHome: 'Torna alla home',
-  },
-  cookie: {
-    title: 'Usiamo lo storage del browser',
-    body: 'liteScope salva le tue preferenze (tema, lingua, chiavi canale) e dati di utilizzo minori in localStorage. Nulla viene inviato a terze parti.',
-    acceptAll: 'Accetta tutto', acceptNecessary: 'Solo necessario',
-    necessary: 'Storage necessario: tema, lingua, chiavi canale.',
   },
 }
 

@@ -61,6 +61,10 @@ const pageContracts: Record<string, {
     route: 'path="*" element={<NotFound />}',
     snippets: ["navigate('/', { replace: true })"],
   },
+  PrivacyPolicy: {
+    route: 'path="privacy" element={<PrivacyPolicy />}',
+    snippets: ["t('privacy.sections', { returnObjects: true })", "navigate(-1)"],
+  },
 }
 
 describe('page module contracts', () => {
