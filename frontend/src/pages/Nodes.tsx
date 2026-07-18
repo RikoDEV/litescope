@@ -80,8 +80,13 @@ export default function Nodes() {
     let list = allNodes
     if (roleTab !== 'all') list = list.filter(n => n.role === roleTab)
     if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      list = list.filter(n => n.name.toLowerCase().includes(q) || n.pubKey.toLowerCase().includes(q))
+      let q = search.trim().toLowerCase()
+      if (q.endsWith('*')) {
+        q = q.slice(0, -1);
+        list = list.filter(n => n.name.toLowerCase().startsWith(q) || n.pubKey.toLowerCase().startsWith(q))
+      } else {
+        list = list.filter(n => n.name.toLowerCase().includes(q) || n.pubKey.toLowerCase().includes(q))
+      }
     }
     return [...list].sort((a, b) => {
       const va = sortCol === 'name' ? a.name.toLowerCase() : sortCol === 'role' ? a.role : sortCol === 'advertCount' ? a.advertCount : new Date(a.lastSeen).getTime()
