@@ -438,7 +438,7 @@ export default function Packets() {
                 </TableRow>
               )}
               {filtered.map(p => {
-                let label = "";                
+                let label = "";
                 const dec   = p.decoded
                 const color = typeColor(p.payloadType)
                 const msgText = dec?.text as string | undefined
@@ -447,10 +447,25 @@ export default function Packets() {
                 const subObs = isExpanded && expandedDetail?.hash === p.hash ? deduplicateObs(expandedDetail.observations ?? []) : []
 
                 if (dec) {
-                  const hasDirection = ["TXT_MSG", "RESPONSE", "PATH", "REQ"].includes(dec.type);
-                  label = hasDirection 
-                    ? `${dec.srcHash} → ${dec.destHash}` 
-                    : (dec.name ?? dec.sender ?? dec.channel ?? "");
+                  label = dec.name ?? dec.sender ?? dec.channel ?? "";
+                  if (
+                    ["TXT_MSG", "RESPONSE", "PATH", "REQ"].includes(dec.type) &&
+                    typeof dec.srcHash === "string" &&
+                    typeof dec.destHash === "string"
+                  ) {
+                    label = `${dec.srcHash} → ${dec.destHash}`;
+                  } else if (
+                    dec.type === "TRACE" &&
+                    typeof dec.pathData === "string" &&
+                    typeof dec.traceFlags === "number"
+                  ) {
+                    const pathCharacters = ((dec.traceFlags & 0x03) + 1) * 2;
+                    const paths = [];
+                    for (let i = 0; i < dec.pathData.length; i += pathCharacters) {
+                      paths.push(dec.pathData.substring(i, i + pathCharacters));
+                    }
+                    label = paths.join(" → ");
+                  }
                 }
 
                 return [
