@@ -161,6 +161,11 @@ export default function MapView() {
   // pubKey → byte size of its most recent advert packet (built from VCR buffer)
   const nodeByteSizeRef = useRef<Map<string, number>>(new Map())
 
+  // Find maximum count among all direct links for threshold percentage calculation
+  const maxDirectLinkCount = useMemo(() => {
+    return directLinks.reduce((max, link) => Math.max(max, link.count), 0)
+  }, [directLinks])
+
   // pubKeys currently allowed to render as markers under the active filters
   // (role, status, last-heard, byte size, approx-location, region). Shared
   // with the Neighbors canvas layer so link lines never connect a node the
@@ -518,8 +523,10 @@ export default function MapView() {
       const pad = 160
       const focusPubKey = selected?.pubKey
       const visible: NeighborSegment[] = []
+      const thresholdCount = (neighborThreshold / 100) * maxDirectLinkCount
+
       for (const link of directLinks) {
-        if (link.count < neighborThreshold) continue
+        if (link.count < thresholdCount) continue
         if (!visibleNodePubKeys.has(link.nodeA.pubKey) || !visibleNodePubKeys.has(link.nodeB.pubKey)) continue
         if (focusPubKey && link.nodeA.pubKey !== focusPubKey && link.nodeB.pubKey !== focusPubKey) continue
         const a = map.latLngToContainerPoint([link.nodeA.lat, link.nodeA.lon])
@@ -687,7 +694,7 @@ export default function MapView() {
       map.off('mouseout zoomstart movestart', hideTooltip)
       tooltip.style.display = 'none'
     }
-  }, [showNeighbors, directLinks, md3.error, t, tilesReady, neighborThreshold, selected, visibleNodePubKeys])
+  }, [showNeighbors, directLinks, md3.error, t, tilesReady, neighborThreshold, maxDirectLinkCount, selected, visibleNodePubKeys])
 
   const scopeOptions = useMemo(() => {
     const set = new Set<string>()
@@ -982,15 +989,17 @@ export default function MapView() {
               {showNeighbors && (
                 <Box sx={{ pl: 3, pr: 1, mb: 0.4 }}>
                   <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, display: 'block' }}>
-                    {t('map.neighborThreshold', { count: neighborThreshold })}
+                    {t('map.neighborThreshold', { count: `${neighborThreshold}%` })}
                   </Typography>
                   <Slider
                     size="small"
                     value={neighborThreshold}
                     onChange={(_, v) => setNeighborThreshold(v as number)}
                     min={1}
-                    max={20}
+                    max={100}
                     step={1}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(v) => `${v}%`}
                     sx={{ color: '#14b8a6', py: 0.5 }}
                   />
                 </Box>
