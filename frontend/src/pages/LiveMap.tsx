@@ -204,22 +204,18 @@ export default function LiveMap() {
       const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
       const tooltipLabel = escapeHtml(n.name || n.pubKey.slice(0, 12)) + (n.isObserver ? ` (${escapeHtml(t('map.observerBadge'))})` : '')
       const stroke = theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff'
-      let marker: L.Layer
-      if (n.isObserver) {
-        const icon = L.divIcon({
-          html: roleMarkerSvg(n.role, color, active ? 1 : 0.35, stroke, 22, true),
-          className: '', iconSize: [22, 22], iconAnchor: [11, 11],
-        })
-        marker = L.marker([n.lat!, n.lon!], { icon }).bindTooltip(tooltipLabel, { permanent: false, direction: 'top', offset: [0, -13] })
-        ;(marker as L.Marker).on('click', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))
-      } else {
-        const circle = L.circleMarker([n.lat!, n.lon!], {
-          radius: 3.5, color: stroke, weight: 1,
-          fillColor: color, fillOpacity: active ? 0.9 : 0.3,
-        }).bindTooltip(tooltipLabel, { permanent: false, direction: 'top', offset: [0, -8] })
-        circle.on('click', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))
-        marker = circle
-      }
+      const marker: L.Layer = n.isObserver
+        ? L.marker([n.lat!, n.lon!], {
+            icon: L.divIcon({
+              html: roleMarkerSvg(n.role, color, active ? 1 : 0.35, stroke, 22, true),
+              className: '', iconSize: [22, 22], iconAnchor: [11, 11],
+            }),
+          }).bindTooltip(tooltipLabel, { permanent: false, direction: 'top', offset: [0, -13] })
+        : L.circleMarker([n.lat!, n.lon!], {
+            radius: 3.5, color: stroke, weight: 1,
+            fillColor: color, fillOpacity: active ? 0.9 : 0.3,
+          }).bindTooltip(tooltipLabel, { permanent: false, direction: 'top', offset: [0, -8] })
+      marker.on('click', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))
       layer.addLayer(marker)
       latlngs.push([n.lat!, n.lon!])
     })
