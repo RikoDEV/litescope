@@ -220,7 +220,8 @@ export default function MapView() {
   function makeIcon(role: string, active: boolean, label?: { hash?: string; title?: string }, isObserver = false) {
     const color  = roleColor(role)
     const stroke = theme.palette.mode === 'dark' ? '#111827' : '#ffffff'
-    const svg    = roleMarkerSvg(role, color, active ? 1 : 0.35, stroke, 20, isObserver)
+    const size   = isObserver ? 27 : 20
+    const svg    = roleMarkerSvg(role, color, active ? 1 : 0.35, stroke, size, isObserver)
     const isDark = theme.palette.mode === 'dark'
     const labelBg     = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)'
     const labelBorder = isDark ? '' : `border:1px solid ${color}44;`
@@ -228,9 +229,10 @@ export default function MapView() {
       ? `${label.hash ? `<span style="font-weight:900;-webkit-text-stroke:0.25px currentColor">${escapeHtml(label.hash)}</span>` : ''}${label.hash && label.title ? ' · ' : ''}${label.title ? escapeHtml(label.title) : ''}`
       : ''
     const html  = labelHtml
-      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:22px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${labelHtml}</span></div>`
+      ? `<div style="position:relative;display:inline-block">${svg}<span style="position:absolute;left:${size + 2}px;top:3px;font-size:9px;color:${color};white-space:nowrap;font-family:monospace;background:${labelBg};padding:0 3px;border-radius:2px;${labelBorder}">${labelHtml}</span></div>`
       : svg
-    return L.divIcon({ html, className: '', iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -13] })
+    const half = size / 2
+    return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [half, half], popupAnchor: [0, -half - 3] })
   }
 
   const tileLayerRef = useRef<L.TileLayer | null>(null)
@@ -949,10 +951,12 @@ export default function MapView() {
                 )
               })}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
-                <Box sx={{
-                  width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
-                  background: OBSERVER_BADGE_COLOR, border: `1px solid ${theme.palette.mode === 'dark' ? '#111827' : '#ffffff'}`,
-                }} />
+                <Box
+                  sx={{ width: 14, height: 14, flexShrink: 0, lineHeight: 0 }}
+                  dangerouslySetInnerHTML={{
+                    __html: roleMarkerSvg('', OBSERVER_BADGE_COLOR, 1, theme.palette.mode === 'dark' ? '#111827' : '#ffffff', 14, true),
+                  }}
+                />
                 <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
                   {t('map.observerBadgeHint', { count: observerCount })}
                 </Typography>
