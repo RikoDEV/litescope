@@ -230,6 +230,10 @@ cp frontend/.env.example frontend/.env.local
 |---|---|---|
 | `VITE_API_URL` | *(empty)* | Backend base URL (e.g. `https://litescope.example.com`). WebSocket URL is derived automatically (`http→ws`, `https→wss`). Leave empty for same-origin / Vite proxy. |
 | `VITE_SITE_URL` | *(empty)* | Public frontend origin used to generate `sitemap.xml` and the robots sitemap directive. Set this to your real production domain. |
+| `VITE_MQTT_HOST` | *(browser hostname)* | MQTT broker host shown in the Observers page setup card, telling users what to point their MeshCore node at. |
+| `VITE_MQTT_PORT` | `1883` | MQTT broker port shown in the same setup card. Set this if your broker listens on a non-default port (e.g. `8883` for TLS). |
+| `VITE_MQTT_USERNAME` | *(empty)* | MQTT username shown in the same setup card. Should match `MQTT_USERNAME` in `.env` / the broker's configured credentials. |
+| `VITE_MQTT_PASSWORD` | *(empty)* | MQTT password shown in the same setup card. Should match `MQTT_PASSWORD` in `.env` / the broker's configured credentials. |
 
 When empty the frontend uses relative URLs, which works with the Vite proxy in dev and Caddy/nginx in production.
 For Docker deployments, `VITE_SITE_URL` is read from `.env` when the frontend container starts and rewrites the served `robots.txt`/`sitemap.xml`.

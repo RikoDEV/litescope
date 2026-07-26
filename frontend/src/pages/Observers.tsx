@@ -238,6 +238,7 @@ export default function Observers() {
 
 // ── ObserverSetupCard ──────────────────────────────────────────────────────────
 const MQTT_HOST     = getEnv('VITE_MQTT_HOST')     || window.location.hostname
+const MQTT_PORT     = getEnv('VITE_MQTT_PORT')     || '1883'
 const MQTT_USERNAME = getEnv('VITE_MQTT_USERNAME')
 const MQTT_PASSWORD = getEnv('VITE_MQTT_PASSWORD')
 
@@ -323,7 +324,7 @@ function ObserverSetupCard() {
             <Box>
               <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mb: 1 }}>{t('observers.mqttDetails')}</Typography>
               <CopyField label={t('observers.server')}   value={MQTT_HOST} />
-              <CopyField label={t('observers.port')}     value="1883" />
+              <CopyField label={t('observers.port')}     value={MQTT_PORT} />
               <CopyField label={t('observers.username')} value={MQTT_USERNAME || 'litescope'} />
               <CopyField label={t('observers.password')} value={MQTT_PASSWORD || '—'} />
               <CopyField label={t('observers.topic')}    value="meshcore/<region>/<observer-id>" />
