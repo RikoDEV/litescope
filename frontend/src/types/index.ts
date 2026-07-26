@@ -68,6 +68,7 @@ export interface Node {
   retransmitCount?: number | undefined
   batteryMv?: number | undefined
   temperatureC?: number | undefined
+  isObserver?: boolean | undefined
 }
 
 export interface Observer {

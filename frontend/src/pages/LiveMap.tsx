@@ -24,7 +24,7 @@ import type { Node, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hasValidLocation, validLatLon } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
-import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
+import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg, OBSERVER_BADGE_COLOR } from '../utils/roles'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -202,10 +202,17 @@ export default function LiveMap() {
       if (!hasValidLocation(n.lat, n.lon)) return
       const color = roleColor(n.role, md3)
       const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
+      if (n.isObserver) {
+        const ring = L.circleMarker([n.lat!, n.lon!], {
+          radius: 6.5, color: OBSERVER_BADGE_COLOR, weight: 1.5, fill: false, opacity: active ? 0.9 : 0.35, interactive: false,
+        })
+        layer.addLayer(ring)
+      }
+      const tooltipLabel = escapeHtml(n.name || n.pubKey.slice(0, 12)) + (n.isObserver ? ` (${escapeHtml(t('map.observerBadge'))})` : '')
       const marker = L.circleMarker([n.lat!, n.lon!], {
         radius: 3.5, color: theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff', weight: 1,
         fillColor: color, fillOpacity: active ? 0.9 : 0.3,
-      }).bindTooltip(escapeHtml(n.name || n.pubKey.slice(0, 12)), { permanent: false, direction: 'top', offset: [0, -8] })
+      }).bindTooltip(tooltipLabel, { permanent: false, direction: 'top', offset: [0, -8] })
       marker.on('click', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))
       layer.addLayer(marker)
       latlngs.push([n.lat!, n.lon!])
@@ -406,7 +413,7 @@ export default function LiveMap() {
         if (!hasValidLocation(node.lat, node.lon)) continue
         const color = roleColor(node.role, md3)
         const icon = L.divIcon({
-          html: roleMarkerSvg(node.role, color, 1, '#ffffff', 22),
+          html: roleMarkerSvg(node.role, color, 1, '#ffffff', 22, node.isObserver),
           className: '', iconSize: [22, 22], iconAnchor: [11, 11],
         })
         L.marker([node.lat!, node.lon!], { icon })

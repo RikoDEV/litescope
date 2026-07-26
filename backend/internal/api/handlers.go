@@ -298,10 +298,12 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 		Nodes  []nodeSummary  `json:"nodes"`
 	}
 	regionsByNode := s.Store.NodeRegionsAll()
+	observerNodes := s.Store.ObserverNodePubKeys()
 	out := response{Total: len(nodes), Counts: s.Store.RoleCounts(), Nodes: make([]nodeSummary, 0, len(nodes))}
 	for _, n := range nodes {
 		ns := summarizeNode(n)
 		ns.Regions = regionsByNode[n.PubKey]
+		ns.IsObserver = observerNodes[n.PubKey]
 		out.Nodes = append(out.Nodes, ns)
 	}
 	writeJSON(w, out)
@@ -318,7 +320,9 @@ func (s *Server) getNode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	writeJSON(w, summarizeNode(n))
+	ns := summarizeNode(n)
+	ns.IsObserver = s.Store.IsObserverNode(n.PubKey)
+	writeJSON(w, ns)
 }
 
 func (s *Server) getNodePackets(w http.ResponseWriter, r *http.Request) {
@@ -696,6 +700,7 @@ type nodeSummary struct {
 	RetransmitCount int      `json:"retransmitCount,omitempty"`
 	BatteryMv       *int     `json:"batteryMv,omitempty"`
 	TempC           *float64 `json:"temperatureC,omitempty"`
+	IsObserver      bool     `json:"isObserver,omitempty"`
 }
 
 type observerSummary struct {

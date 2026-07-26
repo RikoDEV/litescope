@@ -1062,6 +1062,51 @@ func (s *Store) nodeForObserverID(id string) *Node {
 	return nil
 }
 
+// ObserverNodePubKeys returns the set of node pubkeys that are also acting as
+// an observer, matched by hex-prefix (an observer's ID is a prefix of its own
+// node's pubkey) — the inverse direction of nodeForObserverID. Any node
+// capable of logging packets it hears (including companions) can double as
+// an observer, so this drives the "is observer" badge on the map views.
+func (s *Store) ObserverNodePubKeys() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]bool, len(s.observers))
+	for id := range s.observers {
+		if id == "" {
+			continue
+		}
+		if _, ok := s.nodes[id]; ok {
+			out[id] = true
+			continue
+		}
+		uid := strings.ToUpper(id)
+		for pk := range s.nodes {
+			if strings.HasPrefix(strings.ToUpper(pk), uid) {
+				out[pk] = true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// IsObserverNode reports whether the given node pubkey also acts as an
+// observer (see ObserverNodePubKeys).
+func (s *Store) IsObserverNode(pk string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.observers[pk]; ok {
+		return true
+	}
+	upk := strings.ToUpper(pk)
+	for id := range s.observers {
+		if id != "" && strings.HasPrefix(upk, strings.ToUpper(id)) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) MapHeat(f AnalyticsFilter) []MapHeatPoint {
 	return cachedAnalyticsForFilter(s, "mapHeat", f, func() []MapHeatPoint { return s.computeMapHeat(f) })
 }

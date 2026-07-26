@@ -34,7 +34,7 @@ import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
 import { passesGeo, selectedCountries } from '../utils/regions'
-import { ROLE_GLYPH, roleColor as roleColorFn, roleMarkerSvg } from '../utils/roles'
+import { ROLE_GLYPH, roleColor as roleColorFn, roleMarkerSvg, OBSERVER_BADGE_COLOR } from '../utils/roles'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -215,10 +215,12 @@ export default function MapView() {
     }))
   }, [nodes])
 
-  function makeIcon(role: string, active: boolean, label?: { hash?: string; title?: string }) {
+  const observerCount = useMemo(() => nodes.filter(n => n.isObserver).length, [nodes])
+
+  function makeIcon(role: string, active: boolean, label?: { hash?: string; title?: string }, isObserver = false) {
     const color  = roleColor(role)
     const stroke = theme.palette.mode === 'dark' ? '#111827' : '#ffffff'
-    const svg    = roleMarkerSvg(role, color, active ? 1 : 0.35, stroke)
+    const svg    = roleMarkerSvg(role, color, active ? 1 : 0.35, stroke, 20, isObserver)
     const isDark = theme.palette.mode === 'dark'
     const labelBg     = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)'
     const labelBorder = isDark ? '' : `border:1px solid ${color}44;`
@@ -798,7 +800,7 @@ export default function MapView() {
       const hashLabel  = showHashLabels ? n.pubKey.slice(0, prefixBytes * 2).toUpperCase() : ''
       const titleLabel = showTitleLabels ? (n.name || n.pubKey.slice(0, 8)) : ''
       const label  = hashLabel || titleLabel ? { hash: hashLabel, title: titleLabel } : undefined
-      const icon   = makeIcon(n.role, active, label)
+      const icon   = makeIcon(n.role, active, label, n.isObserver)
       const exist  = markersRef.current.get(n.pubKey)
       if (exist) { exist.setIcon(icon); (exist as any)._nodeRole = n.role; return }
       const [dLat, dLon] = jitter.get(n.pubKey) ?? [0, 0]
@@ -877,9 +879,13 @@ export default function MapView() {
     const role  = escapeHtml(n.role)
     const adverts = Number.isFinite(n.advertCount) ? n.advertCount : 0
     const last = escapeHtml(new Date(n.lastSeen).toLocaleString())
+    const observerBadge = n.isObserver
+      ? `<div style="margin:4px 0 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${OBSERVER_BADGE_COLOR}22;color:${OBSERVER_BADGE_COLOR};font-size:11px">${escapeHtml(t('map.observerBadge'))}</div>`
+      : ''
     return `<div style="font-family:system-ui;font-size:13px;min-width:170px;color:#1D1B20">
       <b style="font-size:14px">${title}</b>
       <div style="margin:4px 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${color}22;color:${color};font-size:11px">${role}</div>
+      ${observerBadge}
       <div style="font-size:11px;color:#49454F;margin-top:4px">Adverts: ${adverts}<br/>Last: ${last}</div>
     </div>`
   }
@@ -942,6 +948,15 @@ export default function MapView() {
                   </Box>
                 )
               })}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+                <Box sx={{
+                  width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+                  background: OBSERVER_BADGE_COLOR, border: `1px solid ${theme.palette.mode === 'dark' ? '#111827' : '#ffffff'}`,
+                }} />
+                <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>
+                  {t('map.observerBadgeHint', { count: observerCount })}
+                </Typography>
+              </Box>
             </Box>
 
             <Divider sx={{ opacity: 0.4 }} />

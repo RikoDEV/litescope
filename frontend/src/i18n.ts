@@ -187,6 +187,7 @@ const en = {
     heatMap: 'Heat map', neighbors: 'Neighbors', heatWeight: '{{count}} seen events',
     heatBreakdown: '{{packets}} packets · {{observations}} observations', directPackets: '{{count}} packets',
     neighborThreshold: 'Min. packets: {{count}}',
+    observerBadge: 'Observer', observerBadgeHint: '{{count}} nodes also act as observers',
   },
   notFound: {
     title: 'Page not found',
@@ -423,6 +424,7 @@ const pl: typeof en = {
     heatMap: 'Mapa ciepła', neighbors: 'Sąsiedzi', heatWeight: '{{count}} zdarzeń',
     heatBreakdown: '{{packets}} pakietów · {{observations}} obserwacji', directPackets: '{{count}} pakietów',
     neighborThreshold: 'Min. pakietów: {{count}}',
+    observerBadge: 'Obserwator', observerBadgeHint: '{{count}} węzłów pełni też funkcję obserwatora',
   },
   notFound: {
     title: 'Strona nie istnieje',
@@ -659,6 +661,7 @@ const de: typeof en = {
     heatMap: 'Heatmap', neighbors: 'Nachbarn', heatWeight: '{{count}} Ereignisse',
     heatBreakdown: '{{packets}} Pakete · {{observations}} Beobachtungen', directPackets: '{{count}} Pakete',
     neighborThreshold: 'Min. Pakete: {{count}}',
+    observerBadge: 'Beobachter', observerBadgeHint: '{{count}} Knoten fungieren auch als Beobachter',
   },
   notFound: {
     title: 'Seite nicht gefunden',
@@ -882,6 +885,7 @@ const fr = {
     heatMap: 'Carte de chaleur', neighbors: 'Voisins', heatWeight: '{{count}} événements vus',
     heatBreakdown: '{{packets}} paquets · {{observations}} observations', directPackets: '{{count}} paquets',
     neighborThreshold: 'Min. paquets : {{count}}',
+    observerBadge: 'Observateur', observerBadgeHint: '{{count}} nœuds agissent aussi comme observateurs',
   },
   notFound: {
     title: 'Page introuvable',
@@ -1059,6 +1063,7 @@ const uk = {
     heatMap: 'Теплова карта', neighbors: 'Сусіди', heatWeight: '{{count}} подій',
     heatBreakdown: '{{packets}} пакетів · {{observations}} спостережень', directPackets: '{{count}} пакетів',
     neighborThreshold: 'Мін. пакетів: {{count}}',
+    observerBadge: 'Спостерігач', observerBadgeHint: '{{count}} вузлів також працюють як спостерігачі',
   },
   notFound: {
     title: 'Сторінку не знайдено',
@@ -1236,6 +1241,7 @@ const ru = {
     heatMap: 'Тепловая карта', neighbors: 'Соседи', heatWeight: '{{count}} событий',
     heatBreakdown: '{{packets}} пакетов · {{observations}} наблюдений', directPackets: '{{count}} пакетов',
     neighborThreshold: 'Мин. пакетов: {{count}}',
+    observerBadge: 'Наблюдатель', observerBadgeHint: '{{count}} узлов также работают как наблюдатели',
   },
   notFound: {
     title: 'Страница не найдена',
@@ -1413,6 +1419,7 @@ const nl = {
     heatMap: 'Heatmap', neighbors: 'Buren', heatWeight: '{{count}} gebeurtenissen',
     heatBreakdown: '{{packets}} pakketten · {{observations}} waarnemingen', directPackets: '{{count}} pakketten',
     neighborThreshold: 'Min. pakketten: {{count}}',
+    observerBadge: 'Waarnemer', observerBadgeHint: '{{count}} knooppunten fungeren ook als waarnemer',
   },
   notFound: {
     title: 'Pagina niet gevonden',
@@ -1590,6 +1597,7 @@ const es = {
     heatMap: 'Mapa de calor', neighbors: 'Vecinos', heatWeight: '{{count}} eventos vistos',
     heatBreakdown: '{{packets}} paquetes · {{observations}} observaciones', directPackets: '{{count}} paquetes',
     neighborThreshold: 'Mín. paquetes: {{count}}',
+    observerBadge: 'Observador', observerBadgeHint: '{{count}} nodos también actúan como observadores',
   },
   notFound: {
     title: 'Página no encontrada',
@@ -1767,6 +1775,7 @@ const cs = {
     heatMap: 'Heat mapa', neighbors: 'Sousedé', heatWeight: '{{count}} událostí',
     heatBreakdown: '{{packets}} paketů · {{observations}} pozorování', directPackets: '{{count}} paketů',
     neighborThreshold: 'Min. paketů: {{count}}',
+    observerBadge: 'Pozorovatel', observerBadgeHint: '{{count}} uzlů také funguje jako pozorovatel',
   },
   notFound: {
     title: 'Stránka nenalezena',
@@ -1944,6 +1953,7 @@ const sk = {
     heatMap: 'Heat mapa', neighbors: 'Susedia', heatWeight: '{{count}} udalostí',
     heatBreakdown: '{{packets}} paketov · {{observations}} pozorovaní', directPackets: '{{count}} paketov',
     neighborThreshold: 'Min. paketov: {{count}}',
+    observerBadge: 'Pozorovateľ', observerBadgeHint: '{{count}} uzlov tiež funguje ako pozorovateľ',
   },
   notFound: {
     title: 'Stránka nenájdená',
@@ -2121,6 +2131,7 @@ const it = {
     heatMap: 'Mappa calore', neighbors: 'Vicini', heatWeight: '{{count}} eventi visti',
     heatBreakdown: '{{packets}} pacchetti · {{observations}} osservazioni', directPackets: '{{count}} pacchetti',
     neighborThreshold: 'Min. pacchetti: {{count}}',
+    observerBadge: 'Osservatore', observerBadgeHint: '{{count}} nodi fungono anche da osservatori',
   },
   notFound: {
     title: 'Pagina non trovata',
