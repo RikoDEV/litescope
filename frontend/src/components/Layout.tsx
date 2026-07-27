@@ -188,6 +188,10 @@ export default function Layout() {
         background: md3.surfaceContainerLow,
         borderRight: `1px solid ${md3.outlineVariant}`,
         pt: 1.5, pb: 1.5, gap: 0.75,
+        minHeight: 0, overflowY: 'auto',
+        scrollbarWidth: 'thin',
+        '&::-webkit-scrollbar': { width: 4 },
+        '&::-webkit-scrollbar-thumb': { background: md3.outlineVariant, borderRadius: 4 },
       }}>
         <Box component="img" src="/icon.svg" alt="liteScope"
           sx={{ width: 36, height: 36, mb: 1.5, borderRadius: '10px', boxShadow: `0 2px 8px ${alpha(md3.primary, 0.4)}` }} />
