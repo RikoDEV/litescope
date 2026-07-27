@@ -368,7 +368,8 @@ export default function Channels() {
       // decryption attempt below stays ungated so keyed channels still unlock
       // and get named regardless of region.
       const inRegion = passesRegion(msg.data.regions, regionFilter, regionLock)
-      if (inRegion && selected && msg.data.channelHash === selected.hash) {
+      const isOpenChannel = inRegion && selected && msg.data.channelHash === selected.hash
+      if (isOpenChannel) {
         setMessages(p => [msg.data, ...p])
       }
       if (inRegion) {
@@ -383,6 +384,17 @@ export default function Channels() {
           }
           const h = msg.data.channelHash ?? ''
           return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
+        })
+      }
+      // The message just arrived in the chat the user is actively viewing —
+      // keep its "seen" count in lockstep with messageCount so it doesn't
+      // surface as unread once the user navigates away.
+      if (isOpenChannel && selected) {
+        const openHash = selected.hash
+        setSeenCounts(prev => {
+          const updated = { ...prev, [openHash]: (prev[openHash] ?? 0) + 1 }
+          saveSeen(updated)
+          return updated
         })
       }
       // Attempt client-side decryption for every incoming encrypted message —
