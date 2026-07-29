@@ -241,7 +241,10 @@ export default function Channels() {
     setShowScrollBottom(false)
     decryptBatch(msgs, storedKeys)
     setSeenCounts(prev => {
-      const updated = { ...prev, [ch.hash]: ch.messageCount }
+      // ch.messageCount can be a stale snapshot (e.g. re-selecting the same
+      // channel on visibilitychange after backgrounding) — never regress a
+      // seen-count that live stream updates already advanced further.
+      const updated = { ...prev, [ch.hash]: Math.max(ch.messageCount, prev[ch.hash] ?? 0) }
       saveSeen(updated)
       return updated
     })
