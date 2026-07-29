@@ -27,11 +27,11 @@
     "leaflet.markercluster": "^1.5.3",
     "million": "3.1.11",
     "qrcode.react": "^4.2.0",
-    "react": "^19.2.7",
+    "react": "^19.2.8",
     "react-dom": "^19.2.7",
-    "react-i18next": "^17.0.10",
+    "react-i18next": "^17.0.11",
     "react-router-dom": "^7.18.1",
-    "recharts": "^3.9.2"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
@@ -39,7 +39,7 @@
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
