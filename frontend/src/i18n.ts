@@ -115,6 +115,7 @@ const en = {
     longestPath: 'Longest path — {{count}} hops', observer: 'Observer', hops: 'Hops',
     obsChip: '{{count}} obs', observersChip: '{{count}} observers',
     hopsCount: '{{count}} hops', linkCopied: 'Link copied to clipboard',
+    traceTooltip: 'Packet trace', replayTooltip: 'Replay on Live Map', copyLinkTooltip: 'Copy link',
     fieldTable: 'Field Breakdown',
     col: { offset: 'Offset', field: 'Field', value: 'Value', description: 'Description' },
     hex: {
@@ -352,6 +353,7 @@ const pl: typeof en = {
     longestPath: 'Najdłuższa trasa — {{count}} skoków', observer: 'Obserwator', hops: 'Skoki',
     obsChip: '{{count}} obs', observersChip: '{{count}} obserwatorów',
     hopsCount: '{{count}} skoków', linkCopied: 'Link skopiowany do schowka',
+    traceTooltip: 'Ślad pakietu', replayTooltip: 'Odtwórz na mapie na żywo', copyLinkTooltip: 'Kopiuj link',
     fieldTable: 'Struktura pól',
     col: { offset: 'Offset', field: 'Pole', value: 'Wartość', description: 'Opis' },
     hex: {
@@ -589,6 +591,7 @@ const de: typeof en = {
     longestPath: 'Längster Pfad — {{count}} Sprünge', observer: 'Beobachter', hops: 'Sprünge',
     obsChip: '{{count}} Obs', observersChip: '{{count}} Beobachter',
     hopsCount: '{{count}} Sprünge', linkCopied: 'Link in Zwischenablage kopiert',
+    traceTooltip: 'Paket-Trace', replayTooltip: 'Auf Live-Karte abspielen', copyLinkTooltip: 'Link kopieren',
     fieldTable: 'Feldaufschlüsselung',
     col: { offset: 'Offset', field: 'Feld', value: 'Wert', description: 'Beschreibung' },
     hex: {
@@ -813,6 +816,7 @@ const fr = {
     longestPath: 'Chemin le plus long — {{count}} hops', observer: 'Observateur', hops: 'Hops',
     obsChip: '{{count}} obs', observersChip: '{{count}} observateurs',
     hopsCount: '{{count}} hops', linkCopied: 'Lien copié',
+    traceTooltip: 'Trace du paquet', replayTooltip: 'Rejouer sur la carte en direct', copyLinkTooltip: 'Copier le lien',
     fieldTable: 'Tableau des champs',
     col: { offset: 'Offset', field: 'Champ', value: 'Valeur', description: 'Description' },
     hex: {
@@ -994,6 +998,7 @@ const uk = {
     longestPath: 'Найдовший шлях — {{count}} хопів', observer: 'Спостерігач', hops: 'Хопи',
     obsChip: '{{count}} спост.', observersChip: '{{count}} спостерігачів',
     hopsCount: '{{count}} хопів', linkCopied: 'Посилання скопійовано',
+    traceTooltip: 'Трасування пакета', replayTooltip: 'Відтворити на Live-карті', copyLinkTooltip: 'Копіювати посилання',
     fieldTable: 'Таблиця полів',
     col: { offset: 'Зміщення', field: 'Поле', value: 'Значення', description: 'Опис' },
     hex: {
@@ -1172,6 +1177,7 @@ const ru = {
     longestPath: 'Длиннейший путь — {{count}} хопов', observer: 'Наблюдатель', hops: 'Хопы',
     obsChip: '{{count}} набл.', observersChip: '{{count}} наблюдателей',
     hopsCount: '{{count}} хопов', linkCopied: 'Ссылка скопирована',
+    traceTooltip: 'Трассировка пакета', replayTooltip: 'Воспроизвести на живой карте', copyLinkTooltip: 'Скопировать ссылку',
     fieldTable: 'Таблица полей',
     col: { offset: 'Смещение', field: 'Поле', value: 'Значение', description: 'Описание' },
     hex: {
@@ -1350,6 +1356,7 @@ const nl = {
     longestPath: 'Langste pad — {{count}} hops', observer: 'Waarnemer', hops: 'Hops',
     obsChip: '{{count}} waarn.', observersChip: '{{count}} waarnemers',
     hopsCount: '{{count}} hops', linkCopied: 'Link gekopieerd',
+    traceTooltip: 'Pakkettracering', replayTooltip: 'Afspelen op live kaart', copyLinkTooltip: 'Link kopiëren',
     fieldTable: 'Veldoverzicht',
     col: { offset: 'Offset', field: 'Veld', value: 'Waarde', description: 'Beschrijving' },
     hex: {
@@ -1528,6 +1535,7 @@ const es = {
     longestPath: 'Ruta más larga — {{count}} saltos', observer: 'Observador', hops: 'Saltos',
     obsChip: '{{count}} obs.', observersChip: '{{count}} observadores',
     hopsCount: '{{count}} saltos', linkCopied: 'Enlace copiado',
+    traceTooltip: 'Traza de paquete', replayTooltip: 'Reproducir en el mapa en vivo', copyLinkTooltip: 'Copiar enlace',
     fieldTable: 'Desglose de campos',
     col: { offset: 'Desplazamiento', field: 'Campo', value: 'Valor', description: 'Descripción' },
     hex: {
@@ -1706,6 +1714,7 @@ const cs = {
     longestPath: 'Nejdelší cesta — {{count}} skoků', observer: 'Pozorovatel', hops: 'Skoky',
     obsChip: '{{count}} poz.', observersChip: '{{count}} pozorovatelů',
     hopsCount: '{{count}} skoků', linkCopied: 'Odkaz zkopírován',
+    traceTooltip: 'Trasování paketu', replayTooltip: 'Přehrát na živé mapě', copyLinkTooltip: 'Kopírovat odkaz',
     fieldTable: 'Tabulka polí',
     col: { offset: 'Posun', field: 'Pole', value: 'Hodnota', description: 'Popis' },
     hex: {
@@ -1884,6 +1893,7 @@ const sk = {
     longestPath: 'Najdlhšia cesta — {{count}} skokov', observer: 'Pozorovateľ', hops: 'Skoky',
     obsChip: '{{count}} poz.', observersChip: '{{count}} pozorovateľov',
     hopsCount: '{{count}} skokov', linkCopied: 'Odkaz skopírovaný',
+    traceTooltip: 'Trasovanie paketu', replayTooltip: 'Prehrať na živej mape', copyLinkTooltip: 'Kopírovať odkaz',
     fieldTable: 'Tabuľka polí',
     col: { offset: 'Posun', field: 'Pole', value: 'Hodnota', description: 'Popis' },
     hex: {
@@ -2062,6 +2072,7 @@ const it = {
     longestPath: 'Percorso più lungo — {{count}} hop', observer: 'Osservatore', hops: 'Hop',
     obsChip: '{{count}} oss.', observersChip: '{{count}} osservatori',
     hopsCount: '{{count}} hop', linkCopied: 'Link copiato',
+    traceTooltip: 'Traccia pacchetto', replayTooltip: 'Riproduci sulla mappa live', copyLinkTooltip: 'Copia link',
     fieldTable: 'Tabella campi',
     col: { offset: 'Offset', field: 'Campo', value: 'Valore', description: 'Descrizione' },
     hex: {

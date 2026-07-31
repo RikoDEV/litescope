@@ -516,23 +516,25 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1, flexShrink: 0 }}>
-          <Tooltip title="Packet trace">
+          <Tooltip title={t('packets.traceTooltip')}>
             <IconButton size="small" onClick={() => navigate(`/packets/${selected.hash}/trace`)} sx={{ color: md3.onSurfaceVariant }}>
               <TimelineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Replay on Live Map">
+          <Tooltip title={t('packets.replayTooltip')}>
             <IconButton size="small" onClick={() => navigate('/live', { state: { replayPacket: selected } })} sx={{ color: md3.onSurfaceVariant }}>
               <PlayArrowIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <IconButton size="small" onClick={() => {
-            const url = `${window.location.origin}/packets?hash=${selected.hash}`
-            navigator.clipboard?.writeText(url)
-            setCopied(true)
-          }} sx={{ color: md3.onSurfaceVariant }}>
-            <ShareIcon fontSize="small" />
-          </IconButton>
+          <Tooltip title={t('packets.copyLinkTooltip')}>
+            <IconButton size="small" onClick={() => {
+              const url = `${window.location.origin}/packets?hash=${selected.hash}`
+              navigator.clipboard?.writeText(url)
+              setCopied(true)
+            }} sx={{ color: md3.onSurfaceVariant }}>
+              <ShareIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <IconButton size="small" onClick={onClose} sx={{ color: md3.onSurfaceVariant }}>
             <CloseIcon fontSize="small" />
           </IconButton>
@@ -624,6 +626,16 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
                 {s}
               </Box>
             )
+            if (key === 'name') {
+              const pubKey = typeof dec.pubKey === 'string' ? dec.pubKey : undefined
+              return (
+                <Box component="span"
+                  onClick={() => navigate(pubKey ? `/nodes/${pubKey}` : `/nodes?search=${encodeURIComponent(s)}`)}
+                  sx={{ cursor: 'pointer', color: hashColor(s), fontWeight: 600, fontSize: 12, '&:hover': { textDecoration: 'underline' } }}>
+                  {s}
+                </Box>
+              )
+            }
             if (key === 'senderTimestamp') {
               const ts = Number(value)
               if (!Number.isNaN(ts) && ts > 0)
