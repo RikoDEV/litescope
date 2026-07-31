@@ -43,6 +43,7 @@ func main() {
 	log.Printf("SQLite opened: %s", cfg.DBPath)
 
 	pruneDatabaseRetention(database, cfg.RetentionDays, "startup")
+	pruneDeadEntities(database, cfg.NodeRetentionDays, "startup")
 
 	channelKeys := cfg.ChannelKeys
 	if len(channelKeys) == 0 {
@@ -64,6 +65,18 @@ func main() {
 			defer ticker.Stop()
 			for range ticker.C {
 				pruneDatabaseRetention(database, cfg.RetentionDays, "scheduled")
+			}
+		}()
+	}
+
+	// Bound the node/observer registry: drop entities that have gone permanently
+	// silent. Independent of and slower-cadence than the packet retention above.
+	if cfg.NodeRetentionDays > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				pruneDeadEntities(database, cfg.NodeRetentionDays, "scheduled")
 			}
 		}()
 	}
@@ -147,6 +160,23 @@ func pruneDatabaseRetention(database *db.DB, retentionDays int, label string) {
 	}
 	log.Printf("%s DB retention prune: pruned %d transmissions older than %d day(s) (duration=%s)",
 		label, n, retentionDays, time.Since(start).Round(time.Millisecond))
+}
+
+func pruneDeadEntities(database *db.DB, nodeRetentionDays int, label string) {
+	if nodeRetentionDays <= 0 {
+		return
+	}
+	start := time.Now()
+	cutoff := time.Now().UTC().Add(-time.Duration(nodeRetentionDays) * 24 * time.Hour).Format(time.RFC3339)
+	nodes, observers, err := database.PruneDeadEntities(cutoff)
+	if err != nil {
+		log.Printf("%s dead-entity prune: %v", label, err)
+		return
+	}
+	if nodes > 0 || observers > 0 {
+		log.Printf("%s dead-entity prune: removed %d node(s), %d observer(s) inactive for %d+ day(s) (duration=%s)",
+			label, nodes, observers, nodeRetentionDays, time.Since(start).Round(time.Millisecond))
+	}
 }
 
 // Writer batching bounds: flush when the batch reaches maxWriteBatch or every

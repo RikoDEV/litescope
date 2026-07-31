@@ -18,5 +18,6 @@
   "scopeList": [],
   "allowedOrigins": ["*"],
   "retentionDays": 0,
+  "nodeRetentionDays": 0,
   "disableLocationRepair": false
 }

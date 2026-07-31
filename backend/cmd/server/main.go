@@ -39,6 +39,7 @@ func main() {
 	log.Printf("SQLite opened: %s", cfg.DBPath)
 
 	pruneDatabaseRetention(database, cfg.RetentionDays, "startup")
+	pruneDeadEntities(database, cfg.NodeRetentionDays, "startup")
 
 	// Load everything into memory
 	loadStart := time.Now()
@@ -247,6 +248,23 @@ func pruneDatabaseRetention(database *db.DB, retentionDays int, label string) {
 	}
 	log.Printf("%s DB retention prune: pruned %d transmissions older than %d day(s) (duration=%s)",
 		label, n, retentionDays, time.Since(start).Round(time.Millisecond))
+}
+
+func pruneDeadEntities(database *db.DB, nodeRetentionDays int, label string) {
+	if nodeRetentionDays <= 0 {
+		return
+	}
+	start := time.Now()
+	cutoff := time.Now().UTC().Add(-time.Duration(nodeRetentionDays) * 24 * time.Hour).Format(time.RFC3339)
+	nodes, observers, err := database.PruneDeadEntities(cutoff)
+	if err != nil {
+		log.Printf("%s dead-entity prune: %v", label, err)
+		return
+	}
+	if nodes > 0 || observers > 0 {
+		log.Printf("%s dead-entity prune: removed %d node(s), %d observer(s) inactive for %d+ day(s) (duration=%s)",
+			label, nodes, observers, nodeRetentionDays, time.Since(start).Round(time.Millisecond))
+	}
 }
 
 func logLocationRepair(prefix string, stats store.LocationRepairStats) {

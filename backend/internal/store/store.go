@@ -596,14 +596,19 @@ func (s *Store) indexRelayHops(tx *Tx, o *Obs) {
 	}
 }
 
-// UpdateNodes merges new node rows into the in-memory node map.
+// UpdateNodes merges new node rows into the in-memory node map. rows is a
+// wholesale reload of the nodes table (see LoadNodeUpdates), so any node
+// currently in memory but absent from rows has been purged from the DB (e.g.
+// by config.NodeRetentionDays) and is dropped here too.
 func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	stats := LocationRepairStats{}
 	changed := false
 	repairNeeded := false
+	seen := make(map[string]bool, len(rows))
 	for _, r := range rows {
+		seen[r.PubKey] = true
 		existing := s.nodes[r.PubKey]
 		if existing != nil && nodeMatchesRow(existing, r) {
 			continue
@@ -620,6 +625,12 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 		s.nodes[r.PubKey] = next
 		changed = true
 	}
+	for pk := range s.nodes {
+		if !seen[pk] {
+			delete(s.nodes, pk)
+			changed = true
+		}
+	}
 	if repairNeeded && s.locationRepairEnabled {
 		stats = s.repairNodeLocationsLocked()
 	}
@@ -631,16 +642,26 @@ func (s *Store) UpdateNodes(rows []*db.NodeRow) LocationRepairStats {
 }
 
 // UpdateObservers merges new observer rows into the in-memory observer map.
+// Like UpdateNodes, rows is a wholesale reload, so observers absent from it are
+// dropped from memory.
 func (s *Store) UpdateObservers(rows []*db.ObserverRow) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	changed := false
+	seen := make(map[string]bool, len(rows))
 	for _, r := range rows {
+		seen[r.ID] = true
 		if existing := s.observers[r.ID]; existing != nil && observerMatchesRow(existing, r) {
 			continue
 		}
 		s.observers[r.ID] = observerFromRow(r)
 		changed = true
+	}
+	for id := range s.observers {
+		if !seen[id] {
+			delete(s.observers, id)
+			changed = true
+		}
 	}
 	if changed {
 		s.bumpVersion()

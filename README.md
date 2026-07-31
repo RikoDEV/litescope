@@ -137,6 +137,14 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   // networks. Nodes/observers and their lifetime counters are kept.
   "retentionDays": 0,
 
+  // Dead node/observer retention in days. 0 (default) keeps every node/observer
+  // ever seen. When > 0, nodes/observers whose last_seen is older than this are
+  // purged hourly from the SQLite registry (ingestor) and the in-memory store
+  // (server), independent of retentionDays above — a node/observer otherwise
+  // survives regardless of how old its packets are, since advert_count/
+  // packet_count are lifetime cumulative totals.
+  "nodeRetentionDays": 0,
+
   // When a node's advertised GPS is missing or looks wrong, the server can fall
   // back to a consensus of the observers that heard it directly, flagging the
   // result as approximate in the UI. false (default) keeps this on; set true to

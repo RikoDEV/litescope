@@ -23,6 +23,14 @@ type Config struct {
 	// keeps everything — unbounded, fine for short-lived or low-volume setups, but
 	// memory and per-request analytics cost grow with history on a busy network.
 	RetentionDays int `json:"retentionDays"`
+	// NodeRetentionDays purges nodes/observers whose last_seen is older than this
+	// many days from the SQLite registry (and the in-memory store, on the next
+	// periodic metadata refresh). 0 (default) keeps every node/observer ever
+	// seen, even ones that have gone permanently silent. Independent of
+	// RetentionDays, which only bounds packet/observation history — a node or
+	// observer's row otherwise survives regardless of how old its packets are,
+	// since advert_count/packet_count are lifetime cumulative totals.
+	NodeRetentionDays int `json:"nodeRetentionDays"`
 	// DisableLocationRepair turns off the observer-consensus fallback that fills
 	// in or corrects node coordinates when the advertised GPS is missing or
 	// implausible. Off (repair enabled) by default; set true to always trust

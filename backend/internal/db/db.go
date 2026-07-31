@@ -513,6 +513,25 @@ func (d *DB) PruneOlderThan(cutoff string) (int64, error) {
 	return n, nil
 }
 
+// PruneDeadEntities deletes nodes and observers whose last_seen is strictly
+// before cutoff (RFC3339). Unlike PruneOlderThan, this drops registry rows, not
+// packets/observations — those are untouched, so historical transmissions keep
+// referencing a pubkey/observer ID that no longer has a nodes/observers row.
+// Returns the number of nodes and observers removed.
+func (d *DB) PruneDeadEntities(cutoff string) (nodes int64, observers int64, err error) {
+	nres, err := d.db.Exec(`DELETE FROM nodes WHERE last_seen <> '' AND last_seen < ?`, cutoff)
+	if err != nil {
+		return 0, 0, fmt.Errorf("prune nodes: %w", err)
+	}
+	ores, err := d.db.Exec(`DELETE FROM observers WHERE last_seen <> '' AND last_seen < ?`, cutoff)
+	if err != nil {
+		return 0, 0, fmt.Errorf("prune observers: %w", err)
+	}
+	nodes, _ = nres.RowsAffected()
+	observers, _ = ores.RowsAffected()
+	return nodes, observers, nil
+}
+
 func nilIfEmpty(s string) any {
 	if s == "" {
 		return nil
