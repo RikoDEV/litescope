@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { IataFlag } from '../utils/flags'
+import RegionFilter from '../components/RegionFilter'
+import { passesRegion } from '../utils/regions'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import TextField from '@mui/material/TextField'
@@ -61,7 +62,8 @@ export default function Nodes() {
   const [roleTab, setRoleTab]   = useState('all')
   const [status, setStatus]     = useState('all')
   const [lastHeard, setLastHeard] = useState('')
-  const [iata, setIata]         = useState('')
+  const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
+  const [regionLock, setRegionLock]     = useState(false)
   const [sortCol, setSortCol]   = useState<SortCol>('lastSeen')
   const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('desc')
 
@@ -72,13 +74,14 @@ export default function Nodes() {
   useEffect(() => { api.iatas().then(c => setIATAs((c ?? []).sort())) }, [])
 
   useEffect(() => {
-    api.nodes({ iata: iata || undefined, status: status !== 'all' ? status : undefined, lastHeard: lastHeard || undefined })
+    api.nodes({ status: status !== 'all' ? status : undefined, lastHeard: lastHeard || undefined })
       .then(res => { setAllNodes(res.nodes ?? []); setCounts(res.counts ?? {}) })
-  }, [iata, status, lastHeard])
+  }, [status, lastHeard])
 
   const filtered = useMemo(() => {
     let list = allNodes
     if (roleTab !== 'all') list = list.filter(n => n.role === roleTab)
+    if (regionFilter.size > 0) list = list.filter(n => passesRegion(n.regions, regionFilter, regionLock))
     if (search.trim()) {
       let q = search.trim().toLowerCase()
       if (q.endsWith('*')) {
@@ -93,7 +96,7 @@ export default function Nodes() {
       const vb = sortCol === 'name' ? b.name.toLowerCase() : sortCol === 'role' ? b.role : sortCol === 'advertCount' ? b.advertCount : new Date(b.lastSeen).getTime()
       return sortDir === 'asc' ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1)
     })
-  }, [allNodes, roleTab, search, sortCol, sortDir])
+  }, [allNodes, roleTab, regionFilter, regionLock, search, sortCol, sortDir])
 
   // Reset window on filter/sort change; expand it if the selected row is beyond the window
   useEffect(() => {
@@ -166,8 +169,8 @@ export default function Nodes() {
           ))}
           <Box sx={{ flex: 1 }} />
           <TextField size="small" placeholder={t('nodes.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} sx={{ width: 220 }} />
-          {(roleTab !== 'all' || status !== 'all' || lastHeard || iata || search) && (
-            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => { setSearch(''); setRoleTab('all'); setStatus('all'); setLastHeard(''); setIata('') }}>
+          {(roleTab !== 'all' || status !== 'all' || lastHeard || regionFilter.size > 0 || search) && (
+            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => { setSearch(''); setRoleTab('all'); setStatus('all'); setLastHeard(''); setRegionFilter(new Set()); setRegionLock(false) }}>
               {t('common.clear')}
             </Button>
           )}
@@ -176,15 +179,10 @@ export default function Nodes() {
         {/* ── Filter row ── */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0.75, background: md3.surfaceContainerHighest, borderBottom: `1px solid ${md3.outlineVariant}`, flexWrap: 'wrap', flexShrink: 0 }}>
           {iatas.length > 0 && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('common.region')}</Typography>
-              <Chip label={t('common.all')} size="small" clickable onClick={() => setIata('')} sx={{ background: !iata ? alpha(md3.secondary, 0.2) : 'transparent', color: !iata ? md3.secondary : md3.outline, border: `1px solid ${!iata ? md3.secondary : md3.outlineVariant}` }} />
-              {iatas.map(code => (
-                <Chip key={code} label={<Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><IataFlag iata={code} size={12} />{code}</Box>} size="small" clickable onClick={() => setIata(i => i === code ? '' : code)}
-                  sx={{ background: iata === code ? alpha(md3.secondary, 0.2) : 'transparent', color: iata === code ? md3.secondary : md3.outline, border: `1px solid ${iata === code ? md3.secondary : md3.outlineVariant}` }} />
-              ))}
+            <>
+              <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter} lock={regionLock} onLockChange={setRegionLock} />
               <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-            </Box>
+            </>
           )}
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>

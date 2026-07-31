@@ -53,7 +53,7 @@ export default function RegionFilter({ iatas, value, onChange, lock, onLockChang
     if (countryState(codes) === 'all') codes.forEach(c => n.delete(c))
     else codes.forEach(c => n.add(c))
     onChange(n)
-    if (codes.length > 1) setExpanded(prev => (prev === cc ? prev : cc))
+    if (cc !== 'XX' || codes.length > 1) setExpanded(prev => (prev === cc ? prev : cc))
   }
   const clear = () => { onChange(new Set()); setExpanded(null); onLockChange(false) }
 
@@ -77,7 +77,7 @@ export default function RegionFilter({ iatas, value, onChange, lock, onLockChang
                   {cc === 'XX' ? <Box component="span" sx={{ fontSize: 11 }}>🌐</Box> : <FlagByCC cc={cc} size={12} />}
                   {cc === 'XX' ? unknownLabel : cc}
                   {codes.length > 1 && <Box component="span" sx={{ opacity: 0.7, fontSize: 10 }}>· {state === 'some' ? `${selCount(codes)}/${codes.length}` : codes.length}</Box>}
-                  {codes.length > 1 && (open ? <ExpandLessIcon sx={{ fontSize: 13, ml: -0.25 }} /> : <ExpandMoreIcon sx={{ fontSize: 13, ml: -0.25 }} />)}
+                  {(cc !== 'XX' || codes.length > 1) && (open ? <ExpandLessIcon sx={{ fontSize: 13, ml: -0.25 }} /> : <ExpandMoreIcon sx={{ fontSize: 13, ml: -0.25 }} />)}
                 </Box>
               }
               sx={{ background: active ? alpha(md3.secondary, state === 'all' ? 0.2 : 0.1) : 'transparent', color: active ? md3.secondary : md3.onSurfaceVariant, border: `1px ${state === 'some' ? 'dashed' : 'solid'} ${active ? md3.secondary : md3.outlineVariant}` }} />
@@ -93,7 +93,7 @@ export default function RegionFilter({ iatas, value, onChange, lock, onLockChang
           </Tooltip>
         )}
       </Box>
-      {expanded && subCodes.length > 1 && (
+      {expanded && subCodes.length > 0 && (
         <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mt: 0.75, ml: showLabel ? 5 : 0, pl: 1, borderLeft: `2px solid ${alpha(md3.secondary, 0.3)}` }}>
           {subCodes.map(code => {
             const on = value.has(code)

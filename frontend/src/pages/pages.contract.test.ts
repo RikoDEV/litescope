@@ -35,7 +35,7 @@ const pageContracts: Record<string, {
   },
   Nodes: {
     route: 'path="nodes" element={<Nodes />}',
-    snippets: ['useSearchParams()', 'api.iatas()', 'api.nodes({ iata:', 'api.nodeOverview(n.pubKey)', 'NodeDetailPanel'],
+    snippets: ['useSearchParams()', 'api.iatas()', 'RegionFilter', 'passesRegion', 'api.nodeOverview(n.pubKey)', 'NodeDetailPanel'],
   },
   NodePage: {
     route: 'path="nodes/:pubkey" element={<NodePage />}',

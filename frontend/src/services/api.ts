@@ -63,9 +63,8 @@ export const api = {
   packet: (hash: string) =>
     get<PacketDetail>(`/api/packets/${encodeURIComponent(hash)}`),
 
-  nodes: (opts?: { iata?: string | undefined; status?: string | undefined; lastHeard?: string | undefined }) => {
+  nodes: (opts?: { status?: string | undefined; lastHeard?: string | undefined }) => {
     const p = new URLSearchParams()
-    if (opts?.iata)      p.set('iata',      opts.iata)
     if (opts?.status)    p.set('status',    opts.status)
     if (opts?.lastHeard) p.set('lastHeard', opts.lastHeard)
     const q = p.toString()
