@@ -21,7 +21,7 @@ import ShareIcon from '@mui/icons-material/Share'
 import TimelineIcon from '@mui/icons-material/Timeline'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import type { Node, PacketDetail } from '../types'
-import { PAYLOAD_NAMES, ROUTE_NAMES } from '../types'
+import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { api } from '../services/api'
 import { useDateLocale } from '../hooks/useDateLocale'
@@ -498,7 +498,10 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
         <Box>
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 0.75 }}>
             <Chip label={PAYLOAD_NAMES[selected.payloadType] ?? selected.payloadType} size="small"
-              sx={{ background: alpha(md3.primary, 0.15), color: md3.primary, fontWeight: 700, fontSize: 11 }} />
+              sx={{
+                background: alpha(PAYLOAD_COLORS[selected.payloadType] ?? md3.outline, 0.15), color: md3.onSurface,
+                border: `1px solid ${alpha(PAYLOAD_COLORS[selected.payloadType] ?? md3.outline, 0.3)}`, fontSize: 11,
+              }} />
             <Chip label={ROUTE_NAMES[selected.routeType] ?? selected.routeType} size="small"
               sx={{ background: alpha(md3.secondary, 0.15), color: md3.secondary, fontSize: 11 }} />
             <Chip label={t('packets.obsChip', { count: obs.length })} size="small"
