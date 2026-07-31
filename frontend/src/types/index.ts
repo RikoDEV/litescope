@@ -70,6 +70,7 @@ export interface Node {
   temperatureC?: number | undefined
   isObserver?: boolean | undefined
   scopes?: string[] | undefined
+  lastScope?: string | undefined
 }
 
 export interface Observer {

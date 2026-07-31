@@ -247,7 +247,7 @@ export default function Home() {
                     </linearGradient>
                   </defs>
                   <RTooltip
-                    contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, borderRadius: 8, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                     labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''}
                   />
                   <Area type="monotone" dataKey="count" stroke={md3.primary} strokeWidth={2} fill="url(#homeActGrad)" dot={false} />

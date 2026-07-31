@@ -188,7 +188,7 @@ export default function Observers() {
                         <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} interval={labelStep - 1} />
                         <YAxis width={28} tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
-                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
                         <Bar dataKey="count" fill={md3.primary} radius={[2, 2, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -203,7 +203,7 @@ export default function Observers() {
                         <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                         <YAxis hide />
-                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
                         <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                           {snrBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
                         </Bar>
@@ -219,7 +219,7 @@ export default function Observers() {
                       <BarChart data={typePie} layout="vertical" barSize={10} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
                         <XAxis type="number" hide />
                         <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
-                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} cursor={{ fill: 'transparent' }} />
+                        <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} cursor={{ fill: 'transparent' }} />
                         <Bar dataKey="value" radius={[0, 3, 3, 0]}>
                           {typePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length] ?? COLORS[0]!} />)}
                         </Bar>

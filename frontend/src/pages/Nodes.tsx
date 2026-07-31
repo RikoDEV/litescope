@@ -242,7 +242,10 @@ export default function Nodes() {
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         <Chip label={n.role} size="small" sx={{ background: alpha(color, 0.15), color, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
-                        {n.scopes?.map(scope => (
+                        {n.scopes?.map(scope => scope === n.lastScope ? (
+                          <Chip key={scope} label={scope} size="small"
+                            sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, border: `1px solid ${alpha(md3.tertiary, 0.4)}`, fontWeight: 700, fontSize: 11, height: 22 }} />
+                        ) : (
                           <Chip key={scope} label={scope} size="small" variant="outlined" sx={{ color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, fontSize: 11, height: 22 }} />
                         ))}
                       </Box>

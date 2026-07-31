@@ -145,6 +145,9 @@ type Node struct {
 	// this node has been observed advertising under (sorted). A node may use
 	// several scopes at once, so this is a set, not a single value.
 	Scopes []string
+	// LastScope is the scope (from Scopes) most recently seen for this node, or
+	// "" if it has none.
+	LastScope string
 }
 
 // Observer holds an in-memory observer record.
@@ -2589,7 +2592,7 @@ func nodeFromRow(r *db.NodeRow) *Node {
 		PubKey: r.PubKey, Name: r.Name, Role: r.Role, Lat: lat, Lon: lon,
 		RawLat: lat, RawLon: lon,
 		LastSeen: r.LastSeen, FirstSeen: r.FirstSeen, AdvertCount: r.AdvertCount,
-		BatteryMv: r.BatteryMv, TempC: r.TempC, Scopes: r.Scopes,
+		BatteryMv: r.BatteryMv, TempC: r.TempC, Scopes: r.Scopes, LastScope: r.LastScope,
 	}
 	setNodeCountry(n)
 	return n
@@ -2607,7 +2610,8 @@ func nodeMatchesRow(n *Node, r *db.NodeRow) bool {
 		n.AdvertCount == r.AdvertCount &&
 		ptrEqual(n.BatteryMv, r.BatteryMv) &&
 		ptrEqual(n.TempC, r.TempC) &&
-		slices.Equal(n.Scopes, r.Scopes)
+		slices.Equal(n.Scopes, r.Scopes) &&
+		n.LastScope == r.LastScope
 }
 
 func nodeRawLocationChanged(n *Node, r *db.NodeRow) bool {

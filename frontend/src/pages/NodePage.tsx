@@ -203,6 +203,7 @@ export default function NodePage() {
   const CHART_STYLE = {
     contentStyle: { background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, borderRadius: 8, fontSize: 11 },
     labelStyle: { color: md3.onSurface },
+    itemStyle: { color: md3.onSurface },
   }
 
   return (

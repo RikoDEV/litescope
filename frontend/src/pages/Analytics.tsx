@@ -199,7 +199,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
                 <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} />
                 <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
                 <YAxis type="category" dataKey="name" width={90} interval={0} tick={{ fontSize: 11, fill: md3.onSurface }} />
-                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
                 <Bar dataKey="value" fill={md3.primary} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -209,7 +209,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
               <BarChart data={typeShareData} layout="vertical" margin={{ top: 4, right: 36, left: 0, bottom: 4 }}>
                 <XAxis type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} tickCount={5} />
                 <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                   formatter={(v) => [`${v}%`, t('analytics.share')]} />
                 <Bar dataKey="pct" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => Number(v) > 0 ? `${v}%` : '' }}>
                   {typeShareData.map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
@@ -270,7 +270,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
             <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
             <YAxis tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
-            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
             <ReferenceLine y={avg} stroke={alpha('#f59e0b', 0.6)} strokeDasharray="4 4" />
             <Area type="monotone" dataKey="count" stroke={md3.primary} fill="url(#actGrad)" strokeWidth={2} dot={false} />
           </AreaChart>
@@ -285,7 +285,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis yAxisId="nodes" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <YAxis yAxisId="fanout" orientation="right" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line yAxisId="nodes" type="monotone" dataKey="activeNodes" name={t('analytics.uniqueActiveNodes')} stroke="#14b8a6" strokeWidth={2} dot={false} />
               <Line yAxisId="fanout" type="monotone" dataKey="avgFanout" name={t('analytics.avgObservationFanout')} stroke="#ec4899" strokeWidth={2} dot={false} />
@@ -299,7 +299,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {payloadTypes.map((pt, i) => (
                 <Bar key={pt} dataKey={pt} stackId="payloads" fill={paletteColor(i)} />
@@ -362,7 +362,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                 {snrB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
               </Bar>
@@ -375,7 +375,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                 {rssiB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > -80 ? '#22c55e' : parseFloat(b.label) > -100 ? '#f59e0b' : md3.error} />)}
               </Bar>
@@ -394,7 +394,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <ReferenceLine x={0} stroke={alpha(md3.error, 0.5)} strokeDasharray="4 4" />
               <ReferenceLine x={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
               <Tooltip
-                contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v: unknown, _: unknown, entry: { payload?: { count: number } }) => [`${(v as number).toFixed(2)} dB (${entry.payload?.count ?? 0} obs)`, 'Avg SNR']}
               />
               <Bar dataKey="avg" radius={[0, 4, 4, 0]}>
@@ -419,7 +419,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <YAxis dataKey="snr" name="SNR" unit=" dB" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <ReferenceLine y={0} stroke={alpha(md3.error, 0.4)} strokeDasharray="4 4" />
               <ReferenceLine y={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Scatter data={scatter} shape={({ cx, cy, payload }: { cx?: number | undefined; cy?: number | undefined; payload?: { snr: number } | undefined }) => {
                 const color = (payload?.snr ?? 0) > 6 ? '#22c55e' : (payload?.snr ?? 0) > 0 ? '#f59e0b' : md3.error
                 return <circle cx={cx} cy={cy} r={3} fill={color} fillOpacity={0.65} />
@@ -464,7 +464,7 @@ function NodesTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: md3.onSurface }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {nodes.map((n, i) => <Cell key={i} fill={roleColor(n.role)} />)}
               </Bar>
@@ -476,7 +476,7 @@ function NodesTab({ params, filterKey }: TabProps) {
             <BarChart data={rolePie} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} />
               <YAxis type="category" dataKey="name" width={80} interval={0} tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                 {rolePie.map((e, i) => <Cell key={i} fill={roleColor(e.name)} />)}
               </Bar>
@@ -535,7 +535,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
             <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
             <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
-            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
             <Bar dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -627,7 +627,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {channels.map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
               </Bar>
@@ -646,7 +646,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
               >
                 {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Legend wrapperStyle={{ fontSize: 11, color: md3.onSurfaceVariant }} />
             </PieChart>
           </ResponsiveContainer>
@@ -662,7 +662,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
                   <XAxis dataKey="displayLabel" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
                   <YAxis tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                     labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   {analytics.activityChannels.map((ch, i) => (
@@ -680,7 +680,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
-                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                     formatter={(v: unknown, _: unknown, e: { payload?: { channels?: number } }) => [`${Number(v).toLocaleString()} (${e.payload?.channels ?? 0} ch)`, t('analytics.totalMessages')]} />
                   <Bar dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -793,7 +793,7 @@ function HashesTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                 {sizeDistMerged.map((d, i) => (
                   <Cell key={i} fill={HASH_COLORS[d.label.replace(' ', '')] ?? md3.primary} />
@@ -809,7 +809,7 @@ function HashesTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="role" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="1 B"  stackId="a" fill="#22c55e" />
               <Bar dataKey="2 B"  stackId="a" fill="#f59e0b" />
@@ -826,7 +826,7 @@ function HashesTab({ params, filterKey }: TabProps) {
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={1} />
             <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line type="monotone" dataKey="size1" name="1 B"  stroke="#22c55e" strokeWidth={2} dot={false} />
             <Line type="monotone" dataKey="size2" name="2 B"  stroke="#f59e0b" strokeWidth={2} dot={false} />
@@ -994,7 +994,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: md3.onSurface }} width={90} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v) => [`${Number(v).toLocaleString()} (${totalObs > 0 ? ((Number(v) / totalObs) * 100).toFixed(1) : 0}%)`, '']} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => totalObs > 0 ? `${((Number(v) / totalObs) * 100).toFixed(0)}%` : '' }}>
                 {linkTypeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
@@ -1010,7 +1010,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="hops" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} label={{ value: t('analytics.hopsLabel'), position: 'insideBottom', offset: -2, fontSize: 10, fill: md3.onSurfaceVariant }} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 labelFormatter={v => `${v} ${t('analytics.hopsLabel')}`} />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                 {data.hopDistribution.map((d, i) => (
@@ -1029,7 +1029,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={3} />
             <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+            <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
               formatter={(v) => [Number(v).toFixed(2) + ' ' + t('analytics.hopsLabel'), t('analytics.avgHopDist')]} />
             <ReferenceLine y={data.avgHopDist} stroke={alpha(md3.primary, 0.4)} strokeDasharray="4 4" />
             <Line type="monotone" dataKey="avgHops" stroke={md3.primary} strokeWidth={2} dot={false} connectNulls />
@@ -1145,7 +1145,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
                   <YAxis type="category" dataKey="label" tick={{ fontSize: 11, fill: md3.onSurface }} width={80} />
-                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+                  <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                     {(data.geo?.distribution ?? []).map((_, i) => (
                       <Cell key={i} fill={alpha(md3.primary, 0.4 + (i / (data.geo?.distribution?.length || 1)) * 0.6)} />
@@ -1270,7 +1270,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="scope" tick={{ fontSize: 11, fill: md3.onSurface }} width={72} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v, name) => [Number(v).toLocaleString(), name === 'pktCount' ? t('common.packets') : t('home.observations')]} />
               <Bar dataKey="pktCount" name="pktCount" radius={[0, 4, 4, 0]}>
                 {data.distribution.map((d, i) => <Cell key={d.scope} fill={scopeColor(d.scope, i)} />)}
@@ -1286,7 +1286,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="scope" tick={{ fontSize: 11, fill: md3.onSurface }} width={72} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }}
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v, name) => [`${Number(v).toFixed(1)}${name === 'avgSnr' ? ' dB' : ' dBm'}`, name === 'avgSnr' ? t('home.avgSnr') : t('home.avgRssi')]} />
               <Legend wrapperStyle={{ fontSize: 11 }} formatter={n => n === 'avgSnr' ? t('home.avgSnr') : t('home.avgRssi')} />
               <Bar dataKey="avgSnr"  name="avgSnr"  fill="#14b8a6" radius={[0, 4, 4, 0]} />
@@ -1304,7 +1304,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={3} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
-              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {data.activityScopes.map((sc, i) => (
                 <Area key={sc} type="monotone" dataKey={sc} stackId="1"

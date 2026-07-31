@@ -114,7 +114,10 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
         </Box>
         <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
           <Chip label={selected.role} size="small" sx={{ background: alpha(roleColor(selected.role), 0.2), color: roleColor(selected.role) }} />
-          {selected.scopes?.map(scope => (
+          {selected.scopes?.map(scope => scope === selected.lastScope ? (
+            <Chip key={scope} label={scope} size="small"
+              sx={{ background: alpha(md3.tertiary, 0.15), color: md3.tertiary, border: `1px solid ${alpha(md3.tertiary, 0.4)}`, fontWeight: 700 }} />
+          ) : (
             <Chip key={scope} label={scope} size="small" variant="outlined" sx={{ color: md3.onSurfaceVariant, borderColor: md3.outlineVariant }} />
           ))}
           {selected.batteryMv && <Chip label={`🔋 ${selected.batteryMv} mV`} size="small" sx={{ background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
@@ -248,7 +251,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
                 <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                 <YAxis hide />
-                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
                 <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                   {rssiBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > -80 ? '#22c55e' : parseFloat(b.label) > -100 ? '#f59e0b' : md3.error} />)}
                 </Bar>
@@ -260,7 +263,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
                 <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                 <YAxis hide />
-                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
                 <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                   {snrBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
                 </Bar>

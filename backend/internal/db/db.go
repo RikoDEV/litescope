@@ -57,6 +57,9 @@ type NodeRow struct {
 	// Scopes is the full set of distinct scopes ever observed for this node
 	// (sorted). Read-path only, populated by loadNodes/LoadNodeUpdates.
 	Scopes []string
+	// LastScope is the scope with the most recent last_seen among Scopes, or ""
+	// if the node has no scopes. Read-path only.
+	LastScope string
 }
 
 type ObserverRow struct {
@@ -470,33 +473,42 @@ func (d *DB) loadNodes() ([]*NodeRow, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	scopes, err := d.loadNodeScopes()
+	scopes, lastScope, err := d.loadNodeScopes()
 	if err != nil {
 		return nil, err
 	}
 	for _, n := range out {
 		n.Scopes = scopes[n.PubKey]
+		n.LastScope = lastScope[n.PubKey]
 	}
 	return out, nil
 }
 
 // loadNodeScopes returns every distinct TRANSPORT_FLOOD scope observed per
-// node, sorted, keyed by pub_key. A node can advertise under several scopes.
-func (d *DB) loadNodeScopes() (map[string][]string, error) {
-	rows, err := d.db.Query(`SELECT pub_key, scope FROM node_scopes ORDER BY pub_key, scope`)
+// node (sorted, keyed by pub_key — a node can advertise under several), plus
+// the scope with the most recent last_seen per node. last_seen is RFC3339 UTC
+// (see resolveRxTime), so lexicographic comparison matches chronological order.
+func (d *DB) loadNodeScopes() (scopes map[string][]string, lastScope map[string]string, err error) {
+	rows, err := d.db.Query(`SELECT pub_key, scope, COALESCE(last_seen,'') FROM node_scopes ORDER BY pub_key, scope`)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
-	out := make(map[string][]string)
+	scopes = make(map[string][]string)
+	lastScope = make(map[string]string)
+	lastSeenMax := make(map[string]string)
 	for rows.Next() {
-		var pubKey, scope string
-		if err := rows.Scan(&pubKey, &scope); err != nil {
-			return nil, err
+		var pubKey, scope, lastSeen string
+		if err := rows.Scan(&pubKey, &scope, &lastSeen); err != nil {
+			return nil, nil, err
 		}
-		out[pubKey] = append(out[pubKey], scope)
+		scopes[pubKey] = append(scopes[pubKey], scope)
+		if lastSeen >= lastSeenMax[pubKey] {
+			lastSeenMax[pubKey] = lastSeen
+			lastScope[pubKey] = scope
+		}
 	}
-	return out, rows.Err()
+	return scopes, lastScope, rows.Err()
 }
 
 func (d *DB) loadObservers() ([]*ObserverRow, error) {
