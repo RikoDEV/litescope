@@ -169,7 +169,8 @@ function buildFieldRows(
       i += 32
     }
     if (i + 4 <= byteStr.length) {
-      const ts = ((b(i) << 24) | (b(i+1) << 16) | (b(i+2) << 8) | b(i+3)) >>> 0
+      // Little-endian, matching decoder.DecodedPacket's Timestamp (binary.LittleEndian.Uint32).
+      const ts = (b(i) | (b(i+1) << 8) | (b(i+2) << 16) | (b(i+3) << 24)) >>> 0
       rows.push({ kind: 'field', offset: i, section: 'timestamp', field: 'Timestamp', value: String(ts), description: new Date(ts * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' })
       i += 4
     }
