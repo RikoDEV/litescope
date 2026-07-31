@@ -885,7 +885,7 @@ export default function MapView() {
       ? `<div style="margin:4px 0 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${OBSERVER_BADGE_COLOR}22;color:${OBSERVER_BADGE_COLOR};font-size:11px">${escapeHtml(t('map.observerBadge'))}</div>`
       : ''
     const scopeBadges = (n.scopes ?? []).map(scope =>
-      `<div style="margin:4px 4px 0 0;padding:2px 8px;border-radius:8px;display:inline-block;border:1px solid #79747E;color:#49454F;font-size:11px">#${escapeHtml(scope)}</div>`
+      `<div style="margin:4px 4px 0 0;padding:2px 8px;border-radius:8px;display:inline-block;border:1px solid #79747E;color:#49454F;font-size:11px">${escapeHtml(scope)}</div>`
     ).join('')
     return `<div style="font-family:system-ui;font-size:13px;min-width:170px;color:#1D1B20">
       <b style="font-size:14px">${title}</b>

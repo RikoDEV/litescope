@@ -115,7 +115,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
         <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
           <Chip label={selected.role} size="small" sx={{ background: alpha(roleColor(selected.role), 0.2), color: roleColor(selected.role) }} />
           {selected.scopes?.map(scope => (
-            <Chip key={scope} label={`#${scope}`} size="small" variant="outlined" sx={{ color: md3.onSurfaceVariant, borderColor: md3.outlineVariant }} />
+            <Chip key={scope} label={scope} size="small" variant="outlined" sx={{ color: md3.onSurfaceVariant, borderColor: md3.outlineVariant }} />
           ))}
           {selected.batteryMv && <Chip label={`🔋 ${selected.batteryMv} mV`} size="small" sx={{ background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
           {selected.temperatureC && <Chip label={`🌡 ${selected.temperatureC.toFixed(1)}°C`} size="small" sx={{ background: alpha(md3.secondary, 0.15), color: md3.secondary }} />}
