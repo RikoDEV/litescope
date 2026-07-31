@@ -141,6 +141,10 @@ type Node struct {
 	AdvertCount int
 	BatteryMv   *int
 	TempC       *float64
+	// Scopes is the full set of distinct TRANSPORT_FLOOD scopes (config.scopeList)
+	// this node has been observed advertising under (sorted). A node may use
+	// several scopes at once, so this is a set, not a single value.
+	Scopes []string
 }
 
 // Observer holds an in-memory observer record.
@@ -2585,7 +2589,7 @@ func nodeFromRow(r *db.NodeRow) *Node {
 		PubKey: r.PubKey, Name: r.Name, Role: r.Role, Lat: lat, Lon: lon,
 		RawLat: lat, RawLon: lon,
 		LastSeen: r.LastSeen, FirstSeen: r.FirstSeen, AdvertCount: r.AdvertCount,
-		BatteryMv: r.BatteryMv, TempC: r.TempC,
+		BatteryMv: r.BatteryMv, TempC: r.TempC, Scopes: r.Scopes,
 	}
 	setNodeCountry(n)
 	return n
@@ -2602,7 +2606,8 @@ func nodeMatchesRow(n *Node, r *db.NodeRow) bool {
 		n.FirstSeen == r.FirstSeen &&
 		n.AdvertCount == r.AdvertCount &&
 		ptrEqual(n.BatteryMv, r.BatteryMv) &&
-		ptrEqual(n.TempC, r.TempC)
+		ptrEqual(n.TempC, r.TempC) &&
+		slices.Equal(n.Scopes, r.Scopes)
 }
 
 func nodeRawLocationChanged(n *Node, r *db.NodeRow) bool {

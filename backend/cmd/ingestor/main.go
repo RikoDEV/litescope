@@ -312,13 +312,14 @@ func handleMsg(writeCh chan<- *db.WriteItem, tag string, src config.MQTTSource, 
 			pathJSON = string(b)
 		}
 	}
+	floodScope := dec.ResolveFloodScope(scopeList)
 	obsRow := &db.ObsRow{
 		ObserverID:   observerID,
 		ObserverName: strField(msg, "origin"),
 		ObserverIATA: region,
 		Direction:    strField(msg, "direction", "Direction"),
 		PathJSON:     pathJSON,
-		FloodScope:   dec.ResolveFloodScope(scopeList),
+		FloodScope:   floodScope,
 		Timestamp:    now,
 		RawHex:       rawHex,
 	}
@@ -354,6 +355,7 @@ func handleMsg(writeCh chan<- *db.WriteItem, tag string, src config.MQTTSource, 
 			Lat:      dec.Payload.Lat,
 			Lon:      dec.Payload.Lon,
 			LastSeen: now,
+			Scope:    floodScope,
 		}
 		item.NodeBattery = dec.Payload.BatteryMv
 		item.NodeTempC = dec.Payload.TemperatureC

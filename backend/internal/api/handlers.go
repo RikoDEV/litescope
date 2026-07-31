@@ -701,6 +701,7 @@ type nodeSummary struct {
 	BatteryMv       *int     `json:"batteryMv,omitempty"`
 	TempC           *float64 `json:"temperatureC,omitempty"`
 	IsObserver      bool     `json:"isObserver,omitempty"`
+	Scopes          []string `json:"scopes,omitempty"`
 }
 
 type observerSummary struct {
@@ -755,7 +756,7 @@ func summarizeNode(n *store.Node) nodeSummary {
 		LocationApprox: n.LocationApprox,
 		LastSeen:       n.LastSeen, FirstSeen: n.FirstSeen, AdvertCount: n.AdvertCount,
 		Country:   n.Country,
-		BatteryMv: n.BatteryMv, TempC: n.TempC,
+		BatteryMv: n.BatteryMv, TempC: n.TempC, Scopes: n.Scopes,
 	}
 }
 

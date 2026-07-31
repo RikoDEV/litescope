@@ -50,6 +50,13 @@ type NodeRow struct {
 	AdvertCount int
 	BatteryMv   *int
 	TempC       *float64
+	// Scope is the TRANSPORT_FLOOD scope (config.scopeList) this specific ADVERT
+	// resolved to, or "" if none. Write-path only — see decoder.ResolveFloodScope
+	// and WriteBatch, which folds it into the node_scopes table.
+	Scope string
+	// Scopes is the full set of distinct scopes ever observed for this node
+	// (sorted). Read-path only, populated by loadNodes/LoadNodeUpdates.
+	Scopes []string
 }
 
 type ObserverRow struct {
@@ -146,6 +153,15 @@ func (d *DB) applySchema() error {
 			temperature_c REAL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes(last_seen)`,
+		// A node can advertise under several TRANSPORT_FLOOD scopes over time (it
+		// isn't limited to one), so scopes are a separate one-to-many table rather
+		// than a single column on nodes.
+		`CREATE TABLE IF NOT EXISTS node_scopes (
+			pub_key   TEXT NOT NULL REFERENCES nodes(pub_key) ON DELETE CASCADE,
+			scope     TEXT NOT NULL,
+			last_seen TEXT,
+			PRIMARY KEY (pub_key, scope)
+		)`,
 		`CREATE TABLE IF NOT EXISTS observers (
 			id           TEXT PRIMARY KEY,
 			name         TEXT,
@@ -245,9 +261,9 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 
 	// Statements prepared once per batch (closed by the deferred loop below);
 	// modernc then parses each SQL string once per flush instead of once per row.
-	var insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upObsv, upObsvMeta *sql.Stmt
+	var insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upNodeScope, upObsv, upObsvMeta *sql.Stmt
 	defer func() {
-		for _, s := range []*sql.Stmt{insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upObsv, upObsvMeta} {
+		for _, s := range []*sql.Stmt{insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upNodeScope, upObsv, upObsvMeta} {
 			if s != nil {
 				s.Close()
 			}
@@ -277,6 +293,9 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 		}
 		if telNode, err = dbtx.Prepare(`UPDATE nodes SET battery_mv = COALESCE(?, battery_mv), temperature_c = COALESCE(?, temperature_c) WHERE pub_key = ?`); err != nil {
 			return fmt.Errorf("prepare node-tel: %w", err)
+		}
+		if upNodeScope, err = dbtx.Prepare(`INSERT INTO node_scopes (pub_key, scope, last_seen) VALUES (?, ?, ?) ON CONFLICT(pub_key, scope) DO UPDATE SET last_seen = excluded.last_seen`); err != nil {
+			return fmt.Errorf("prepare node-scope: %w", err)
 		}
 	}
 	if needObsv {
@@ -326,6 +345,11 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 			}
 			if it.NodeBattery != nil || it.NodeTempC != nil {
 				telNode.Exec(it.NodeBattery, it.NodeTempC, n.PubKey)
+			}
+			if n.Scope != "" {
+				if _, err := upNodeScope.Exec(n.PubKey, n.Scope, n.LastSeen); err != nil {
+					return fmt.Errorf("upsert node scope: %w", err)
+				}
 			}
 		}
 		if it.Observer != nil {
@@ -442,6 +466,35 @@ func (d *DB) loadNodes() ([]*NodeRow, error) {
 			return nil, err
 		}
 		out = append(out, &r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	scopes, err := d.loadNodeScopes()
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range out {
+		n.Scopes = scopes[n.PubKey]
+	}
+	return out, nil
+}
+
+// loadNodeScopes returns every distinct TRANSPORT_FLOOD scope observed per
+// node, sorted, keyed by pub_key. A node can advertise under several scopes.
+func (d *DB) loadNodeScopes() (map[string][]string, error) {
+	rows, err := d.db.Query(`SELECT pub_key, scope FROM node_scopes ORDER BY pub_key, scope`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string][]string)
+	for rows.Next() {
+		var pubKey, scope string
+		if err := rows.Scan(&pubKey, &scope); err != nil {
+			return nil, err
+		}
+		out[pubKey] = append(out[pubKey], scope)
 	}
 	return out, rows.Err()
 }

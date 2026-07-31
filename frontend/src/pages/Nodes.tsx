@@ -240,7 +240,12 @@ export default function Nodes() {
                       <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace' }}>{n.pubKey.slice(0, 20)}…</Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip label={n.role} size="small" sx={{ background: alpha(color, 0.15), color, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        <Chip label={n.role} size="small" sx={{ background: alpha(color, 0.15), color, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
+                        {n.scopes?.map(scope => (
+                          <Chip key={scope} label={`#${scope}`} size="small" variant="outlined" sx={{ color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, fontSize: 11, height: 22 }} />
+                        ))}
+                      </Box>
                     </TableCell>
                     <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 12 }}>
                       {n.lat != null ? (

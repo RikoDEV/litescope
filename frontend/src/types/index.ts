@@ -69,6 +69,7 @@ export interface Node {
   batteryMv?: number | undefined
   temperatureC?: number | undefined
   isObserver?: boolean | undefined
+  scopes?: string[] | undefined
 }
 
 export interface Observer {
