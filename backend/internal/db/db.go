@@ -2,8 +2,15 @@ package db
 
 import (
 	"database/sql"
+	"embed"
+	"errors"
 	"fmt"
+	"log"
+	"os"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	sqlitemigrate "github.com/golang-migrate/migrate/v4/database/sqlite"
 	_ "modernc.org/sqlite"
 )
 
@@ -84,6 +91,21 @@ type ObserverMeta struct {
 	NoiseFloor *float64
 }
 
+//go:embed migrations/sqlite/*.sql
+var sqliteMigrations embed.FS
+
+type migrateLogger struct {
+	logger *log.Logger
+}
+
+func (l *migrateLogger) Printf(format string, v ...interface{}) {
+	l.logger.Printf(format, v...)
+}
+
+func (l *migrateLogger) Verbose() bool {
+	return false
+}
+
 func Open(path string) (*DB, error) {
 	// modernc.org/sqlite only honors `_pragma=name(value)` DSN params (the
 	// `_journal_mode=...` form is mattn/go-sqlite3 syntax and is silently
@@ -102,105 +124,53 @@ func Open(path string) (*DB, error) {
 	}
 	db.SetMaxOpenConns(1) // SQLite: single writer
 	d := &DB{db: db}
-	if err := d.applySchema(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("schema: %w", err)
+
+	if err := d.migrate(); err != nil {
+		return nil, err
 	}
+
 	return d, nil
 }
 
 func (d *DB) Close() error { return d.db.Close() }
 
-func (d *DB) applySchema() error {
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS transmissions (
-			id                INTEGER PRIMARY KEY AUTOINCREMENT,
-			raw_hex           TEXT    NOT NULL,
-			hash              TEXT    NOT NULL UNIQUE,
-			first_seen        TEXT    NOT NULL,
-			route_type        INTEGER,
-			payload_type      INTEGER,
-			decoded_json      TEXT,
-			observation_count INTEGER NOT NULL DEFAULT 1,
-			channel_hash      TEXT
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_tx_first_seen   ON transmissions(first_seen)`,
-		`CREATE INDEX IF NOT EXISTS idx_tx_payload_type ON transmissions(payload_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_tx_channel_hash ON transmissions(channel_hash) WHERE channel_hash IS NOT NULL`,
-		`CREATE TABLE IF NOT EXISTS observations (
-			id            INTEGER PRIMARY KEY AUTOINCREMENT,
-			tx_id         INTEGER NOT NULL REFERENCES transmissions(id),
-			observer_id   TEXT    NOT NULL,
-			observer_name TEXT,
-			observer_iata TEXT,
-			rssi          REAL,
-			snr           REAL,
-			score         REAL,
-			direction     TEXT,
-			path_json     TEXT,
-			flood_scope   TEXT,
-			timestamp     TEXT    NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_obs_tx_id    ON observations(tx_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_obs_observer ON observations(observer_id)`,
-		`CREATE TABLE IF NOT EXISTS nodes (
-			pub_key       TEXT PRIMARY KEY,
-			name          TEXT,
-			role          TEXT,
-			lat           REAL,
-			lon           REAL,
-			last_seen     TEXT,
-			first_seen    TEXT,
-			advert_count  INTEGER NOT NULL DEFAULT 0,
-			battery_mv    INTEGER,
-			temperature_c REAL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes(last_seen)`,
-		// A node can advertise under several TRANSPORT_FLOOD scopes over time (it
-		// isn't limited to one), so scopes are a separate one-to-many table rather
-		// than a single column on nodes.
-		`CREATE TABLE IF NOT EXISTS node_scopes (
-			pub_key   TEXT NOT NULL REFERENCES nodes(pub_key) ON DELETE CASCADE,
-			scope     TEXT NOT NULL,
-			last_seen TEXT,
-			PRIMARY KEY (pub_key, scope)
-		)`,
-		`CREATE TABLE IF NOT EXISTS observers (
-			id           TEXT PRIMARY KEY,
-			name         TEXT,
-			iata         TEXT,
-			last_seen    TEXT,
-			first_seen   TEXT,
-			packet_count INTEGER NOT NULL DEFAULT 0,
-			model        TEXT,
-			firmware     TEXT,
-			battery_mv   INTEGER,
-			uptime_secs  INTEGER,
-			noise_floor  REAL
-		)`,
+func (d *DB) migrate() error {
+	sourceDriver, err := iofs.New(sqliteMigrations, "migrations/sqlite")
+
+	if err != nil {
+		return fmt.Errorf("iofs: %w", err)
 	}
-	for _, s := range stmts {
-		if _, err := d.db.Exec(s); err != nil {
-			return fmt.Errorf("exec %q: %w", s[:min(40, len(s))], err)
-		}
+
+	dbDriver, err := sqlitemigrate.WithInstance(d.db, &sqlitemigrate.Config{})
+
+	if err != nil {
+		return fmt.Errorf("sqlitemigrate: %w", err)
 	}
-	// One-time migrations, gated on PRAGMA user_version. The recalculation below
-	// rewrites every row of transmissions with a correlated subquery; it
-	// previously ran on every ingestor AND server startup, stalling boot and
-	// making the read-only server contend with the live ingestor for the single
-	// writer. Run it (and the additive column migrations) once, then bump the
-	// version so subsequent starts skip it.
+
+	m, err := migrate.NewWithInstance("iofs", sourceDriver, "sqlite", dbDriver)
+
+	if err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+
+	m.Log = &migrateLogger{
+		logger: log.New(os.Stdout, "[migration] ", log.LstdFlags|log.Lmsgprefix),
+	}
+
 	var userVersion int
 	d.db.QueryRow(`PRAGMA user_version`).Scan(&userVersion)
-	if userVersion < 1 {
-		// Additive columns shipped after the initial schema (idempotent: adding an
-		// existing column errors harmlessly and is ignored).
-		d.db.Exec(`ALTER TABLE observations ADD COLUMN flood_scope TEXT`)
-		d.db.Exec(`ALTER TABLE observations ADD COLUMN raw_hex TEXT`)
-		// Recalculate observation_count to reflect unique observers (not raw row count).
-		d.db.Exec(`UPDATE transmissions SET observation_count = (SELECT COUNT(DISTINCT observer_id) FROM observations WHERE tx_id = transmissions.id)`)
-		d.db.Exec(`PRAGMA user_version = 1`)
+
+	// skip migrations if schema is already created with legacy mechanism
+	if userVersion == 1 {
+		d.db.Exec(`DELETE FROM schema_migrations`)
+		d.db.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (2, 0)`)
+		d.db.Exec(`PRAGMA user_version = 0`)
 	}
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migrate: %w", err)
+	}
+
 	return nil
 }
 
