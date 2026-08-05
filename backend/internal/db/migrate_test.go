@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -207,6 +208,70 @@ func TestOpenWaitsForMigration(t *testing.T) {
 	// Open must not have created the schema as a side effect.
 	if _, err := d.db.Exec(`SELECT 1 FROM transmissions LIMIT 1`); err == nil {
 		t.Error("Open created the schema; only OpenAndMigrate may do that")
+	}
+}
+
+// TestAwaitSchemaWaitsThroughTransientDirty pins the behaviour that CI caught:
+// golang-migrate flips dirty on *before* each migration and off after, so an
+// in-flight migration looks dirty. awaitSchema must wait it out, not fail.
+// Driven deterministically rather than by racing a real migration.
+func TestAwaitSchemaWaitsThroughTransientDirty(t *testing.T) {
+	path := tempDBPath(t)
+	d, err := OpenAndMigrate(path)
+	if err != nil {
+		t.Fatalf("OpenAndMigrate: %v", err)
+	}
+	defer d.Close()
+
+	// Rewind to what golang-migrate writes just before applying migration 2.
+	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = 1, dirty = 1`); err != nil {
+		t.Fatalf("simulate in-flight migration: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- d.awaitSchema(30 * time.Second) }()
+
+	// Let the waiter observe the dirty state for several poll intervals, then
+	// complete the "migration".
+	time.Sleep(750 * time.Millisecond)
+	select {
+	case err := <-done:
+		t.Fatalf("awaitSchema returned early while a migration was in flight: %v", err)
+	default:
+	}
+	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = 2, dirty = 0`); err != nil {
+		t.Fatalf("complete migration: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("awaitSchema after migration completed: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("awaitSchema did not return after the migration completed")
+	}
+}
+
+// TestAwaitSchemaTimesOutWhenStuckDirty is the other half: a database left dirty
+// must still terminate, with a message that tells the operator what to force.
+func TestAwaitSchemaTimesOutWhenStuckDirty(t *testing.T) {
+	path := tempDBPath(t)
+	d, err := OpenAndMigrate(path)
+	if err != nil {
+		t.Fatalf("OpenAndMigrate: %v", err)
+	}
+	defer d.Close()
+
+	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = 1, dirty = 1`); err != nil {
+		t.Fatalf("simulate wedged migration: %v", err)
+	}
+	err = d.awaitSchema(500 * time.Millisecond)
+	if err == nil {
+		t.Fatal("awaitSchema succeeded on a permanently dirty database")
+	}
+	if !strings.Contains(err.Error(), "dirty") || !strings.Contains(err.Error(), "version 1") {
+		t.Errorf("error %q should name the dirty state and the stuck version", err)
 	}
 }
 

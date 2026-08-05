@@ -292,9 +292,17 @@ func (d *DB) adoptLegacySchema() error {
 }
 
 // awaitSchema blocks until schema_migrations reports a clean version at least as
-// new as the newest embedded migration. Every not-ready condition — missing DB
-// file, missing table, empty table, older version — is retried; only a dirty
-// database fails fast, since that needs an operator either way.
+// new as the newest embedded migration.
+//
+// Every not-ready condition is retried, dirty included. That is deliberate:
+// golang-migrate sets dirty BEFORE applying a migration and clears it after, so
+// a healthy migration in flight is indistinguishable from a wedged one by the
+// flag alone — and the window is widest during migration 2's whole-table
+// recalculation, i.e. exactly when the server is most likely to be polling.
+// Failing fast on dirty turned a normal concurrent start into a hard error.
+//
+// A genuinely wedged database therefore surfaces as the timeout below, whose
+// message names the version it was stuck at so the operator knows what to force.
 func (d *DB) awaitSchema(timeout time.Duration) error {
 	want, err := latestMigrationVersion()
 	if err != nil {
@@ -302,17 +310,22 @@ func (d *DB) awaitSchema(timeout time.Duration) error {
 	}
 	deadline := time.Now().Add(timeout)
 	logged := false
+	sawDirty := false
+	dirtyAt := uint(0)
 	for {
 		var version uint
 		var dirty bool
 		err := d.db.QueryRow(`SELECT version, dirty FROM schema_migrations LIMIT 1`).Scan(&version, &dirty)
 		switch {
 		case err == nil && dirty:
-			return fmt.Errorf("database is dirty at version %d; resolve manually before restarting", version)
+			sawDirty, dirtyAt = true, version
 		case err == nil && version >= want:
 			return nil
 		}
 		if time.Now().After(deadline) {
+			if sawDirty {
+				return fmt.Errorf("timed out after %s: database stuck dirty at version %d — a migration failed part-way; resolve it and force the version before restarting", timeout, dirtyAt)
+			}
 			return fmt.Errorf("timed out after %s waiting for schema version %d (is the ingestor running?)", timeout, want)
 		}
 		if !logged {
