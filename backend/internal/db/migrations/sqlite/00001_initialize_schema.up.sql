@@ -50,16 +50,6 @@ CREATE TABLE IF NOT EXISTS nodes (
 
 CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes(last_seen);
 
--- A node can advertise under several TRANSPORT_FLOOD scopes over time (it
--- isn't limited to one), so scopes are a separate one-to-many table rather
--- than a single column on nodes.
-CREATE TABLE IF NOT EXISTS node_scopes (
-    pub_key TEXT NOT NULL REFERENCES nodes(pub_key) ON DELETE CASCADE,
-    scope TEXT NOT NULL,
-    last_seen TEXT,
-    PRIMARY KEY (pub_key, scope)
-);
-
 CREATE TABLE IF NOT EXISTS observers (
     id TEXT PRIMARY KEY,
     name TEXT,
