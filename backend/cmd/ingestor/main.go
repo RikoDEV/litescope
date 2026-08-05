@@ -35,7 +35,9 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	database, err := db.Open(cfg.DBPath)
+	// The ingestor is the only writer, so it owns schema migrations; the server
+	// waits for them via db.Open.
+	database, err := db.OpenAndMigrate(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}
