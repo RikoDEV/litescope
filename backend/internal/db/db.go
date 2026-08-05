@@ -5,13 +5,18 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	sqlitemigrate "github.com/golang-migrate/migrate/v4/database/sqlite"
-	_ "modernc.org/sqlite"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type DB struct {
@@ -94,11 +99,24 @@ type ObserverMeta struct {
 //go:embed migrations/sqlite/*.sql
 var sqliteMigrations embed.FS
 
+const migrationsDir = "migrations/sqlite"
+
+// schemaWaitTimeout bounds how long Open waits for the migrating process to
+// bring the schema up to the version this binary was built against. Sized for
+// the worst realistic case: migration 2's observation_count recalculation is a
+// correlated subquery over the whole transmissions table, which takes tens of
+// seconds on a long-lived deployment.
+const schemaWaitTimeout = 5 * time.Minute
+
+// migrateBusyTimeout bounds how long OpenAndMigrate retries while another
+// process holds the database. See migrate().
+const migrateBusyTimeout = 2 * time.Minute
+
 type migrateLogger struct {
 	logger *log.Logger
 }
 
-func (l *migrateLogger) Printf(format string, v ...interface{}) {
+func (l *migrateLogger) Printf(format string, v ...any) {
 	l.logger.Printf(format, v...)
 }
 
@@ -106,7 +124,44 @@ func (l *migrateLogger) Verbose() bool {
 	return false
 }
 
+// OpenAndMigrate opens the database and applies any pending schema migrations.
+//
+// Exactly one process may call this. golang-migrate's SQLite driver has no
+// cross-process lock (its Lock() is an in-process flag), so two binaries racing
+// m.Up() on the same file can both read version 0, both apply migration 2, and
+// the loser dies on `duplicate column name: flood_scope` — which marks
+// schema_migrations.dirty and wedges every subsequent start until an operator
+// runs `force`. The ingestor is the only writer (see WriteBatch), so it owns
+// migrations; the server uses Open and waits.
+func OpenAndMigrate(path string) (*DB, error) {
+	d, err := open(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.migrate(); err != nil {
+		d.db.Close()
+		return nil, fmt.Errorf("schema: %w", err)
+	}
+	return d, nil
+}
+
+// Open opens the database without touching the schema, blocking until the
+// migrating process (see OpenAndMigrate) has brought it up to the version this
+// binary expects. On a first boot the DB file may not exist yet, or may exist
+// with no tables; both are treated as "not ready" rather than an error.
 func Open(path string) (*DB, error) {
+	d, err := open(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.awaitSchema(schemaWaitTimeout); err != nil {
+		d.db.Close()
+		return nil, fmt.Errorf("schema: %w", err)
+	}
+	return d, nil
+}
+
+func open(path string) (*DB, error) {
 	// modernc.org/sqlite only honors `_pragma=name(value)` DSN params (the
 	// `_journal_mode=...` form is mattn/go-sqlite3 syntax and is silently
 	// ignored). WAL + busy_timeout are load-bearing here: the ingestor writes
@@ -123,55 +178,177 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // SQLite: single writer
-	d := &DB{db: db}
-
-	if err := d.migrate(); err != nil {
-		return nil, err
-	}
-
-	return d, nil
+	return &DB{db: db}, nil
 }
 
 func (d *DB) Close() error { return d.db.Close() }
 
+// migrate applies pending migrations, retrying while the database is busy.
+//
+// The retry is not belt-and-braces: golang-migrate's SQLite driver does not
+// honour the connection's busy_timeout, so WithInstance fails *immediately* with
+// SQLITE_BUSY if anything else is reading the file at that moment — which the
+// server does, once a second, forever. Without this the ingestor would lose
+// startup races against a server that is merely polling.
 func (d *DB) migrate() error {
-	sourceDriver, err := iofs.New(sqliteMigrations, "migrations/sqlite")
+	deadline := time.Now().Add(migrateBusyTimeout)
+	for attempt := 1; ; attempt++ {
+		err := d.migrateOnce()
+		if err == nil || !isBusy(err) || time.Now().After(deadline) {
+			return err
+		}
+		if attempt == 1 {
+			log.Printf("database busy, retrying migration...")
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
 
+// isBusy reports whether err is (or wraps) SQLITE_BUSY. golang-migrate flattens
+// some driver errors into plain strings, hence the textual fallback.
+func isBusy(err error) bool {
+	if serr, ok := errors.AsType[*sqlite.Error](err); ok {
+		return serr.Code() == sqlite3.SQLITE_BUSY
+	}
+	s := err.Error()
+	return strings.Contains(s, "SQLITE_BUSY") || strings.Contains(s, "database is locked")
+}
+
+func (d *DB) migrateOnce() error {
+	sourceDriver, err := iofs.New(sqliteMigrations, migrationsDir)
 	if err != nil {
 		return fmt.Errorf("iofs: %w", err)
 	}
-
+	// WithInstance creates schema_migrations if absent, so the legacy stamp
+	// below can assume the table exists.
 	dbDriver, err := sqlitemigrate.WithInstance(d.db, &sqlitemigrate.Config{})
-
 	if err != nil {
 		return fmt.Errorf("sqlitemigrate: %w", err)
 	}
-
 	m, err := migrate.NewWithInstance("iofs", sourceDriver, "sqlite", dbDriver)
-
 	if err != nil {
-		return fmt.Errorf("migrate: %w", err)
+		return fmt.Errorf("new: %w", err)
 	}
-
 	m.Log = &migrateLogger{
 		logger: log.New(os.Stdout, "[migration] ", log.LstdFlags|log.Lmsgprefix),
 	}
 
-	var userVersion int
-	d.db.QueryRow(`PRAGMA user_version`).Scan(&userVersion)
-
-	// skip migrations if schema is already created with legacy mechanism
-	if userVersion == 1 {
-		d.db.Exec(`DELETE FROM schema_migrations`)
-		d.db.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (2, 0)`)
-		d.db.Exec(`PRAGMA user_version = 0`)
+	if err := d.adoptLegacySchema(); err != nil {
+		return err
 	}
-
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("migrate: %w", err)
+		return fmt.Errorf("up: %w", err)
+	}
+	return nil
+}
+
+// adoptLegacySchema hands a database created by the pre-golang-migrate
+// applySchema() over to the migration tool without re-running any DDL.
+//
+// That code CREATE-TABLE-IF-NOT-EXISTS'd the whole schema on every start and
+// gated the additive bits (flood_scope, raw_hex, node_scopes, the
+// observation_count recalculation) on `PRAGMA user_version < 1`, bumping the
+// pragma to 1 afterwards. So user_version == 1 means "schema is equivalent to
+// migrations 1+2, already applied" and we stamp exactly that.
+//
+// Errors here are fatal rather than ignored: if the stamp silently fails, m.Up()
+// runs migration 2 against a schema that already has flood_scope, the ALTER
+// fails, and golang-migrate marks the database dirty — turning a no-op upgrade
+// into one that needs manual recovery.
+//
+// The three statements are one transaction because they must not be observed
+// half-done. Resetting user_version to 0 is load-bearing, not cleanup: leaving
+// it at 1 would re-trigger this branch on every subsequent start and clobber the
+// version back down to 2 after migration 3 ships.
+func (d *DB) adoptLegacySchema() error {
+	var userVersion int
+	if err := d.db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
+		return fmt.Errorf("read user_version: %w", err)
+	}
+	if userVersion != 1 {
+		return nil
 	}
 
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("legacy stamp begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once Commit succeeds
+
+	for _, s := range []string{
+		`DELETE FROM schema_migrations`,
+		`INSERT INTO schema_migrations (version, dirty) VALUES (2, 0)`,
+		`PRAGMA user_version = 0`,
+	} {
+		if _, err := tx.Exec(s); err != nil {
+			return fmt.Errorf("legacy stamp %q: %w", s, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("legacy stamp commit: %w", err)
+	}
+	log.Printf("adopted legacy schema (user_version=1) as migration version 2")
 	return nil
+}
+
+// awaitSchema blocks until schema_migrations reports a clean version at least as
+// new as the newest embedded migration. Every not-ready condition — missing DB
+// file, missing table, empty table, older version — is retried; only a dirty
+// database fails fast, since that needs an operator either way.
+func (d *DB) awaitSchema(timeout time.Duration) error {
+	want, err := latestMigrationVersion()
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	logged := false
+	for {
+		var version uint
+		var dirty bool
+		err := d.db.QueryRow(`SELECT version, dirty FROM schema_migrations LIMIT 1`).Scan(&version, &dirty)
+		switch {
+		case err == nil && dirty:
+			return fmt.Errorf("database is dirty at version %d; resolve manually before restarting", version)
+		case err == nil && version >= want:
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %s waiting for schema version %d (is the ingestor running?)", timeout, want)
+		}
+		if !logged {
+			log.Printf("waiting for schema version %d to be applied by the ingestor...", want)
+			logged = true
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+// latestMigrationVersion returns the highest version among the embedded *.up.sql
+// files, i.e. the schema version this binary was compiled against.
+func latestMigrationVersion() (uint, error) {
+	entries, err := fs.ReadDir(sqliteMigrations, migrationsDir)
+	if err != nil {
+		return 0, fmt.Errorf("read migrations: %w", err)
+	}
+	var latest uint
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".up.sql") {
+			continue
+		}
+		digits := name[:len(name)-len(strings.TrimLeft(name, "0123456789"))]
+		v, err := strconv.ParseUint(digits, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("migration %q has no leading version number", name)
+		}
+		if uint(v) > latest {
+			latest = uint(v)
+		}
+	}
+	if latest == 0 {
+		return 0, errors.New("no embedded migrations found")
+	}
+	return latest, nil
 }
 
 // WriteItem is one unit of work for WriteBatch. Any subset of fields may be
