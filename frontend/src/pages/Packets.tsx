@@ -465,6 +465,12 @@ export default function Packets() {
                       paths.push(dec.pathData.substring(i, i + pathCharacters));
                     }
                     label = paths.join(" → ");
+                  } else if (
+                    dec.type === "GRP_TXT" &&
+                    dec.decryptionStatus === "decryption_failed" &&
+                    typeof dec.channelHashHex === "string"
+                  ) {
+                    label = `#${dec.channelHashHex}`;
                   }
                 }
 
