@@ -23,7 +23,7 @@ import { roleColor as roleColorFn } from '../utils/roles'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: string }) {
+function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; color: string; onClick?: () => void }) {
   const divRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -39,7 +39,10 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
     return () => { map.remove() }
   }, [lat, lon, color])
 
-  return <div ref={divRef} style={{ height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }} />
+  return (
+    <div ref={divRef} onClick={onClick}
+      style={{ height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12, cursor: onClick ? 'pointer' : undefined }} />
+  )
 }
 
 interface NodeDetailPanelProps {
@@ -157,7 +160,8 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
 
         {/* Mini map */}
         {selected.lat != null && selected.lon != null && (
-          <NodeMiniMap lat={selected.lat} lon={selected.lon} color={roleColor(selected.role)} />
+          <NodeMiniMap lat={selected.lat} lon={selected.lon} color={roleColor(selected.role)}
+            onClick={() => navigate(`/map?node=${encodeURIComponent(selected.pubKey)}`)} />
         )}
 
         {/* Recent packets */}

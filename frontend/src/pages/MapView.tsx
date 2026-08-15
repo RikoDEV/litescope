@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
@@ -91,6 +92,7 @@ const ROLE_SHAPES = ROLE_GLYPH
 export default function MapView() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
 
 
   const LH_OPTIONS = [
@@ -340,6 +342,23 @@ export default function MapView() {
     })
     api.iatas().then(c => setIatas((c ?? []).sort())).catch(() => {})
   }, [])
+
+  // Deep-link: ?node=<pubKey> from elsewhere (e.g. the node detail mini-map) selects and centers on that node.
+  // pendingNodeFocusRef suppresses the initial "fit bounds to all markers" effect below so it doesn't
+  // stomp the flyTo before the animation has a chance to move the zoom level away from 2.
+  const pendingNodeFocusRef = useRef(searchParams.get('node') != null)
+  const consumedNodeParamRef = useRef(false)
+  useEffect(() => {
+    if (consumedNodeParamRef.current) return
+    const pubKey = searchParams.get('node')
+    if (!pubKey || nodes.length === 0 || !mapInstance.current) return
+    const n = nodes.find(nd => nd.pubKey === pubKey)
+    if (!n) return
+    consumedNodeParamRef.current = true
+    if (n.lat != null && n.lon != null) mapInstance.current.flyTo([n.lat, n.lon], 14, { duration: 1.2 })
+    selectNode(n)
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('node'); return next }, { replace: true })
+  }, [nodes, searchParams, selectNode, setSearchParams])
 
   const scopeParams = useMemo(() => {
     const hours = lastHeardFilter === '1h' ? 1 :
@@ -815,7 +834,10 @@ export default function MapView() {
     if (cluster && toAdd.length > 0) cluster.addLayers(toAdd)
 
     // Fit bounds to all visible markers on initial load
-    if (markersRef.current.size > 0 && map.getZoom() === 2) {
+    if (pendingNodeFocusRef.current) {
+      // A ?node= deep link is about to (or just did) flyTo a specific node — don't stomp it
+      // by re-fitting to all markers while the map is still sitting at the initial zoom.
+    } else if (markersRef.current.size > 0 && map.getZoom() === 2) {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
