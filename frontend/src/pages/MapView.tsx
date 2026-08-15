@@ -36,6 +36,7 @@ import { hasValidLocation } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
 import { passesGeo, selectedCountries } from '../utils/regions'
 import { ROLE_GLYPH, roleColor as roleColorFn, roleMarkerSvg, OBSERVER_BADGE_COLOR } from '../utils/roles'
+import { MAP_POSITION_CONFIGURED, DEFAULT_MAP_LAT, DEFAULT_MAP_LON, DEFAULT_MAP_ZOOM } from '../utils/mapDefaults'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -245,7 +246,7 @@ export default function MapView() {
     if (!el || mapInstance.current) return
     // Guard against React StrictMode double-invoke leaving a stale leaflet container
     if ((el as unknown as Record<string, unknown>)._leaflet_id) return
-    const map = L.map(el, { center: [20, 0], zoom: 2, zoomControl: false, maxZoom: 19 })
+    const map = L.map(el, { center: [DEFAULT_MAP_LAT, DEFAULT_MAP_LON], zoom: DEFAULT_MAP_ZOOM, zoomControl: false, maxZoom: 19 })
     const cluster = L.markerClusterGroup({
       disableClusteringAtZoom: 11,
       maxClusterRadius: 60,
@@ -833,11 +834,14 @@ export default function MapView() {
     })
     if (cluster && toAdd.length > 0) cluster.addLayers(toAdd)
 
-    // Fit bounds to all visible markers on initial load
+    // Fit bounds to all visible markers on initial load — unless the operator configured an
+    // explicit default view (VITE_MAP_LAT/LON/ZOOM), which opts out of this auto-fit entirely.
     if (pendingNodeFocusRef.current) {
       // A ?node= deep link is about to (or just did) flyTo a specific node — don't stomp it
       // by re-fitting to all markers while the map is still sitting at the initial zoom.
-    } else if (markersRef.current.size > 0 && map.getZoom() === 2) {
+    } else if (MAP_POSITION_CONFIGURED) {
+      // no-op: honor the configured default view
+    } else if (markersRef.current.size > 0 && map.getZoom() === DEFAULT_MAP_ZOOM) {
       const latlngs = Array.from(markersRef.current.values()).map(m => m.getLatLng())
       if (latlngs.length > 0) map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }

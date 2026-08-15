@@ -242,6 +242,9 @@ cp frontend/.env.example frontend/.env.local
 | `VITE_MQTT_PORT` | `1883` | MQTT broker port shown in the same setup card. Set this if your broker listens on a non-default port (e.g. `8883` for TLS). |
 | `VITE_MQTT_USERNAME` | *(empty)* | MQTT username shown in the same setup card. Should match `MQTT_USERNAME` in `.env` / the broker's configured credentials. |
 | `VITE_MQTT_PASSWORD` | *(empty)* | MQTT password shown in the same setup card. Should match `MQTT_PASSWORD` in `.env` / the broker's configured credentials. |
+| `VITE_MAP_LAT` | `20` | Latitude the `/map` page centers on before any nodes have loaded (and falls back to if there's nothing to fit bounds to). |
+| `VITE_MAP_LON` | `0` | Longitude counterpart to `VITE_MAP_LAT`. |
+| `VITE_MAP_ZOOM` | `2` | Zoom level for the default map view. |
 
 When empty the frontend uses relative URLs, which works with the Vite proxy in dev and Caddy/nginx in production.
 For Docker deployments, `VITE_SITE_URL` is read from `.env` when the frontend container starts and rewrites the served `robots.txt`/`sitemap.xml`.

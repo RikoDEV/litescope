@@ -25,6 +25,7 @@ import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { hasValidLocation, validLatLon } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
 import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
+import { MAP_POSITION_CONFIGURED, DEFAULT_MAP_LAT, DEFAULT_MAP_LON, DEFAULT_MAP_ZOOM } from '../utils/mapDefaults'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -158,7 +159,7 @@ export default function LiveMap() {
     if (!mapDiv.current || mapRef.current) return
     // preferCanvas keeps the many ungrouped node markers on a single canvas so
     // zoom/pan stays smooth (DOM markers repaint every frame and lag badly).
-    const map = L.map(mapDiv.current, { center: [20, 0], zoom: 2, zoomControl: false, preferCanvas: true })
+    const map = L.map(mapDiv.current, { center: [DEFAULT_MAP_LAT, DEFAULT_MAP_LON], zoom: DEFAULT_MAP_ZOOM, zoomControl: false, preferCanvas: true })
 
     // Tile layer added by the theme-aware effect below
 
@@ -219,7 +220,7 @@ export default function LiveMap() {
       layer.addLayer(marker)
       latlngs.push([n.lat!, n.lon!])
     })
-    if (map && latlngs.length > 0 && map.getZoom() === 2) {
+    if (!MAP_POSITION_CONFIGURED && map && latlngs.length > 0 && map.getZoom() === DEFAULT_MAP_ZOOM) {
       map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
   }, [nodes, theme.palette.mode, navigate]) // eslint-disable-line react-hooks/exhaustive-deps
