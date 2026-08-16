@@ -11,32 +11,26 @@ A lightweight, self-hosted dashboard for monitoring [MeshCore](https://meshcore.
 - **Live packet feed** — filter by type, route, channel, or minimum observer count; live pause/resume; expandable per-observation sub-rows with per-observer hex and path data
 - **Packet detail sidebar** — colored hex dump with byte offsets and section hover highlighting, field breakdown table, improved decoded payload with field-specific rendering; click any observation row to switch to that observer's perspective
 - **Node explorer** — per-node RF analytics (RSSI / SNR distributions), last-heard filters, role tabs
-- **Channel decryption** — add AES-128 keys (or derive them via SHA-256 from a passphrase); view decrypted message history; deep-linked channel URLs with working browser back navigation
+- **Channels** — browse per-channel message history; add AES-128 keys (or derive them via SHA-256 from a passphrase/hashtag) for client-side decryption; combine multiple channels into one merged live feed; contact/location share cards with QR code; deep-linked channel URLs with working browser back navigation
 - **Observer dashboard** — per-observer packet timelines, SNR charts, packet-type breakdown (horizontal bar)
 - **Network analytics** — overview cards, activity heatmap, RF stats, top nodes/observers, packet-type distribution; tabs are deep-linked (`/analytics/rf`, `/analytics/channels`, …)
-- **Map** — Leaflet node map with role-colored SVG markers, marker clusters with type breakdown (repeaters / companions / rooms / sensors), byte-size filter, hash-prefix labels; theme-aware tiles (OSM light / CARTO dark)
-- **Live map** — animated packet trace playback with VCR controls (pause, replay, speed, timeline); theme-aware tiles; responsive VCR bar
+- **Map** — Leaflet node map with role-colored SVG markers, marker clusters with type breakdown (repeaters / companions / rooms / sensors), byte-size filter, hash-prefix labels; configurable default center/zoom (`VITE_MAP_LAT`/`LON`/`ZOOM`) that falls back to auto-fitting loaded nodes when unset; jump straight to a node on the map from its detail panel; theme-aware tiles (OSM light / CARTO dark)
+- **Live map** — animated packet trace playback with VCR controls (pause, replay, speed, timeline); same configurable default view as Map; theme-aware tiles; responsive VCR bar
 - **Decoder** — paste raw hex packets for one-off decoding
 - **Light / dark theme** — Material 3 Expressive design, persisted per-browser; all maps and charts respect the theme
-- **i18n** — English, Polish, German (auto-detected from browser, persisted)
+- **i18n** — English, Polish, German, French, Ukrainian, Russian, Dutch, Spanish, Czech, Slovak, Italian (auto-detected from browser, persisted)
 - **Fully responsive** — works on mobile and desktop; charts, maps, and panels adapt to screen size
 
 ---
 
 ## Architecture
 
-```
-┌──────────────┐    MQTT     ┌───────────┐   HTTP/WS   ┌──────────┐
-│  Meshtastic  │ ──────────► │ ingestor  │ ──────────► │  server  │
-│  network(s)  │             │  (Go)     │             │  (Go)    │
-└──────────────┘             └───────────┘             └──────────┘
-                                   │                        │
-                              SQLite (shared)          REST + WebSocket
-                                                            │
-                                                    ┌───────────────┐
-                                                    │  React (Vite) │
-                                                    │  MUI v9 / i18n│
-                                                    └───────────────┘
+```mermaid
+flowchart LR
+    M["MeshCore<br/>network(s)"] -- MQTT --> I["ingestor<br/>(Go)"]
+    I -- writes --> DB[("SQLite<br/>(shared)")]
+    DB -- polls --> S["server<br/>(Go)"]
+    S -- "REST + WebSocket" --> F["React (Vite)<br/>MUI v9 / i18n"]
 ```
 
 - **ingestor** — subscribes to MQTT topics, decodes MeshCore packets, writes to SQLite; stores raw hex per observation so each observer's received bytes are preserved
@@ -213,7 +207,7 @@ go run ./cmd/ingestor -config ../config.json &
 go run ./cmd/server   -config ../config.json
 ```
 
-Requires Go 1.22+. No CGO — `modernc.org/sqlite` is a pure-Go SQLite port.
+Requires Go 1.26+. No CGO — `modernc.org/sqlite` is a pure-Go SQLite port.
 
 ### Frontend
 
@@ -224,7 +218,7 @@ pnpm run dev        # Vite dev server on http://localhost:5173
                     # proxies /api and /ws to http://localhost:3000
 ```
 
-Requires Node 20+ and pnpm (or npm/yarn).
+Requires Node 22+ and pnpm (or npm/yarn).
 
 ### Frontend environment variables
 
@@ -242,9 +236,11 @@ cp frontend/.env.example frontend/.env.local
 | `VITE_MQTT_PORT` | `1883` | MQTT broker port shown in the same setup card. Set this if your broker listens on a non-default port (e.g. `8883` for TLS). |
 | `VITE_MQTT_USERNAME` | *(empty)* | MQTT username shown in the same setup card. Should match `MQTT_USERNAME` in `.env` / the broker's configured credentials. |
 | `VITE_MQTT_PASSWORD` | *(empty)* | MQTT password shown in the same setup card. Should match `MQTT_PASSWORD` in `.env` / the broker's configured credentials. |
-| `VITE_MAP_LAT` | `20` | Latitude the `/map` page centers on before any nodes have loaded (and falls back to if there's nothing to fit bounds to). |
+| `VITE_MAP_LAT` | `20` | Latitude the `/map` and `/live` pages center on before any nodes have loaded (and fall back to if there's nothing to fit bounds to). Setting any of the three `VITE_MAP_*` vars disables the auto-fit-to-loaded-nodes behavior in favor of this fixed view. |
 | `VITE_MAP_LON` | `0` | Longitude counterpart to `VITE_MAP_LAT`. |
 | `VITE_MAP_ZOOM` | `2` | Zoom level for the default map view. |
+| `VITE_UMAMI_URL` | *(empty)* | [Umami](https://umami.is/) analytics script URL. Set together with `VITE_UMAMI_WEBSITE_ID` to enable tracking; leave both empty to disable it entirely (also reflected on the `/privacy` page). |
+| `VITE_UMAMI_WEBSITE_ID` | *(empty)* | Umami site ID, paired with `VITE_UMAMI_URL`. |
 
 When empty the frontend uses relative URLs, which works with the Vite proxy in dev and Caddy/nginx in production.
 For Docker deployments, `VITE_SITE_URL` is read from `.env` when the frontend container starts and rewrites the served `robots.txt`/`sitemap.xml`.
@@ -305,6 +301,18 @@ image: ghcr.io/rikodev/litescope-frontend:1.2.0
      - caddy-data:/data
    ```
 4. `docker compose up -d` — Caddy will auto-provision a Let's Encrypt cert.
+
+### Behind an existing Traefik gateway
+
+If you already run Traefik with an external `traefik_gateway` network, use `docker-compose.traefik.yml` instead of the bundled-Caddy stack — it labels the backend/frontend containers for Traefik routing and pulls pre-built images:
+
+```bash
+cp .env.example .env
+cp config.example.json config.json
+# set MQTT_USERNAME, MQTT_PASSWORD, and DOMAIN in .env
+
+docker compose -f docker-compose.traefik.yml up -d
+```
 
 ### Cloudflare Pages (frontend only)
 
@@ -412,7 +420,7 @@ Migrations run automatically on startup; existing databases are upgraded in plac
 | UI library | MUI v9 (Material 3 Expressive) |
 | Charts | Recharts |
 | Map | Leaflet 1.9 + leaflet.markercluster |
-| i18n | i18next + react-i18next (EN / PL / DE) |
+| i18n | i18next + react-i18next (EN / PL / DE / FR / UK / RU / NL / ES / CS / SK / IT) |
 | Reverse proxy | Caddy 2 |
 | MQTT broker | Eclipse Mosquitto 2 |
 | Container runtime | Docker Compose |
@@ -425,4 +433,4 @@ MIT — see `LICENSE`.
 
 ---
 
-© 2025 liteScope by [riko.dev](https://riko.dev)
+© 2026 liteScope by [riko.dev](https://riko.dev)
