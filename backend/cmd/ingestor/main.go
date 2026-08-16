@@ -249,6 +249,15 @@ func handleMsg(writeCh chan<- *db.WriteItem, tag string, src config.MQTTSource, 
 	topic := m.Topic()
 	parts := strings.Split(topic, "/")
 
+	// A retained message is the broker replaying the last thing ever published
+	// on this topic, not a live observation — this fires on every (re)subscribe,
+	// including for observers that have been offline for a long time. Treating
+	// it as live would stamp last_seen with the current time forever, so a dead
+	// observer/packet never ages out via nodeRetentionDays/retentionDays.
+	if m.Retained() {
+		return
+	}
+
 	var msg map[string]any
 	if err := json.Unmarshal(m.Payload(), &msg); err != nil {
 		return

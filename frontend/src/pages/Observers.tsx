@@ -35,6 +35,10 @@ import { formatDistanceToNow } from 'date-fns'
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 
 const DAYS_OPTIONS = [{ l: '24 h', d: 1 }, { l: '3 d', d: 3 }, { l: '7 d', d: 7 }, { l: '30 d', d: 30 }]
+// Matches the backend's own node/observer refresh cadence (cmd/server's 30s
+// metadata reload), so entities pruned via nodeRetentionDays age out of this
+// list instead of lingering until the page is manually reloaded.
+const OBSERVER_REFRESH_MS = 30_000
 const COLORS = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6']
 
 interface Analytics {
@@ -57,8 +61,35 @@ export default function Observers() {
   const [loadingA, setLoadingA]   = useState(false)
   const observerIdParam = searchParams.get('id')
   const loadASeq = useRef(0)
+  const selectedRef = useRef<Observer | null>(null)
+  useEffect(() => { selectedRef.current = selected }, [selected])
 
-  useEffect(() => { api.observers().then(res => setObservers(res.observers ?? [])) }, [])
+  // Periodically refresh so observers pruned via nodeRetentionDays (or newly
+  // registered ones) show up without requiring a manual page reload.
+  useEffect(() => {
+    let cancelled = false
+    const refresh = () => {
+      api.observers().then(res => {
+        if (cancelled) return
+        const list = res.observers ?? []
+        setObservers(list)
+        if (selectedRef.current && !list.some(o => o.id === selectedRef.current!.id)) {
+          setSelected(null)
+          setAnalytics(null)
+        }
+      })
+    }
+    const refreshWhenVisible = () => { if (!document.hidden) refresh() }
+
+    refresh()
+    const id = setInterval(refresh, OBSERVER_REFRESH_MS)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [])
 
   // Guard against out-of-order responses: switching observers quickly can let
   // an older, slower request resolve after a newer one and overwrite it.
