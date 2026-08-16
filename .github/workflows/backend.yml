@@ -13,6 +13,9 @@ on:
       - "backend/**"
       - ".github/workflows/backend.yml"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Vet & build
