@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import Popover from '@mui/material/Popover'
 import Dialog from '@mui/material/Dialog'
 import { QRCodeSVG } from 'qrcode.react'
@@ -34,6 +34,10 @@ import LockIcon from '@mui/icons-material/Lock'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import QrCode2Icon from '@mui/icons-material/QrCode2'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import DynamicFeedIcon from '@mui/icons-material/DynamicFeed'
+import FilterListIcon from '@mui/icons-material/FilterList'
+import SettingsIcon from '@mui/icons-material/Settings'
+import Checkbox from '@mui/material/Checkbox'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import RegionFilter from '../components/RegionFilter'
@@ -43,7 +47,7 @@ import { deduplicateObs } from '../utils/packets'
 import { hashColor } from '../utils/colors'
 import { MESSAGE_TOKEN_RE, parseMessageSegments, isContact, isLocation, type ContactShare, type LocationShare } from '../utils/contacts'
 import L from 'leaflet'
-import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, type ChannelKey } from '../utils/storage'
+import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, loadCombinedHashes, saveCombinedHashes, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
 import { IataFlag } from '../utils/flags'
 import { useDateLocale } from '../hooks/useDateLocale'
@@ -75,10 +79,8 @@ function ab(u8: Uint8Array): ArrayBuffer {
 // recovers the raw ECB block D(B_i). To stop WebCrypto from stripping (and then
 // rejecting) PKCS7 padding on the final block, we append one extra ciphertext
 // block crafted to decrypt to a full 0x10 padding block, which it discards.
-async function aesEcbDecrypt(ct: Uint8Array, key: Uint8Array): Promise<Uint8Array> {
+async function aesEcbDecrypt(ct: Uint8Array, dk: CryptoKey, ek: CryptoKey): Promise<Uint8Array> {
   const iv = new Uint8Array(16)
-  const dk = await crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['decrypt'])
-  const ek = await crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['encrypt'])
   const lastBlock = ct.slice(ct.length - 16)
   const target = new Uint8Array(16)
   for (let j = 0; j < 16; j++) target[j] = (lastBlock[j] ?? 0) ^ 0x10
@@ -93,17 +95,38 @@ async function aesEcbDecrypt(ct: Uint8Array, key: Uint8Array): Promise<Uint8Arra
   return out
 }
 
+// Importing a CryptoKey is not free, and decryptBatch tries every stored key
+// against every still-encrypted message — without caching, a combined view
+// merging several channels could re-import the same handful of keys hundreds
+// of times per fetch. Cache by hex key, shared across the whole session.
+const keySetCache = new Map<string, Promise<{ dk: CryptoKey; ek: CryptoKey; hmacKey: CryptoKey }>>()
+function importKeySet(keyHex: string) {
+  let p = keySetCache.get(keyHex)
+  if (!p) {
+    p = (async () => {
+      const key = hexToBytes(keyHex)
+      const secret = new Uint8Array(32); secret.set(key)
+      const [dk, ek, hmacKey] = await Promise.all([
+        crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['decrypt']),
+        crypto.subtle.importKey('raw', ab(key), { name: 'AES-CBC' }, false, ['encrypt']),
+        crypto.subtle.importKey('raw', ab(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
+      ])
+      return { dk, ek, hmacKey }
+    })()
+    keySetCache.set(keyHex, p)
+  }
+  return p
+}
+
 async function tryDecrypt(encHex: string, macHex: string, keyHex: string): Promise<{ sender: string; text: string } | null> {
   try {
-    const key = hexToBytes(keyHex)
     const mac = hexToBytes(macHex)
     const ct  = hexToBytes(encHex)
-    if (key.length !== 16 || mac.length !== 2 || ct.length === 0 || ct.length % 16 !== 0) return null
-    const secret = new Uint8Array(32); secret.set(key)
-    const hmacKey = await crypto.subtle.importKey('raw', ab(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    if (hexToBytes(keyHex).length !== 16 || mac.length !== 2 || ct.length === 0 || ct.length % 16 !== 0) return null
+    const { dk, ek, hmacKey } = await importKeySet(keyHex)
     const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, ab(ct)))
     if (sig[0] !== mac[0] || sig[1] !== mac[1]) return null
-    const plain = await aesEcbDecrypt(ct, key)
+    const plain = await aesEcbDecrypt(ct, dk, ek)
     if (plain.length < 5) return null
     let text = new TextDecoder('utf-8', { fatal: false }).decode(plain.slice(5))
     const nul = text.indexOf('\0'); if (nul >= 0) text = text.slice(0, nul)
@@ -146,15 +169,82 @@ function avatarGlyph(name: string): string {
   return name[0]?.toUpperCase() ?? '?'
 }
 
+// A channel is "known" once its name has been decrypted client- or
+// server-side; otherwise the list falls back to showing the raw hex hash.
+function isKnownChannel(ch: Channel): boolean { return !/^[0-9a-fA-F]+$/.test(ch.name) }
+// Public always first, then alphabetical (case-insensitive).
+function byChannelName(a: Channel, b: Channel): number {
+  const ap = a.name.toLowerCase() === 'public', bp = b.name.toLowerCase() === 'public'
+  if (ap !== bp) return ap ? -1 : 1
+  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+}
+
 // ── message paging ────────────────────────────────────────────────────────────
 const PAGE_SIZE = 100
+// The combined view fetches this many messages PER selected channel — kept
+// much smaller than PAGE_SIZE because it's multiplied across every channel in
+// the combination (e.g. 8 channels × 100 used to mean ~800 message trees
+// mounted in the DOM at once with no way to load less).
+const COMBINED_PAGE_SIZE = 40
+
+// ── shared message-list helpers (used by both the single-channel chat and the
+// combined view) ────────────────────────────────────────────────────────────
+type DecryptedMap = Record<number, { sender: string; text: string }>
+
+// A single-byte channel hash is shared by many different channels, so a loaded
+// page mixes in messages from other channels that collide on the same byte.
+// Once we can read at least one message (this channel is keyed), show only the
+// messages we can actually decrypt — the ones that belong to this channel's
+// key. For an unkeyed channel (nothing readable) we keep showing the raw
+// encrypted messages so they can still be browsed.
+function isReadableMsg(m: Packet, decrypted: DecryptedMap): boolean {
+  return !!decrypted[m.id] || m.decoded?.decryptionStatus === 'decrypted'
+}
+
+// Stacking key: readable messages group by sender + text; still-encrypted ones
+// group by their raw ciphertext (identical retransmits), and fall back to a
+// unique per-message key so unreadable, non-identical messages never merge.
+function stackKeyFor(m: Packet, decrypted: DecryptedMap): string {
+  const cdec = decrypted[m.id]
+  const d = m.decoded
+  if (needsClientDecrypt(d?.decryptionStatus) && !cdec) {
+    const enc = d?.encryptedData as string | undefined
+    return enc ? `e:${enc}` : `u:${m.id}`
+  }
+  const sender = cdec?.sender || (d?.sender as string) || 'Unknown'
+  const text = cdec?.text || (d?.text as string) || ''
+  return `r:${sender} ${text}`
+}
+
+type Row = { msg: Packet; count: number; key: string; obsPacket: Packet; hopsPacket: Packet }
+
+// Display rows in chat order (oldest→newest). When stacking is on, each run of
+// consecutive same-key messages collapses to one row keyed by its newest
+// member, while obs/hops use the strongest packet seen in the whole run.
+function buildDisplayRows(messages: Packet[], stackDuplicates: boolean, decrypted: DecryptedMap): Row[] {
+  const ordered = [...messages].reverse()
+  if (!stackDuplicates) return ordered.map(m => ({ msg: m, count: 1, key: String(m.id), obsPacket: m, hopsPacket: m }))
+  const rows: Row[] = []
+  for (const m of ordered) {
+    const k = stackKeyFor(m, decrypted)
+    const last = rows[rows.length - 1]
+    if (last && last.key === k) {
+      last.count++
+      last.msg = m
+      if (m.obsCount > last.obsPacket.obsCount) last.obsPacket = m
+      if (m.maxHops > last.hopsPacket.maxHops) last.hopsPacket = m
+    } else {
+      rows.push({ msg: m, count: 1, key: k, obsPacket: m, hopsPacket: m })
+    }
+  }
+  return rows
+}
 
 // ── component ────────────────────────────────────────────────────────────────
 export default function Channels() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const { t } = useTranslation()
-  const dateLocale = useDateLocale()
   const navigate = useNavigate()
   const { hash: urlHash } = useParams<{ hash?: string }>()
   const [channels, setChannels]     = useState<Channel[]>([])
@@ -169,9 +259,28 @@ export default function Channels() {
   const [sidebarReady, setSidebarReady] = useState(false)
   const [regionFilter, setRegionFilter] = useState<Set<string>>(new Set())
   const [regionLock, setRegionLock]     = useState(false)
+  // Region filter chips can wrap to several rows — collapsed by default so the
+  // sidebar header doesn't eat mobile screen space when no filter is active.
+  const [showRegionFilter, setShowRegionFilter] = useState(false)
   const [hasMore, setHasMore]       = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
+  const [combinedShowScrollBottom, setCombinedShowScrollBottom] = useState(false)
+  // Combined view: pick multiple channels and see their messages merged into one
+  // feed. The selection is persisted (surfaced as a pinned pseudo-channel row
+  // above the real channel list) so it survives leaving combined mode and page
+  // reloads instead of having to be rebuilt every time.
+  const [combinePicking, setCombinePicking] = useState(false)
+  const [combinedHashes, setCombinedHashes] = useState<Set<string>>(() => new Set(loadCombinedHashes()))
+  const [combinedActive, setCombinedActive] = useState(false)
+  useEffect(() => { saveCombinedHashes([...combinedHashes]) }, [combinedHashes])
+  const [combinedMessages, setCombinedMessages] = useState<Packet[]>([])
+  const [combinedLoading, setCombinedLoading] = useState(false)
+  const [combinedHasMore, setCombinedHasMore] = useState(false)
+  const [combinedLoadingMore, setCombinedLoadingMore] = useState(false)
+  // Per-channel pagination offset for "load more" in the combined feed —
+  // each selected channel is paged independently, then merged.
+  const combinedOffsets = useRef<Map<string, number>>(new Map())
   // Collapse runs of identical consecutive messages (same sender + text) into a
   // single bubble with a ×N count — handy when a node retransmits the same line
   // 2–3 times. Persisted per-browser.
@@ -181,6 +290,10 @@ export default function Channels() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const skipAutoScroll = useRef(false)
   const initialLoad = useRef(false)
+  const combinedBottomRef = useRef<HTMLDivElement>(null)
+  const combinedScrollRef = useRef<HTMLDivElement>(null)
+  const combinedInitialLoad = useRef(false)
+  const combinedSkipAutoScroll = useRef(false)
   // Persisted channelHash → decrypted-name map, re-applied to every server-loaded
   // channel list so client-side names survive refetches and reloads.
   const hashNames = useRef<Record<string, string>>(loadChannelHashNames())
@@ -195,6 +308,23 @@ export default function Channels() {
     initialLoad.current = false
     bottomRef.current?.scrollIntoView({ behavior })
   }, [messages])
+
+  useEffect(() => {
+    // Deliberately NOT keyed on combinedActive: that flips true right when
+    // opening the view, before fetchCombined has resolved, which used to
+    // consume the "instant jump" flag against stale/empty content — the
+    // *real* data arriving moments later then had to smooth-scroll all the
+    // way down from the top, and onCombinedScroll's near-top loadMore check
+    // fired mid-animation and force-reset scrollTop, leaving the view stuck
+    // partway. Triggering only off combinedMessages means the flag is
+    // consumed exactly when real data lands, so the first paint jumps
+    // straight to the bottom instead of animating through it.
+    if (!combinedActive) return
+    if (combinedSkipAutoScroll.current) { combinedSkipAutoScroll.current = false; return }
+    const behavior = combinedInitialLoad.current ? 'auto' : 'smooth'
+    combinedInitialLoad.current = false
+    combinedBottomRef.current?.scrollIntoView({ behavior })
+  }, [combinedMessages]) // eslint-disable-line react-hooks/exhaustive-deps
   // Server-side region filter shared with the map/packets pages: the channel
   // list (and its message counts) reflects only packets heard in the selected
   // regions. Empty selection = no params = the unfiltered list.
@@ -224,15 +354,139 @@ export default function Channels() {
     if (!urlHash) { setSelected(null); return }
     if (!channels.length) return
     const ch = channels.find(c => c.hash === urlHash)
-    if (ch && ch.hash !== selected?.hash) selectChannelData(ch)
+    if (ch && ch.hash !== selected?.hash) { setCombinedActive(false); selectChannelData(ch) }
   }, [urlHash, channels]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectChannel = (ch: Channel) => {
+  const selectChannel = useCallback((ch: Channel) => {
+    setCombinedActive(false)
     navigate(`/channels/${ch.hash}`, { replace: false })
+  }, [navigate])
+
+  const toggleCombinePick = useCallback((hash: string) => {
+    setCombinedHashes(prev => {
+      const next = new Set(prev)
+      if (next.has(hash)) next.delete(hash); else next.add(hash)
+      return next
+    })
+  }, [])
+
+  const startCombinedView = useCallback(() => {
+    if (combinedHashes.size === 0) return
+    combinedInitialLoad.current = true
+    // Live WS updates for combined channels only land while combinedActive is
+    // true, so messages that arrived while viewing something else (or while
+    // the tab was backgrounded) would otherwise never show up. Forcing the
+    // fetch-key guard to miss on (re)entry guarantees a fresh catch-up fetch,
+    // while edits made *within* an already-open view (picker toggles) still
+    // hit the cache in the effect below.
+    lastCombinedFetchKeyRef.current = ''
+    setCombinePicking(false)
+    setCombinedActive(true)
+    setSelected(null)
+    navigate('/channels')
+  }, [combinedHashes, navigate])
+
+  // Pinned pseudo-channel row: click to jump straight into the (already
+  // selected) combination, or open the picker if nothing is selected yet.
+  const openCombined = useCallback(
+    () => (combinedHashes.size > 0 ? startCombinedView() : setCombinePicking(true)),
+    [combinedHashes, startCombinedView],
+  )
+  const editCombined = useCallback(() => setCombinePicking(true), [])
+
+  // Fetch the merged message feed for the combined view — one page per
+  // selected channel, newest-first overall. Kept to COMBINED_PAGE_SIZE per
+  // channel (not the single-channel PAGE_SIZE) since it's multiplied across
+  // every selected channel; loadMoreCombined pages further back per channel.
+  const fetchCombined = async (hashes: Set<string>) => {
+    if (hashes.size === 0) return
+    const entries = await Promise.all([...hashes].map(async hash =>
+      [hash, await api.channelMessages(hash, COMBINED_PAGE_SIZE, 0, channelParams()).catch(() => [])] as const))
+    combinedOffsets.current = new Map(entries.map(([hash, msgs]) => [hash, msgs.length]))
+    const merged = entries.flatMap(([, msgs]) => msgs).sort((a, b) => new Date(b.firstSeen).getTime() - new Date(a.firstSeen).getTime())
+    setCombinedMessages(merged)
+    setCombinedHasMore(entries.some(([, msgs]) => msgs.length >= COMBINED_PAGE_SIZE))
+    setCombinedShowScrollBottom(false)
+    decryptBatch(merged, storedKeys)
   }
 
+  const loadMoreCombined = async () => {
+    if (!combinedActive || combinedLoadingMore || !combinedHasMore) return
+    setCombinedLoadingMore(true)
+    const container = combinedScrollRef.current
+    const prevHeight = container?.scrollHeight ?? 0
+    try {
+      const hashes = [...combinedHashes]
+      const entries = await Promise.all(hashes.map(async hash => {
+        const offset = combinedOffsets.current.get(hash) ?? 0
+        return [hash, await api.channelMessages(hash, COMBINED_PAGE_SIZE, offset, channelParams()).catch(() => [])] as const
+      }))
+      entries.forEach(([hash, msgs]) => combinedOffsets.current.set(hash, (combinedOffsets.current.get(hash) ?? 0) + msgs.length))
+      const older = entries.flatMap(([, msgs]) => msgs)
+      if (older.length > 0) {
+        combinedSkipAutoScroll.current = true
+        setCombinedMessages(prev => [...prev, ...older].sort((a, b) => new Date(b.firstSeen).getTime() - new Date(a.firstSeen).getTime()))
+        decryptBatch(older, storedKeys)
+        requestAnimationFrame(() => {
+          if (container) container.scrollTop = container.scrollHeight - prevHeight
+        })
+      }
+      setCombinedHasMore(entries.some(([, msgs]) => msgs.length >= COMBINED_PAGE_SIZE))
+    } finally {
+      setCombinedLoadingMore(false)
+    }
+  }
+
+  const onCombinedScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (el.scrollTop < 80) loadMoreCombined()
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    setCombinedShowScrollBottom(fromBottom > 240)
+  }
+
+  const scrollToBottomCombined = () => {
+    combinedBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setCombinedShowScrollBottom(false)
+  }
+
+  // Refetch on filter/selection change. Skipped while the user is still
+  // picking channels (combinePicking) — each checkbox toggle changes
+  // combinedHashes, and re-fetching + re-decrypting on every single click made
+  // the picker feel like it hung. The view catches up once picking ends.
+  // Also skipped if the *effective* selection/filters haven't actually
+  // changed since the last fetch — merely opening then closing the picker
+  // without touching anything used to re-trigger this (combinePicking itself
+  // is a dep so it flips false→true→false) causing a pointless full
+  // refetch+redecrypt on every close.
+  const lastCombinedFetchKeyRef = useRef('')
+  useEffect(() => {
+    if (!combinedActive || combinePicking) return
+    if (combinedHashes.size === 0) {
+      lastCombinedFetchKeyRef.current = ''
+      combinedOffsets.current = new Map()
+      setCombinedHasMore(false)
+      setCombinedMessages([])
+      setCombinedActive(false)
+      navigate('/channels')
+      return
+    }
+    const fetchKey = [...combinedHashes].sort().join(',') + '|' + [...regionFilter].sort().join(',') + '|' + regionLock
+    if (fetchKey === lastCombinedFetchKeyRef.current) return
+    lastCombinedFetchKeyRef.current = fetchKey
+    let cancelled = false
+    setCombinedLoading(true)
+    fetchCombined(combinedHashes).finally(() => { if (!cancelled) setCombinedLoading(false) })
+    return () => { cancelled = true }
+  }, [combinedActive, combinePicking, combinedHashes, regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectChannelData = async (ch: Channel) => {
-    setSelected(ch); setDecrypted({})
+    // Only clear the decrypted-message cache when actually switching channels
+    // — a same-channel refresh (e.g. the visibilitychange resync below) used
+    // to wipe it every time, forcing every already-decrypted message to be
+    // re-run through the AES/HMAC path from scratch for no reason.
+    const switchingChannel = selected?.hash !== ch.hash
+    setSelected(ch)
+    if (switchingChannel) setDecrypted({})
     document.title = `${ch.name} — liteScope`
     const msgs = await api.channelMessages(ch.hash, PAGE_SIZE, 0, channelParams())
     initialLoad.current = true
@@ -284,7 +538,7 @@ export default function Channels() {
     setShowScrollBottom(false)
   }
 
-  const clickSender = (senderName: string) => {
+  const clickSender = useCallback((senderName: string) => {
     if (!senderName || senderName === 'Unknown') return
     const q = senderName.toLowerCase().trim()
     // 1. exact  2. node name contains sender  3. sender contains node name
@@ -294,16 +548,21 @@ export default function Channels() {
       nodes.find(n => q.includes(n.name.toLowerCase()) && n.name.length > 2)
     if (match) navigate(`/nodes/${match.pubKey}`)
     else navigate(`/nodes?search=${encodeURIComponent(senderName)}`)
-  }
+  }, [nodes, navigate])
 
   const decryptBatch = async (msgs: Packet[], keys: StoredKey[]) => {
     const updates: Record<number, { sender: string; text: string }> = {}
     const nameMap: Record<string, string> = {}   // channelHash → key.name
-    for (const msg of msgs) {
+    // Decrypt attempts run per-message concurrently (each is a handful of
+    // WebCrypto calls) instead of one giant sequential await chain — with a
+    // combined view merging several channels' worth of encrypted messages,
+    // doing this serially made every refetch visibly stall.
+    await Promise.all(msgs.map(async msg => {
       const d = msg.decoded
-      if (!d || !needsClientDecrypt(d.decryptionStatus)) continue
+      if (!d || !needsClientDecrypt(d.decryptionStatus)) return
+      if (decrypted[msg.id]) return // already decrypted client-side — skip redundant crypto work
       const mac = d.mac as string | undefined; const enc = d.encryptedData as string | undefined
-      if (!mac || !enc) continue
+      if (!mac || !enc) return
       for (const k of keys) {
         const r = await tryDecrypt(enc, mac, k.key)
         if (r) {
@@ -313,7 +572,7 @@ export default function Channels() {
           break
         }
       }
-    }
+    }))
     if (Object.keys(updates).length > 0) setDecrypted(p => ({ ...p, ...updates }))
     if (Object.keys(nameMap).length > 0) {
       // Remember the learned hash→name mappings so the channel stays named across
@@ -333,10 +592,11 @@ export default function Channels() {
       if (hiddenMs < 5000) return
       api.channelsFiltered(channelParams()).then(chs => setChannels(applyNames(chs)))
       if (selected) selectChannelData(selected)
+      if (combinedActive) fetchCombined(combinedHashes)
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [selected, regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, regionFilter, regionLock, combinedActive, combinedHashes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const unsub = stream.subscribe(async msg => {
@@ -375,6 +635,10 @@ export default function Channels() {
       if (isOpenChannel) {
         setMessages(p => [msg.data, ...p])
       }
+      const isCombinedChannel = inRegion && combinedActive && !!msg.data.channelHash && combinedHashes.has(msg.data.channelHash)
+      if (isCombinedChannel) {
+        setCombinedMessages(p => [msg.data, ...p])
+      }
       if (inRegion) {
         setChannels(prev => {
           const idx = prev.findIndex(c => c.hash === msg.data.channelHash)
@@ -407,90 +671,98 @@ export default function Channels() {
       if (needsClientDecrypt(d.decryptionStatus)) decryptBatch([msg.data], storedKeys)
     })
     return unsub
-  }, [selected, storedKeys, regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, storedKeys, regionFilter, regionLock, combinedActive, combinedHashes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-attempt decryption of already-loaded messages whenever the key set
   // changes (e.g. the user just added a key in the Key Manager) so the channel
   // unlocks without needing to reselect it.
   useEffect(() => {
     if (messages.length) decryptBatch(messages, storedKeys)
+    if (combinedMessages.length) decryptBatch(combinedMessages, storedKeys)
   }, [storedKeys]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistKeys = (k: StoredKey[]) => { setStoredKeys(k); saveKeys(k) }
 
-  const showSidebar = !isMobile || (!selected && !showKeyMgr)
-  const showMain    = !isMobile || selected || showKeyMgr
+  const showSidebar = !isMobile || (!selected && !showKeyMgr && (!combinedActive || combinePicking))
+  const showMain    = !isMobile || selected || showKeyMgr || combinedActive
 
-  // A single-byte channel hash is shared by many different channels, so the
-  // loaded page mixes in messages from other channels that collide on the same
-  // byte. Once we can read at least one message (this channel is keyed), show
-  // only the messages we can actually decrypt — the ones that belong to this
-  // channel's key. For an unkeyed channel (nothing readable) we keep showing the
-  // raw encrypted messages so they can still be browsed.
-  const isReadable = (m: Packet) => !!decrypted[m.id] || m.decoded?.decryptionStatus === 'decrypted'
-  const channelKeyed = messages.some(isReadable)
-  const visibleMessages = channelKeyed ? messages.filter(isReadable) : messages
+  // Memoized: these are O(n) scans/rebuilds over the full message list
+  // (filter + reverse + stacking) and used to run on *every* render of
+  // Channels, including ones triggered by wholly unrelated state (scroll
+  // position, region-filter collapse toggling, etc).
+  const visibleMessages = useMemo(() => {
+    const keyed = messages.some(m => isReadableMsg(m, decrypted))
+    return keyed ? messages.filter(m => isReadableMsg(m, decrypted)) : messages
+  }, [messages, decrypted])
+  const displayRows = useMemo(() => buildDisplayRows(visibleMessages, stackDuplicates, decrypted), [visibleMessages, stackDuplicates, decrypted])
 
-  // Stacking key: readable messages group by sender + text; still-encrypted ones
-  // group by their raw ciphertext (identical retransmits), and fall back to a
-  // unique per-message key so unreadable, non-identical messages never merge.
-  const stackKey = (m: Packet): string => {
-    const cdec = decrypted[m.id]
-    const d = m.decoded
-    if (needsClientDecrypt(d?.decryptionStatus) && !cdec) {
-      const enc = d?.encryptedData as string | undefined
-      return enc ? `e:${enc}` : `u:${m.id}`
-    }
-    const sender = cdec?.sender || (d?.sender as string) || 'Unknown'
-    const text = cdec?.text || (d?.text as string) || ''
-    return `r:${sender} ${text}`
-  }
-
-  // Display rows in chat order (oldest→newest). When stacking is on, each run of
-  // consecutive same-key messages collapses to one row keyed by its newest
-  // member, while obs/hops use the strongest packet seen in the whole run.
-  type Row = { msg: Packet; count: number; key: string; obsPacket: Packet; hopsPacket: Packet }
-  const displayRows: Row[] = (() => {
-    const ordered = [...visibleMessages].reverse()
-    if (!stackDuplicates) return ordered.map(m => ({ msg: m, count: 1, key: String(m.id), obsPacket: m, hopsPacket: m }))
-    const rows: Row[] = []
-    for (const m of ordered) {
-      const k = stackKey(m)
-      const last = rows[rows.length - 1]
-      if (last && last.key === k) {
-        last.count++
-        last.msg = m
-        if (m.obsCount > last.obsPacket.obsCount) last.obsPacket = m
-        if (m.maxHops > last.hopsPacket.maxHops) last.hopsPacket = m
-      } else {
-        rows.push({ msg: m, count: 1, key: k, obsPacket: m, hopsPacket: m })
-      }
-    }
-    return rows
-  })()
+  // Combined view: merge messages from several selected channels into one feed.
+  const combinedVisibleMessages = useMemo(() => {
+    const keyed = combinedMessages.some(m => isReadableMsg(m, decrypted))
+    return keyed ? combinedMessages.filter(m => isReadableMsg(m, decrypted)) : combinedMessages
+  }, [combinedMessages, decrypted])
+  const combinedDisplayRows = useMemo(() => buildDisplayRows(combinedVisibleMessages, stackDuplicates, decrypted), [combinedVisibleMessages, stackDuplicates, decrypted])
+  // O(1) channel lookup for the combined feed's per-row channel badge, instead
+  // of an O(channels) .find() inside the row .map() (O(rows × channels) per render).
+  const channelsByHash = useMemo(() => new Map(channels.map(c => [c.hash, c])), [channels])
 
   return (
     <Box sx={{ display: 'flex', height: '100%', background: md3.background }}>
       {/* ── Channel list ── */}
       {showSidebar && (
         <Paper elevation={1} sx={{ width: { xs: '100%', md: 220 }, display: 'flex', flexDirection: 'column', borderRight: { md: `1px solid ${md3.outlineVariant}` }, borderRadius: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0, minHeight: 48, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.5, minHeight: 40, borderBottom: `1px solid ${md3.outlineVariant}` }}>
             <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('channels.count', { count: channels.length })}</Typography>
-            <Tooltip title={t('channels.manageKeys')}>
-              <IconButton size="small" onClick={() => setShowKeyMgr(v => !v)} sx={{ color: showKeyMgr ? md3.primary : md3.onSurfaceVariant }}>
-                <KeyIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {iatas.length > 0 && (
+                <Tooltip title={t('common.filters')}>
+                  <IconButton size="small"
+                    onClick={() => setShowRegionFilter(v => !v)}
+                    sx={{ color: showRegionFilter || regionFilter.size > 0 ? md3.primary : md3.onSurfaceVariant }}>
+                    <Badge variant="dot" color="primary" invisible={regionFilter.size === 0}>
+                      <FilterListIcon fontSize="small" />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              )}
+              <Tooltip title={t('channels.manageKeys')}>
+                <IconButton size="small" onClick={() => setShowKeyMgr(v => !v)} sx={{ color: showKeyMgr ? md3.primary : md3.onSurfaceVariant }}>
+                  <KeyIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
           </Box>
+          {combinePicking && (
+            <Box sx={{
+              display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, flexWrap: 'wrap',
+              alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between', gap: 0.75,
+              px: 1.5, py: 0.75, borderBottom: `1px solid ${md3.outlineVariant}`, background: alpha(md3.primary, 0.06),
+            }}>
+              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('channels.combineHint')}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: { xs: '100%', sm: 'auto' } }}>
+                <Button size="small" variant="contained" disabled={combinedHashes.size === 0} onClick={startCombinedView}
+                  sx={{ flexShrink: 0, textTransform: 'none', whiteSpace: 'nowrap', fontSize: 12, px: 1, minWidth: 0, flex: { xs: 1, sm: 'initial' } }}>
+                  {t('channels.viewCombined', { count: combinedHashes.size })}
+                </Button>
+                <IconButton size="small" onClick={() => setCombinePicking(false)} sx={{ color: md3.onSurfaceVariant, flexShrink: 0 }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
+          )}
           {sidebarReady && (
             <>
               {iatas.length > 0 && (
-                <Box sx={{ px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
-                  <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter}
-                    lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
-                </Box>
+                <Collapse in={showRegionFilter}>
+                  <Box sx={{ px: 1.5, py: 1, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+                    <RegionFilter iatas={iatas} value={regionFilter} onChange={setRegionFilter}
+                      lock={regionLock} onLockChange={setRegionLock} showLabel={false} />
+                  </Box>
+                </Collapse>
               )}
-              <ChannelList channels={channels} selected={selected} onSelect={selectChannel} seenCounts={seenCounts} />
+              <ChannelList channels={channels} selected={selected} onSelect={selectChannel} seenCounts={seenCounts}
+                combinePicking={combinePicking} combinedHashes={combinedHashes} onToggleCombine={toggleCombinePick}
+                combinedActive={combinedActive} onOpenCombined={openCombined} onEditCombined={editCombined} />
             </>
           )}
         </Paper>
@@ -500,6 +772,66 @@ export default function Channels() {
       {showMain && <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {showKeyMgr ? (
           <KeyManager keys={storedKeys} onChange={persistKeys} onClose={() => { setShowKeyMgr(false); if (isMobile) navigate('/channels') }} />
+        ) : combinedActive ? (
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, minHeight: 48, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0, flexWrap: 'wrap' }}>
+              {isMobile && (
+                <IconButton size="small" onClick={() => { setCombinedActive(false); navigate('/channels') }} sx={{ color: md3.onSurfaceVariant, mr: 0.5 }}>
+                  <ArrowBackIcon fontSize="small" />
+                </IconButton>
+              )}
+              <DynamicFeedIcon sx={{ fontSize: 16, color: md3.primary }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{t('channels.combinedView')}</Typography>
+              <Tooltip title={t('channels.editCombined')}>
+                <IconButton size="small" onClick={editCombined} sx={{ color: md3.onSurfaceVariant }}>
+                  <SettingsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title={t('channels.stackTooltip')}>
+                <FormControlLabel
+                  sx={{ ml: 'auto', mr: 0 }}
+                  control={<Switch size="small" checked={stackDuplicates} onChange={e => setStackDuplicates(e.target.checked)} />}
+                  label={<Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>}
+                />
+              </Tooltip>
+              <Divider orientation="vertical" flexItem sx={{ my: 0.5, borderColor: md3.outlineVariant }} />
+              <Typography variant="caption" sx={{ color: md3.outline }}>
+                {combinedLoading ? t('channels.loadingMore') : t('channels.messages', { count: combinedVisibleMessages.length })}
+              </Typography>
+            </Box>
+            <Box sx={{ flex: 1, position: 'relative', minHeight: 0 }}>
+              <Box ref={combinedScrollRef} onScroll={onCombinedScroll} sx={{ position: 'absolute', inset: 0, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {combinedHasMore && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                    <Button size="small" variant="text" onClick={loadMoreCombined} disabled={combinedLoadingMore} sx={{ color: md3.onSurfaceVariant }}>
+                      {combinedLoadingMore ? t('channels.loadingMore') : t('channels.loadMore')}
+                    </Button>
+                  </Box>
+                )}
+                {combinedDisplayRows.map(({ msg, count, obsPacket, hopsPacket }) => (
+                  <MessageRow key={msg.id} msg={msg} count={count} obsPacket={obsPacket} hopsPacket={hopsPacket}
+                    decrypted={decrypted} channels={channels} nodes={nodes} clickSender={clickSender} onChannelClick={selectChannel}
+                    channel={channelsByHash.get(msg.channelHash ?? '')} />
+                ))}
+                <div ref={combinedBottomRef} />
+              </Box>
+              {combinedShowScrollBottom && (
+                <IconButton
+                  onClick={scrollToBottomCombined}
+                  size="small"
+                  sx={{
+                    position: 'absolute', bottom: 16, right: 16,
+                    background: md3.surfaceContainerHigh, color: md3.onSurface,
+                    border: `1px solid ${md3.outlineVariant}`,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    '&:hover': { background: md3.surfaceContainerHighest },
+                  }}
+                >
+                  <KeyboardArrowDownIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Box>
+          </>
         ) : selected ? (
           <>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0, minHeight: 48, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
@@ -530,75 +862,10 @@ export default function Channels() {
                   </Button>
                 </Box>
               )}
-              {displayRows.map(({ msg, count, obsPacket, hopsPacket }) => {
-                const dec    = msg.decoded
-                const cdec   = decrypted[msg.id]
-                const noKey  = needsClientDecrypt(dec?.decryptionStatus) && !cdec
-                const sender = cdec?.sender || (dec?.sender as string) || 'Unknown'
-                const rawT   = cdec?.text || (dec?.text as string) || ''
-                const text   = rawT.startsWith(sender + ': ') ? rawT.slice(sender.length + 2) : rawT
-                return (
-                  <Box key={msg.id} sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', opacity: noKey ? 0.5 : 1 }}>
-                    <Avatar
-                      onClick={() => clickSender(sender)}
-                      sx={{ width: 34, height: 34, background: hashColor(sender), fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
-                    >
-                      {avatarGlyph(sender)}
-                    </Avatar>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      {/* Header: sender + time + encryption badge */}
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.25, flexWrap: 'wrap' }}>
-                        <Typography
-                          variant="body2"
-                          onClick={() => clickSender(sender)}
-                          sx={{ fontWeight: 700, color: hashColor(sender), cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-                        >{sender}</Typography>
-                        <Tooltip title={new Date(msg.firstSeen).toLocaleString()} placement="top">
-                          <Typography variant="caption" sx={{ color: md3.outline, cursor: 'default' }}>
-                            {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true, locale: dateLocale })}
-                          </Typography>
-                        </Tooltip>
-                        {noKey && <Chip label={`🔒 ${t('channels.encrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
-                        {cdec && <Chip label={`🔓 ${t('channels.decrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#22c55e', 0.15), color: '#22c55e' }} />}
-                        {count > 1 && (
-                          <Tooltip title={t('channels.stackedTimes', { count })}>
-                            <Chip label={`×${count}`} size="small" sx={{ fontSize: 10, height: 18, fontWeight: 700, background: alpha(md3.primary, 0.15), color: md3.primary }} />
-                          </Tooltip>
-                        )}
-                      </Box>
-
-                      {/* Message body */}
-                      {noKey
-                        ? <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace' }}>{(dec?.encryptedData as string | undefined)?.slice(0, 40) ?? ''}…</Typography>
-                        : <MessageText text={text} onMentionClick={clickSender} channels={channels} onChannelClick={selectChannel} />
-                      }
-
-                      {/* Meta row: obs · hops popover · link */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
-                        {obsPacket.obsCount > 0 && <ObsPopover packet={obsPacket} />}
-                        {hopsPacket.maxHops > 0 && (
-                          <>
-                            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
-                            <HopsPopover packet={hopsPacket} nodes={nodes} />
-                          </>
-                        )}
-                        {msg.bestScope && (
-                          <>
-                            <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
-                            <Chip label={msg.bestScope} size="small" sx={{ fontSize: 10, height: 18, background: alpha(md3.primary, 0.1), color: md3.primary }} />
-                          </>
-                        )}
-                        <Tooltip title="View packet">
-                          <IconButton size="small" onClick={() => navigate(`/packets?hash=${msg.hash}`)}
-                            sx={{ color: md3.outline, p: 0.25, ml: 'auto', '&:hover': { color: md3.primary } }}>
-                            <OpenInNewIcon sx={{ fontSize: 13 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </Box>
-                  </Box>
-                )
-              })}
+              {displayRows.map(({ msg, count, obsPacket, hopsPacket }) => (
+                <MessageRow key={msg.id} msg={msg} count={count} obsPacket={obsPacket} hopsPacket={hopsPacket}
+                  decrypted={decrypted} channels={channels} nodes={nodes} clickSender={clickSender} onChannelClick={selectChannel} />
+              ))}
               <div ref={bottomRef} />
             </Box>
             {showScrollBottom && (
@@ -655,6 +922,101 @@ function MessageText(props: {
     </Box>
   )
 }
+
+// ── One chat message row — shared by the single-channel view and the combined
+// view. `channel`, when passed, renders a small clickable badge naming the
+// source channel (only meaningful once messages from several channels mix
+// together in the combined feed). ─────────────────────────────────────────────
+const MessageRow = memo(function MessageRow({ msg, count, obsPacket, hopsPacket, decrypted, channels, nodes, clickSender, onChannelClick, channel }: {
+  msg: Packet
+  count: number
+  obsPacket: Packet
+  hopsPacket: Packet
+  decrypted: Record<number, { sender: string; text: string }>
+  channels: Channel[]
+  nodes: { pubKey: string; name: string }[]
+  clickSender: (name: string) => void
+  onChannelClick: (ch: Channel) => void
+  channel?: Channel | undefined
+}) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+  const dateLocale = useDateLocale()
+  const navigate = useNavigate()
+
+  const dec    = msg.decoded
+  const cdec   = decrypted[msg.id]
+  const noKey  = needsClientDecrypt(dec?.decryptionStatus) && !cdec
+  const sender = cdec?.sender || (dec?.sender as string) || 'Unknown'
+  const rawT   = cdec?.text || (dec?.text as string) || ''
+  const text   = rawT.startsWith(sender + ': ') ? rawT.slice(sender.length + 2) : rawT
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', opacity: noKey ? 0.5 : 1 }}>
+      <Avatar
+        onClick={() => clickSender(sender)}
+        sx={{ width: 34, height: 34, background: hashColor(sender), fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+      >
+        {avatarGlyph(sender)}
+      </Avatar>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Header: sender + time + channel badge + encryption badge */}
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.25, flexWrap: 'wrap' }}>
+          <Typography
+            variant="body2"
+            onClick={() => clickSender(sender)}
+            sx={{ fontWeight: 700, color: hashColor(sender), cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+          >{sender}</Typography>
+          {channel && (
+            <Chip label={channel.name} size="small" onClick={() => onChannelClick(channel)}
+              sx={{ fontSize: 10, height: 18, fontWeight: 700, cursor: 'pointer', background: alpha(hashColor(channel.name), 0.15), color: hashColor(channel.name) }} />
+          )}
+          <Tooltip title={new Date(msg.firstSeen).toLocaleString()} placement="top">
+            <Typography variant="caption" sx={{ color: md3.outline, cursor: 'default' }}>
+              {formatDistanceToNow(new Date(msg.firstSeen), { addSuffix: true, locale: dateLocale })}
+            </Typography>
+          </Tooltip>
+          {noKey && <Chip label={`🔒 ${t('channels.encrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#f59e0b', 0.15), color: '#f59e0b' }} />}
+          {cdec && <Chip label={`🔓 ${t('channels.decrypted')}`} size="small" sx={{ fontSize: 10, height: 18, background: alpha('#22c55e', 0.15), color: '#22c55e' }} />}
+          {count > 1 && (
+            <Tooltip title={t('channels.stackedTimes', { count })}>
+              <Chip label={`×${count}`} size="small" sx={{ fontSize: 10, height: 18, fontWeight: 700, background: alpha(md3.primary, 0.15), color: md3.primary }} />
+            </Tooltip>
+          )}
+        </Box>
+
+        {/* Message body */}
+        {noKey
+          ? <Typography variant="caption" sx={{ color: md3.outline, fontFamily: 'monospace' }}>{(dec?.encryptedData as string | undefined)?.slice(0, 40) ?? ''}…</Typography>
+          : <MessageText text={text} onMentionClick={clickSender} channels={channels} onChannelClick={onChannelClick} />
+        }
+
+        {/* Meta row: obs · hops popover · link */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+          {obsPacket.obsCount > 0 && <ObsPopover packet={obsPacket} />}
+          {hopsPacket.maxHops > 0 && (
+            <>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
+              <HopsPopover packet={hopsPacket} nodes={nodes} />
+            </>
+          )}
+          {msg.bestScope && (
+            <>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>·</Typography>
+              <Chip label={msg.bestScope} size="small" sx={{ fontSize: 10, height: 18, background: alpha(md3.primary, 0.1), color: md3.primary }} />
+            </>
+          )}
+          <Tooltip title="View packet">
+            <IconButton size="small" onClick={() => navigate(`/packets?hash=${msg.hash}`)}
+              sx={{ color: md3.outline, p: 0.25, ml: 'auto', '&:hover': { color: md3.primary } }}>
+              <OpenInNewIcon sx={{ fontSize: 13 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+    </Box>
+  )
+})
 
 // ── Location-share card with a tiny map ────────────────────────────────────────
 function LocationCard({ loc }: { loc: LocationShare }) {
@@ -1020,26 +1382,32 @@ function ObsPopover({ packet }: { packet: Packet }) {
 }
 
 // ── Channel list with Known / Encrypted sections ─────────────────────────────
-function ChannelList({ channels, selected, onSelect, seenCounts }: {
+const ChannelList = memo(function ChannelList({ channels, selected, onSelect, seenCounts, combinePicking, combinedHashes, onToggleCombine, combinedActive, onOpenCombined, onEditCombined }: {
   channels: Channel[]
   selected: Channel | null
   onSelect: (ch: Channel) => void
   seenCounts: Record<string, number>
+  combinePicking?: boolean
+  combinedHashes?: Set<string>
+  onToggleCombine?: (hash: string) => void
+  combinedActive?: boolean
+  onOpenCombined?: () => void
+  onEditCombined?: () => void
 }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [encOpen, setEncOpen] = useState(false)
 
-  const isKnown = (ch: Channel) => !/^[0-9a-fA-F]+$/.test(ch.name)
-  // Public always first, then alphabetical (case-insensitive)
-  const byName = (a: Channel, b: Channel) => {
-    const ap = a.name.toLowerCase() === 'public', bp = b.name.toLowerCase() === 'public'
-    if (ap !== bp) return ap ? -1 : 1
-    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-  }
-
-  const known     = channels.filter(isKnown).sort(byName)
-  const encrypted = channels.filter(c => !isKnown(c)).sort(byName)
+  // channels list is re-derived (new array reference) on almost every packet
+  // tick from the live stream — filter+sort (regex test + localeCompare) was
+  // rerunning on every ChannelList render as a result. Memoize on the actual
+  // channels array.
+  const { known, encrypted } = useMemo(() => {
+    const kn: Channel[] = []; const enc: Channel[] = []
+    for (const ch of channels) (isKnownChannel(ch) ? kn : enc).push(ch)
+    kn.sort(byChannelName); enc.sort(byChannelName)
+    return { known: kn, encrypted: enc }
+  }, [channels])
 
   const getUnread = (ch: Channel) => {
     if (selected?.hash === ch.hash) return 0
@@ -1048,15 +1416,19 @@ function ChannelList({ channels, selected, onSelect, seenCounts }: {
 
   const renderItem = (ch: Channel) => {
     const unread = getUnread(ch)
+    const checked = combinedHashes?.has(ch.hash) ?? false
     return (
-      <ListItemButton key={ch.hash} selected={selected?.hash === ch.hash} onClick={() => onSelect(ch)}
+      <ListItemButton key={ch.hash} selected={!combinePicking && selected?.hash === ch.hash}
+        onClick={() => combinePicking ? onToggleCombine?.(ch.hash) : onSelect(ch)}
         sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, gap: 0.25 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
-          <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: hashColor(ch.name), flexShrink: 0 }} />
+          {combinePicking
+            ? <Checkbox size="small" checked={checked} tabIndex={-1} disableRipple sx={{ p: 0, flexShrink: 0 }} />
+            : <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: hashColor(ch.name), flexShrink: 0 }} />}
           <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
             {ch.name}
           </Typography>
-          {unread > 0 && (
+          {!combinePicking && unread > 0 && (
             <Badge badgeContent={unread > 99 ? '99+' : unread} color="primary"
               sx={{ '& .MuiBadge-badge': { position: 'static', transform: 'none', fontSize: 10, minWidth: 18, height: 18, borderRadius: 9 } }} />
           )}
@@ -1074,8 +1446,35 @@ function ChannelList({ channels, selected, onSelect, seenCounts }: {
     )
   }
 
+  const combinedCount = combinedHashes?.size ?? 0
+
   return (
     <List dense sx={{ flex: 1, overflow: 'auto', py: 0 }}>
+      {/* ── Combined view: pinned pseudo-channel ── */}
+      {channels.length >= 2 && !combinePicking && (
+        <ListItemButton selected={!!combinedActive} onClick={onOpenCombined}
+          sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, gap: 0.25, mt: 1, borderRadius: 1.5, borderBottom: `1px solid ${md3.outlineVariant}` }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: '100%' }}>
+            <DynamicFeedIcon sx={{ fontSize: 15, color: md3.primary, flexShrink: 0 }} />
+            <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, color: md3.primary }}>
+              {t('channels.combinedView')}
+            </Typography>
+            {combinedCount > 0 && (
+              <Chip label={combinedCount} size="small"
+                sx={{ height: 18, minWidth: 18, fontSize: 10, fontWeight: 700, background: alpha(md3.primary, 0.15), color: md3.primary }} />
+            )}
+            <Tooltip title={t('channels.editCombined')}>
+              <IconButton size="small" onClick={e => { e.stopPropagation(); onEditCombined?.() }} sx={{ p: 0.25, color: md3.onSurfaceVariant, flexShrink: 0 }}>
+                <SettingsIcon sx={{ fontSize: 15 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Typography variant="caption" sx={{ color: md3.outline, pl: 2.75 }}>
+            {combinedCount > 0 ? t('channels.channelsSelected', { count: combinedCount }) : t('channels.combineTooltip')}
+          </Typography>
+        </ListItemButton>
+      )}
+
       {/* ── Known (decrypted) ── */}
       {known.length > 0 && known.map(renderItem)}
 
@@ -1091,14 +1490,14 @@ function ChannelList({ channels, selected, onSelect, seenCounts }: {
             </Typography>
             <ExpandMoreIcon sx={{ fontSize: 16, color: md3.outline, transition: 'transform 0.2s', transform: encOpen ? 'rotate(180deg)' : 'none' }} />
           </ListItemButton>
-          <Collapse in={encOpen}>
+          <Collapse in={encOpen} unmountOnExit>
             {encrypted.map(renderItem)}
           </Collapse>
         </>
       )}
     </List>
   )
-}
+})
 
 // ── Key Manager ───────────────────────────────────────────────────────────────
 function KeyManager({ keys, onChange, onClose }: { keys: StoredKey[]; onChange: (k: StoredKey[]) => void; onClose: () => void }) {

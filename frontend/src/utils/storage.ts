@@ -7,6 +7,7 @@ export const LS_KEYS = {
   channelSeen: 'litescope-channel-seen',
   channelHashNames: 'litescope-channel-hash-names',
   channelStackDuplicates: 'litescope-channel-stack',
+  channelsCombined: 'litescope-channels-combined',
   themeMode: 'litescope-theme-mode',
   themeAccent: 'litescope-theme-accent',
 } as const
@@ -43,4 +44,20 @@ export function loadChannelHashNames(): Record<string, string> {
 
 export function saveChannelHashNames(map: Record<string, string>): void {
   localStorage.setItem(LS_KEYS.channelHashNames, JSON.stringify(map))
+}
+
+// The set of channel hashes the user has chosen to merge into the "combined"
+// pseudo-channel. Persisted so the combination survives navigating away and
+// page reloads instead of having to be rebuilt every time.
+export function loadCombinedHashes(): string[] {
+  try {
+    const arr = JSON.parse(localStorage.getItem(LS_KEYS.channelsCombined) ?? '[]')
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+export function saveCombinedHashes(hashes: string[]): void {
+  localStorage.setItem(LS_KEYS.channelsCombined, JSON.stringify(hashes))
 }
