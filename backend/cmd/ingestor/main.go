@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -130,9 +131,6 @@ func main() {
 			connected++
 		}
 		clients = append(clients, c)
-	}
-	if connected == 0 && len(clients) == 0 {
-		log.Fatal("no MQTT sources connected")
 	}
 	log.Printf("running — %d source(s) connected", connected)
 
@@ -493,7 +491,14 @@ func strField(msg map[string]any, keys ...string) string {
 
 // rejectedRegions remembers codes already warned about so a misconfigured
 // observer doesn't flood the log (handleMsg runs concurrently per source).
-var rejectedRegions sync.Map
+// Capped so a spoofed/misbehaving observer cycling through many bogus codes
+// can't grow it without bound for the life of the process.
+var (
+	rejectedRegions      sync.Map
+	rejectedRegionsCount atomic.Int64
+)
+
+const maxRejectedRegions = 1000
 
 func normalizeRegion(s string) string {
 	s = strings.ToUpper(strings.TrimSpace(s))
@@ -506,8 +511,13 @@ func normalizeRegion(s string) string {
 		}
 	}
 	if !iata.Valid(s) {
-		if _, seen := rejectedRegions.LoadOrStore(s, struct{}{}); !seen {
-			log.Printf("region %q is not an assigned IATA code — ignoring (observations keep flowing without a region tag)", s)
+		if _, seen := rejectedRegions.Load(s); !seen {
+			if rejectedRegionsCount.Load() < maxRejectedRegions {
+				if _, loaded := rejectedRegions.LoadOrStore(s, struct{}{}); !loaded {
+					rejectedRegionsCount.Add(1)
+					log.Printf("region %q is not an assigned IATA code — ignoring (observations keep flowing without a region tag)", s)
+				}
+			}
 		}
 		return ""
 	}

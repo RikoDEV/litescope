@@ -3546,7 +3546,16 @@ func (s *Store) DistanceStats(f AnalyticsFilter) DistanceStatsData {
 }
 
 func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
+	out := s.computeDistanceStatsLocked(f)
+	out.Geo = s.geoDistStats()
+	return out
+}
+
+// computeDistanceStatsLocked computes everything but the Geo field while holding s.mu.
+// Geo is filled in by the caller after unlocking, since geoDistStats takes its own RLock.
+func (s *Store) computeDistanceStatsLocked(f AnalyticsFilter) DistanceStatsData {
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	var totalHops, pathsAnalyzed, maxHopDist int
 	var direct, singleRelay, multiRelay int
@@ -3721,7 +3730,7 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		}
 	}
 
-	out := DistanceStatsData{
+	return DistanceStatsData{
 		TotalHops:       totalHops,
 		PathsAnalyzed:   pathsAnalyzed,
 		AvgHopDist:      avgHopDist,
@@ -3732,10 +3741,6 @@ func (s *Store) computeDistanceStats(f AnalyticsFilter) DistanceStatsData {
 		Top20Hops:       top20,
 		Top10MultiHop:   top10,
 	}
-	s.mu.RUnlock()
-
-	out.Geo = s.geoDistStats()
-	return out
 }
 
 func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {

@@ -145,17 +145,30 @@ export default function Packets() {
   }
 
   const loadSeq = useRef(0)
+  // Tracks the seq of the currently in-flight offset-0 request (0 = none), and
+  // buffers live WS packets that arrive during that window so the REST response
+  // — a snapshot taken before those arrivals — doesn't clobber them on replace.
+  const zeroLoadSeq = useRef(0)
+  const liveDuringZeroLoad = useRef<Packet[]>([])
   const load = useCallback(async (offset = 0) => {
     const seq = ++loadSeq.current
+    if (offset === 0) { zeroLoadSeq.current = seq; liveDuringZeroLoad.current = [] }
     setLoading(true)
     try {
       const res = await api.packets(PAGE, offset, packetQuery)
       if (seq !== loadSeq.current) return
       setTotal(res.total)
-      if (offset === 0) setPackets(res.packets ?? [])
-      else setPackets(p => [...p, ...(res.packets ?? [])])
+      if (offset === 0) {
+        const resPackets = res.packets ?? []
+        const resHashes = new Set(resPackets.map(p => p.hash))
+        const missedLive = liveDuringZeroLoad.current.filter(p => !resHashes.has(p.hash))
+        setPackets([...missedLive, ...resPackets])
+      } else {
+        setPackets(p => [...p, ...(res.packets ?? [])])
+      }
       offsetRef.current = offset + (res.packets?.length ?? 0)
     } finally {
+      if (offset === 0 && zeroLoadSeq.current === seq) zeroLoadSeq.current = 0
       if (seq === loadSeq.current) setLoading(false)
     }
   }, [packetQuery])
@@ -175,6 +188,7 @@ export default function Packets() {
     return stream.subscribe(msg => {
       if (msg.type === 'packet') {
         if (!packetMatchesCurrentFilters(msg.data)) return
+        if (zeroLoadSeq.current !== 0) liveDuringZeroLoad.current = [msg.data, ...liveDuringZeroLoad.current]
         setPackets(prev => [msg.data, ...prev.slice(0, 999)])
         setTotal(t => t + 1)
       } else if (msg.type === 'packetUpdate') {

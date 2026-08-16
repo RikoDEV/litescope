@@ -174,14 +174,8 @@ func analyticsFilterWithDefaultHours(r *http.Request, defaultHours int) store.An
 		hours = queryInt(r, "hours", 0)
 	}
 	hours = min(hours, 168) // cap at 7 days
-	var regions []string
-	if v := q.Get("regions"); v != "" {
-		regions = strings.Split(v, ",")
-	}
-	var countries []string
-	if v := q.Get("countries"); v != "" {
-		countries = strings.Split(v, ",")
-	}
+	regions := csvParam(q, "regions")
+	countries := csvParam(q, "countries")
 	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
 	return store.NewAnalyticsFilter(hours, regions, countries, lock)
 }
@@ -222,10 +216,7 @@ func intSetParam(q map[string][]string, keys ...string) map[int]bool {
 
 func packetQuery(r *http.Request, limit, offset int) store.PacketQuery {
 	q := r.URL.Query()
-	var regions []string
-	if v := q.Get("regions"); v != "" {
-		regions = strings.Split(v, ",")
-	}
+	regions := csvParam(q, "regions")
 	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
 
 	pq := store.PacketQuery{

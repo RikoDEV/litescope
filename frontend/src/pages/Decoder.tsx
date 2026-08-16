@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import TextField from '@mui/material/TextField'
@@ -26,20 +26,25 @@ export default function Decoder() {
   const [result, setResult] = useState<{ ok: boolean; error?: string; decoded?: unknown } | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const decodeSeq = useRef(0)
 
+  // Guard against out-of-order responses: firing two decodes in quick
+  // succession (e.g. double Enter) could let an older result overwrite a newer one.
   const decode = async () => {
     const h = hex.replace(/\s/g, '')
     if (!h) return
+    const seq = ++decodeSeq.current
     setLoading(true); setResult(null)
     try {
       // Read channel keys from localStorage (set in Channels page)
       const stored = loadChannelKeys()
       const channelKeys: Record<string, string> = {}
       for (const { name, key } of stored) if (name && key) channelKeys[name] = key
-      setResult(await api.decodePacket(h, Object.keys(channelKeys).length ? channelKeys : undefined))
+      const res = await api.decodePacket(h, Object.keys(channelKeys).length ? channelKeys : undefined)
+      if (seq === decodeSeq.current) setResult(res)
     }
-    catch (e) { setResult({ ok: false, error: String(e) }) }
-    finally { setLoading(false) }
+    catch (e) { if (seq === decodeSeq.current) setResult({ ok: false, error: String(e) }) }
+    finally { if (seq === decodeSeq.current) setLoading(false) }
   }
 
   const copy = () => {

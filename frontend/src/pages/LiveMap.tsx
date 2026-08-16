@@ -138,6 +138,7 @@ export default function LiveMap() {
   const vcrPlayhead = useRef(-1)
   const vcrSpeed    = useRef(1)
   const replayTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const replayCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rateWindow  = useRef<number[]>([])
 
   // React state
@@ -431,7 +432,9 @@ export default function LiveMap() {
     const animLife = points.length > 1 ? numSegs * HOP_MS + TAIL_MS : SINGLE_LIFE
     const cleanup  = animLife + 500
 
-    setTimeout(() => {
+    if (replayCleanupTimer.current) clearTimeout(replayCleanupTimer.current)
+    replayCleanupTimer.current = setTimeout(() => {
+      replayCleanupTimer.current = null
       setReplayBanner(null)
       replayMarkers && mapRef.current?.removeLayer(replayMarkers)
       if (nodesLayer.current && mapRef.current) {
@@ -440,6 +443,14 @@ export default function LiveMap() {
       pause()
     }, cleanup)
   }, [processPacket]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear any pending replay-cleanup timeout on unmount so it doesn't fire
+  // setState/pause() against an unmounted component after navigating away mid-replay.
+  useEffect(() => {
+    return () => {
+      if (replayCleanupTimer.current) clearTimeout(replayCleanupTimer.current)
+    }
+  }, [])
 
   // ── Replay a specific packet from router state ───────────────────────────
   useEffect(() => {

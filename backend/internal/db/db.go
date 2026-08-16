@@ -534,7 +534,7 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 }
 
 func normalizeNodeLocation(n *NodeRow) {
-	if n == nil || n.Lat == nil || n.Lon == nil || *n.Lat == 0 || *n.Lon == 0 {
+	if n == nil || n.Lat == nil || n.Lon == nil || (*n.Lat == 0 && *n.Lon == 0) {
 		if n != nil {
 			n.Lat = nil
 			n.Lon = nil

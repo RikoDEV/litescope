@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getEnv } from '../env'
 import { IataFlag } from '../utils/flags'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -56,13 +56,21 @@ export default function Observers() {
   const [days, setDays]           = useState(7)
   const [loadingA, setLoadingA]   = useState(false)
   const observerIdParam = searchParams.get('id')
+  const loadASeq = useRef(0)
 
   useEffect(() => { api.observers().then(res => setObservers(res.observers ?? [])) }, [])
 
+  // Guard against out-of-order responses: switching observers quickly can let
+  // an older, slower request resolve after a newer one and overwrite it.
   const loadA = async (id: string, d: number) => {
+    const seq = ++loadASeq.current
     setLoadingA(true)
-    try { setAnalytics(await api.observerAnalytics(id, d)) }
-    finally { setLoadingA(false) }
+    try {
+      const res = await api.observerAnalytics(id, d)
+      if (seq === loadASeq.current) setAnalytics(res)
+    } finally {
+      if (seq === loadASeq.current) setLoadingA(false)
+    }
   }
 
   const openObserver = (o: Observer) => {
