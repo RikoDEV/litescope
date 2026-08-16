@@ -350,7 +350,7 @@ func latestMigrationVersion() (uint, error) {
 			continue
 		}
 		digits := name[:len(name)-len(strings.TrimLeft(name, "0123456789"))]
-		v, err := strconv.ParseUint(digits, 10, 64)
+		v, err := strconv.ParseUint(digits, 10, strconv.IntSize)
 		if err != nil {
 			return 0, fmt.Errorf("migration %q has no leading version number", name)
 		}
