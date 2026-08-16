@@ -21,6 +21,8 @@ import (
 
 func nowMillis() int64 { return time.Now().UnixMilli() }
 
+const maxPacketQueryLimit = 500
+
 func parseTimeMillis(s string) int64 {
 	t := parseTimeToTime(s)
 	if t.IsZero() {
@@ -755,6 +757,9 @@ func (s *Store) packetsFilteredNewest(q PacketQuery) ([]*Tx, int) {
 func normalizePacketQuery(q PacketQuery) PacketQuery {
 	if q.Limit < 0 {
 		q.Limit = 0
+	}
+	if q.Limit > maxPacketQueryLimit {
+		q.Limit = maxPacketQueryLimit
 	}
 	if q.Offset < 0 {
 		q.Offset = 0
