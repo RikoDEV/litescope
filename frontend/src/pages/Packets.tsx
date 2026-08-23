@@ -214,7 +214,16 @@ export default function Packets() {
     })
   }, [packetMatchesCurrentFilters])
 
-  useEffect(() => { stream.setPaused(paused) }, [paused])
+  // stream.setPaused is a global flag on the shared WS singleton — it drops
+  // live messages for every subscriber, not just this page's. Leaving Packets
+  // while paused (e.g. clicking away to inspect a packet, then navigating to
+  // Channels) would otherwise silently starve every other page's live updates
+  // (unread badges, the map, Home) until a full reload reset the singleton.
+  // Always clear it on unmount so pausing here can never outlive this page.
+  useEffect(() => {
+    stream.setPaused(paused)
+    return () => stream.setPaused(false)
+  }, [paused])
 
   const selectPacket = async (p: Packet) => {
     setSelectedObserverId(null)

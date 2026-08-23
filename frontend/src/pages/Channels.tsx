@@ -300,6 +300,30 @@ export default function Channels() {
   const applyNames = (chs: Channel[]) =>
     chs.map(ch => hashNames.current[ch.hash] ? { ...ch, name: hashNames.current[ch.hash] ?? ch.name } : ch)
 
+  // The server's per-channel messageCount is not guaranteed to only grow: it
+  // can drop (retention pruning ages out old messages; a single-byte channel
+  // hash can also flip from a raw hash-collision count to a smaller decrypted-
+  // only count once any message for it first decrypts — see Store.Channels).
+  // seenCounts only ever moves up (Math.max, live +1s) on the assumption the
+  // count it's chasing is monotonic, so a real drop leaves it stuck above the
+  // new total forever — genuinely new messages then never re-cross that stale
+  // high-water mark and the badge never comes back. Whenever we get a fresh
+  // authoritative snapshot from the server, clamp seenCounts back down to
+  // never exceed the channel's current count so this can't wedge shut.
+  const applyChannels = (chs: Channel[]) => {
+    const named = applyNames(chs)
+    setChannels(named)
+    setSeenCounts(prev => {
+      let changed = false
+      const updated = { ...prev }
+      for (const ch of named) {
+        if ((updated[ch.hash] ?? 0) > ch.messageCount) { updated[ch.hash] = ch.messageCount; changed = true }
+      }
+      if (changed) saveSeen(updated)
+      return changed ? updated : prev
+    })
+  }
+
   useEffect(() => {
     if (skipAutoScroll.current) { skipAutoScroll.current = false; return }
     // Initial channel load: jump instantly so the smooth animation doesn't pass
@@ -333,7 +357,7 @@ export default function Channels() {
 
   useEffect(() => {
     if (!sidebarReady) return
-    api.channelsFiltered(channelParams()).then(chs => setChannels(applyNames(chs)))
+    api.channelsFiltered(channelParams()).then(applyChannels)
     // Reload the open chat too — its history is filtered server-side as well.
     if (selected) selectChannelData(selected)
   }, [regionFilter, regionLock]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -343,7 +367,7 @@ export default function Channels() {
       api.channelsFiltered(channelParams()).catch(() => []),
       api.iatas().catch(() => []),
     ]).then(([chs, codes]) => {
-      setChannels(applyNames(chs))
+      applyChannels(chs)
       setIatas((codes ?? []).sort())
       setSidebarReady(true)
     })
@@ -408,6 +432,13 @@ export default function Channels() {
     setCombinedHasMore(entries.some(([, msgs]) => msgs.length >= COMBINED_PAGE_SIZE))
     setCombinedShowScrollBottom(false)
     decryptBatch(merged, storedKeys)
+    // Deliberately NOT catching seenCounts up to each channel's full current
+    // messageCount here: fetchCombined only loads the latest COMBINED_PAGE_SIZE
+    // messages per channel, not the whole backlog, so bulk-marking everything
+    // "seen" on open would wipe out a legitimate unread badge for history the
+    // user hasn't actually scrolled to. Staying in sync while the view is truly
+    // on-screen is handled live instead, by the isCombinedChannel branch in the
+    // stream.subscribe handler below.
   }
 
   const loadMoreCombined = async () => {
@@ -590,7 +621,7 @@ export default function Channels() {
       const hiddenMs = hiddenAt ? Date.now() - hiddenAt : 0
       hiddenAt = null
       if (hiddenMs < 5000) return
-      api.channelsFiltered(channelParams()).then(chs => setChannels(applyNames(chs)))
+      api.channelsFiltered(channelParams()).then(applyChannels)
       if (selected) selectChannelData(selected)
       if (combinedActive) fetchCombined(combinedHashes)
     }
@@ -653,13 +684,14 @@ export default function Channels() {
           return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
         })
       }
-      // The message just arrived in the chat the user is actively viewing —
-      // keep its "seen" count in lockstep with messageCount so it doesn't
+      // The message just arrived in a chat the user is actively viewing — either
+      // the single open channel or one of the channels merged into the combined
+      // feed — keep its "seen" count in lockstep with messageCount so it doesn't
       // surface as unread once the user navigates away.
-      if (isOpenChannel && selected) {
-        const openHash = selected.hash
+      const seenHash = isOpenChannel && selected ? selected.hash : (isCombinedChannel ? msg.data.channelHash : undefined)
+      if (seenHash) {
         setSeenCounts(prev => {
-          const updated = { ...prev, [openHash]: (prev[openHash] ?? 0) + 1 }
+          const updated = { ...prev, [seenHash]: (prev[seenHash] ?? 0) + 1 }
           saveSeen(updated)
           return updated
         })
@@ -1447,6 +1479,11 @@ const ChannelList = memo(function ChannelList({ channels, selected, onSelect, se
   }
 
   const combinedCount = combinedHashes?.size ?? 0
+  // Collapsed by default and unmounted while closed (Collapse unmountOnExit),
+  // so a badge on an individual encrypted-channel row is invisible until the
+  // user expands the section. Surface the total on the header itself so an
+  // unread message there isn't silently missed.
+  const encryptedUnread = encrypted.reduce((sum, ch) => sum + getUnread(ch), 0)
 
   return (
     <List dense sx={{ flex: 1, overflow: 'auto', py: 0 }}>
@@ -1488,6 +1525,10 @@ const ChannelList = memo(function ChannelList({ channels, selected, onSelect, se
             <Typography variant="caption" sx={{ flex: 1, color: md3.outline, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.6px', fontSize: 10 }}>
               {t('channels.encrypted')} ({encrypted.length})
             </Typography>
+            {!encOpen && encryptedUnread > 0 && (
+              <Badge badgeContent={encryptedUnread > 99 ? '99+' : encryptedUnread} color="primary"
+                sx={{ '& .MuiBadge-badge': { position: 'static', transform: 'none', fontSize: 10, minWidth: 18, height: 18, borderRadius: 9 } }} />
+            )}
             <ExpandMoreIcon sx={{ fontSize: 16, color: md3.outline, transition: 'transform 0.2s', transform: encOpen ? 'rotate(180deg)' : 'none' }} />
           </ListItemButton>
           <Collapse in={encOpen} unmountOnExit>
