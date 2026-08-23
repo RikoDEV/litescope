@@ -2165,8 +2165,11 @@ func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStat
 func (s *Store) computeActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	const maxActivityWindowHours = 168 // 7 days
 	if windowHours <= 0 {
 		windowHours = 24
+	} else if windowHours > maxActivityWindowHours {
+		windowHours = maxActivityWindowHours
 	}
 	now := time.Now().UTC()
 	start := now.Add(-time.Duration(windowHours) * time.Hour).Truncate(time.Hour)
