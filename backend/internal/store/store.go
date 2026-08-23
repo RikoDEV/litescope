@@ -719,7 +719,8 @@ func (s *Store) PacketsFiltered(q PacketQuery) ([]*Tx, int) {
 		return s.packetsFilteredNewest(q)
 	}
 
-	matches := make([]*Tx, 0, min(len(s.packets), q.Limit))
+	allocCap := min(len(s.packets), q.Limit)
+	matches := make([]*Tx, 0, allocCap)
 	for _, tx := range s.packets {
 		if packetMatchesQuery(tx, q) {
 			matches = append(matches, tx)
@@ -737,7 +738,8 @@ func (s *Store) PacketsFiltered(q PacketQuery) ([]*Tx, int) {
 func (s *Store) packetsFilteredNewest(q PacketQuery) ([]*Tx, int) {
 	total := 0
 	skipped := 0
-	out := make([]*Tx, 0, q.Limit)
+	allocCap := min(len(s.packets), q.Limit)
+	out := make([]*Tx, 0, allocCap)
 	for _, tx := range slices.Backward(s.packets) {
 		if !packetMatchesQuery(tx, q) {
 			continue
