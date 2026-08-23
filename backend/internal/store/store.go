@@ -2355,6 +2355,120 @@ func (s *Store) computeTopNodes(limit int, by string, f AnalyticsFilter) ([]*Nod
 	return nodes, retx
 }
 
+// ClockHealthEntry is one node's clock-skew summary: how far its self-reported
+// ADVERT timestamp diverges from when it was actually received, and how fast
+// that divergence is changing.
+type ClockHealthEntry struct {
+	PubKey      string  `json:"pubKey"`
+	Name        string  `json:"name"`
+	Role        string  `json:"role"`
+	SkewSeconds float64 `json:"skewSeconds"`
+	Severity    string  `json:"severity"` // "ok" | "warning" | "critical" | "absurd"
+	DriftPerDay float64 `json:"driftPerDay"`
+	LastAdvert  string  `json:"lastAdvert"` // RFC3339
+	Samples     int     `json:"samples"`
+}
+
+const (
+	clockSkewWarning  = 5 * time.Minute
+	clockSkewCritical = time.Hour
+	clockSkewAbsurd   = 30 * 24 * time.Hour
+)
+
+func clockSkewSeverity(skew time.Duration) string {
+	abs := skew
+	if abs < 0 {
+		abs = -abs
+	}
+	switch {
+	case abs >= clockSkewAbsurd:
+		return "absurd"
+	case abs >= clockSkewCritical:
+		return "critical"
+	case abs >= clockSkewWarning:
+		return "warning"
+	default:
+		return "ok"
+	}
+}
+
+// ClockHealth reports, per node, how far its own clock (as embedded in its
+// ADVERT packets) has drifted from when liteScope actually received each
+// advert — the same reception-time comparison CoreScope issue #690 describes.
+// Worst offenders (largest |skew|) sort first.
+func (s *Store) ClockHealth(f AnalyticsFilter) []ClockHealthEntry {
+	return cachedAnalyticsForFilter(s, "clockHealth", f, func() []ClockHealthEntry { return s.computeClockHealth(f) })
+}
+
+func (s *Store) computeClockHealth(f AnalyticsFilter) []ClockHealthEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	type sample struct{ recv, reported time.Time }
+
+	out := make([]ClockHealthEntry, 0, len(s.byNode))
+	for pk, txs := range s.byNode {
+		n := s.nodes[pk]
+		if n == nil {
+			continue
+		}
+		if f.Active() && !f.nodeGeoOK(n) {
+			continue
+		}
+		samples := make([]sample, 0, len(txs))
+		for _, tx := range txs {
+			if f.Active() && !f.txOK(tx) {
+				continue
+			}
+			dec := tx.Decoded()
+			if dec == nil {
+				continue
+			}
+			recv, err := time.Parse(time.RFC3339, tx.FirstSeen)
+			if err != nil {
+				continue
+			}
+			iso, _ := dec["timestampISO"].(string)
+			if iso == "" {
+				continue
+			}
+			reported, err := time.Parse(time.RFC3339, iso)
+			if err != nil {
+				continue
+			}
+			samples = append(samples, sample{recv: recv, reported: reported})
+		}
+		if len(samples) == 0 {
+			continue
+		}
+		sort.Slice(samples, func(i, j int) bool { return samples[i].recv.Before(samples[j].recv) })
+
+		last := samples[len(samples)-1]
+		skew := last.recv.Sub(last.reported)
+
+		var driftPerDay float64
+		if len(samples) >= 2 {
+			first := samples[0]
+			firstSkew := first.recv.Sub(first.reported)
+			elapsedDays := last.recv.Sub(first.recv).Hours() / 24
+			if elapsedDays > 0 {
+				driftPerDay = (skew - firstSkew).Seconds() / elapsedDays
+			}
+		}
+
+		out = append(out, ClockHealthEntry{
+			PubKey: pk, Name: n.Name, Role: n.Role,
+			SkewSeconds: skew.Seconds(),
+			Severity:    clockSkewSeverity(skew),
+			DriftPerDay: driftPerDay,
+			LastAdvert:  last.recv.Format(time.RFC3339),
+			Samples:     len(samples),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return math.Abs(out[i].SkewSeconds) > math.Abs(out[j].SkewSeconds) })
+	return out
+}
+
 // RetransmitCounts returns, per node pubKey, the number of distinct packets in
 // which the node appears as a relay (path) hop — i.e. packets it retransmitted.
 func (s *Store) RetransmitCounts(f AnalyticsFilter) map[string]int {

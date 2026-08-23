@@ -208,6 +208,16 @@ export const api = {
       topSenders: Array<{ sender: string; messageCount: number; channels: number }>
     }>(`/api/analytics/channels${aq(p)}`),
 
+  analyticsClockHealth: (p?: AnalyticsParams) =>
+    get<Array<{
+      pubKey: string; name: string; role: string
+      skewSeconds: number
+      severity: 'ok' | 'warning' | 'critical' | 'absurd'
+      driftPerDay: number
+      lastAdvert: string
+      samples: number
+    }>>(`/api/analytics/clock-health${aq(p)}`),
+
   observerAnalytics: (id: string, days = 7) =>
     get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),
 

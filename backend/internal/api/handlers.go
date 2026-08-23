@@ -62,6 +62,7 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/analytics/direct-links", s.getAnalyticsDirectLinks).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/channels", s.getChannelAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/distance", s.getAnalyticsDistance).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/clock-health", s.getAnalyticsClockHealth).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}/analytics", s.getObserverAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/decode", s.decodePacket).Methods("POST", "OPTIONS")
 
@@ -585,6 +586,10 @@ func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) getAnalyticsDistance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.Store.DistanceStats(analyticsFilter(r)))
+}
+
+func (s *Server) getAnalyticsClockHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.Store.ClockHealth(analyticsFilter(r)))
 }
 
 func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request) {

@@ -42,8 +42,12 @@ import TimelineIcon from '@mui/icons-material/Timeline'
 import GroupWorkIcon from '@mui/icons-material/GroupWork'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import TableSortLabel from '@mui/material/TableSortLabel'
 import Link from '@mui/material/Link'
 import type { SvgIconComponent } from '@mui/icons-material'
+import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 import { IataFlag } from '../utils/flags'
 import { bucketize } from '../utils/stats'
 import HashMatrix from '../components/HashMatrix'
@@ -58,18 +62,19 @@ const WINDOWS: { h: number; l: string }[] = [
   { h: 24, l: '24h' }, { h: 72, l: '3d' }, { h: 168, l: '7d' },
 ]
 
-type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'scope' | 'distance'
+type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'clock-health' | 'scope' | 'distance'
 
 const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
-  { id: 'overview',  Icon: AssessmentIcon,       tk: 'analytics.overview' },
-  { id: 'activity',  Icon: ShowChartIcon,         tk: 'analytics.activity' },
-  { id: 'rf',        Icon: SignalCellularAltIcon, tk: 'analytics.rfSignal' },
-  { id: 'nodes',     Icon: RouterIcon,            tk: 'analytics.nodes' },
-  { id: 'observers', Icon: WifiIcon,              tk: 'analytics.observers' },
-  { id: 'channels',  Icon: ForumIcon,             tk: 'analytics.channels' },
-  { id: 'hashes',    Icon: TagIcon,               tk: 'analytics.hashes' },
-  { id: 'scope',     Icon: ScatterPlotIcon,       tk: 'analytics.scope' },
-  { id: 'distance',  Icon: AccountTreeIcon,       tk: 'analytics.distance' },
+  { id: 'overview',     Icon: AssessmentIcon,       tk: 'analytics.overview' },
+  { id: 'activity',     Icon: ShowChartIcon,         tk: 'analytics.activity' },
+  { id: 'rf',           Icon: SignalCellularAltIcon, tk: 'analytics.rfSignal' },
+  { id: 'nodes',        Icon: RouterIcon,            tk: 'analytics.nodes' },
+  { id: 'observers',    Icon: WifiIcon,              tk: 'analytics.observers' },
+  { id: 'channels',     Icon: ForumIcon,             tk: 'analytics.channels' },
+  { id: 'hashes',       Icon: TagIcon,               tk: 'analytics.hashes' },
+  { id: 'clock-health', Icon: AccessTimeIcon,        tk: 'analytics.clockHealth' },
+  { id: 'scope',        Icon: ScatterPlotIcon,       tk: 'analytics.scope' },
+  { id: 'distance',     Icon: AccountTreeIcon,       tk: 'analytics.distance' },
 ]
 
 const PALETTE = ['#D0BCFF','#EFB8C8','#22c55e','#f59e0b','#14b8a6','#a855f7']
@@ -141,6 +146,7 @@ export default function Analytics() {
         {tab === 'observers' && <ObserversTab {...tabProps} />}
         {tab === 'channels'  && <ChannelsTab {...tabProps} />}
         {tab === 'hashes'    && <HashesTab {...tabProps} />}
+        {tab === 'clock-health' && <ClockHealthTab {...tabProps} />}
         {tab === 'scope'     && <ScopeTab {...tabProps} />}
         {tab === 'distance'  && <DistanceTab {...tabProps} />}
       </Box>
@@ -920,6 +926,153 @@ const HASH_SIZE_BADGE: Record<number, { bg: string; fg: string }> = {
   1: { bg: '#f97316', fg: '#fff' },
   2: { bg: '#86efac', fg: '#064e3b' },
   3: { bg: '#16a34a', fg: '#fff' },
+}
+
+// ── Clock Health ─────────────────────────────────────────────────────────────
+// Fleet view of CoreScope issue #690: how far each node's own ADVERT timestamp
+// has drifted from when it was actually received. Severity thresholds mirror
+// the backend (store.computeClockHealth): OK <5min, Warning >=5min, Critical
+// >=1h, Absurd >=30d.
+type ClockSeverity = 'ok' | 'warning' | 'critical' | 'absurd'
+type ClockHealthEntry = {
+  pubKey: string; name: string; role: string
+  skewSeconds: number; severity: ClockSeverity; driftPerDay: number
+  lastAdvert: string; samples: number
+}
+type ClockSortCol = 'name' | 'skew' | 'severity' | 'drift' | 'lastAdvert'
+
+const SEVERITY_COLOR: Record<ClockSeverity, string> = {
+  ok: '#22c55e', warning: '#f59e0b', critical: '#f97316', absurd: '#dc2626',
+}
+const SEVERITY_RANK: Record<ClockSeverity, number> = { ok: 0, warning: 1, critical: 2, absurd: 3 }
+const SEVERITY_ORDER: ClockSeverity[] = ['ok', 'warning', 'critical', 'absurd']
+
+function formatSkew(seconds: number): string {
+  const sign = seconds < 0 ? '−' : '+'
+  const abs = Math.abs(seconds)
+  if (abs < 60) return `${sign}${abs.toFixed(0)}s`
+  if (abs < 3600) return `${sign}${(abs / 60).toFixed(1)}m`
+  if (abs < 86400) return `${sign}${(abs / 3600).toFixed(1)}h`
+  return `${sign}${(abs / 86400).toFixed(1)}d`
+}
+
+function formatDrift(secondsPerDay: number): string {
+  if (secondsPerDay === 0) return '—'
+  const sign = secondsPerDay < 0 ? '−' : '+'
+  return `${sign}${Math.abs(secondsPerDay).toFixed(1)} s/day`
+}
+
+function ClockHealthTab({ params, filterKey }: TabProps) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const dateLocale = useDateLocale()
+
+  const [data, setData] = useState<ClockHealthEntry[] | null>(null)
+  useEffect(() => { api.analyticsClockHealth(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [severityFilter, setSeverityFilter] = useState<ClockSeverity | 'all'>('all')
+  const [sortCol, setSortCol] = useState<ClockSortCol>('skew')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  if (!data) return <TabLoading />
+
+  const counts: Record<ClockSeverity, number> = { ok: 0, warning: 0, critical: 0, absurd: 0 }
+  for (const e of data) counts[e.severity]++
+
+  const toggleSort = (col: ClockSortCol) => {
+    if (sortCol === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return }
+    setSortCol(col)
+    setSortDir(col === 'name' ? 'asc' : 'desc')
+  }
+
+  const filtered = severityFilter === 'all' ? data : data.filter(e => e.severity === severityFilter)
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0
+    switch (sortCol) {
+      case 'name':       cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); break
+      case 'skew':       cmp = Math.abs(a.skewSeconds) - Math.abs(b.skewSeconds); break
+      case 'severity':   cmp = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]; break
+      case 'drift':      cmp = Math.abs(a.driftPerDay) - Math.abs(b.driftPerDay); break
+      case 'lastAdvert': cmp = new Date(a.lastAdvert).getTime() - new Date(b.lastAdvert).getTime(); break
+    }
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
+  const headers: { col: ClockSortCol; label: string }[] = [
+    { col: 'name', label: t('common.name') },
+    { col: 'skew', label: t('analytics.skew') },
+    { col: 'severity', label: t('analytics.severity') },
+    { col: 'drift', label: t('analytics.drift') },
+    { col: 'lastAdvert', label: t('analytics.lastAdvert') },
+  ]
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+        {SEVERITY_ORDER.map(sev => (
+          <Box key={sev} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(SEVERITY_COLOR[sev], 0.1), border: `1px solid ${alpha(SEVERITY_COLOR[sev], 0.25)}` }}>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t(`analytics.severity${sev.charAt(0).toUpperCase()}${sev.slice(1)}` as Parameters<typeof t>[0])}{'  '}</Typography>
+            <Typography variant="body2" sx={{ color: SEVERITY_COLOR[sev], fontWeight: 700, display: 'inline' }}>{counts[sev]}</Typography>
+          </Box>
+        ))}
+      </Box>
+
+      <Box sx={{ mb: 2 }}>
+        <ToggleButtonGroup exclusive size="small" value={severityFilter} onChange={(_, v) => v !== null && setSeverityFilter(v)}>
+          <ToggleButton value="all" sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
+            {t('analytics.severityAll')}
+          </ToggleButton>
+          {SEVERITY_ORDER.map(sev => (
+            <ToggleButton key={sev} value={sev} sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(SEVERITY_COLOR[sev], 0.18), color: SEVERITY_COLOR[sev] } }}>
+              {t(`analytics.severity${sev.charAt(0).toUpperCase()}${sev.slice(1)}` as Parameters<typeof t>[0])} ({counts[sev]})
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
+
+      <ChartCard title={t('analytics.clockHealth')} Icon={AccessTimeIcon}>
+        {sorted.length === 0 ? (
+          <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.noClockData')}</Typography>
+        ) : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 560 }}>
+              <TableHead>
+                <TableRow>
+                  {headers.map(h => (
+                    <TableCell key={h.col}>
+                      <TableSortLabel active={sortCol === h.col} direction={sortCol === h.col ? sortDir : 'desc'} onClick={() => toggleSort(h.col)}>
+                        {h.label}
+                      </TableSortLabel>
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sorted.map(e => (
+                  <TableRow key={e.pubKey} sx={{ background: alpha(SEVERITY_COLOR[e.severity], 0.08) }}>
+                    <TableCell>
+                      <Box component="span" onClick={() => navigate(`/nodes/${encodeURIComponent(e.pubKey)}`)}
+                        sx={{ cursor: 'pointer', color: md3.primary, '&:hover': { textDecoration: 'underline' } }}>
+                        {e.name || e.pubKey}
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: md3.onSurface }}>{formatSkew(e.skewSeconds)}</TableCell>
+                    <TableCell>
+                      <Chip label={t(`analytics.severity${e.severity.charAt(0).toUpperCase()}${e.severity.slice(1)}` as Parameters<typeof t>[0])} size="small"
+                        sx={{ fontSize: 10, height: 20, background: alpha(SEVERITY_COLOR[e.severity], 0.15), color: SEVERITY_COLOR[e.severity], fontWeight: 700 }} />
+                    </TableCell>
+                    <TableCell sx={{ color: md3.onSurfaceVariant }}>{formatDrift(e.driftPerDay)}</TableCell>
+                    <TableCell sx={{ color: md3.onSurfaceVariant }}>{formatDistanceToNow(new Date(e.lastAdvert), { addSuffix: true, locale: dateLocale })}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
+      </ChartCard>
+    </Box>
+  )
 }
 
 // ── Distance / Hop Analytics ──────────────────────────────────────────────────
