@@ -231,6 +231,7 @@ cp frontend/.env.example frontend/.env.local
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_API_URL` | *(empty)* | Backend base URL (e.g. `https://litescope.example.com`). WebSocket URL is derived automatically (`http→ws`, `https→wss`). Leave empty for same-origin / Vite proxy. |
+| `VITE_APP_NAME` | `liteScope` | App name shown in the header and browser tab title. |
 | `VITE_SITE_URL` | *(empty)* | Public frontend origin used to generate `sitemap.xml` and the robots sitemap directive. Set this to your real production domain. |
 | `VITE_MQTT_HOST` | *(browser hostname)* | MQTT broker host shown in the Observers page setup card, telling users what to point their MeshCore node at. |
 | `VITE_MQTT_PORT` | `1883` | MQTT broker port shown in the same setup card. Set this if your broker listens on a non-default port (e.g. `8883` for TLS). |
@@ -352,6 +353,7 @@ Set these in **Cloudflare Dashboard → Pages → litescope → Settings → Env
 | Variable | Example value | Description |
 |---|---|---|
 | `VITE_API_URL` | `https://litescope.example.com` | Your backend's public HTTPS URL. The WebSocket URL (`wss://...`) is derived automatically. |
+| `VITE_APP_NAME` | `liteScope` | App name shown in the header and browser tab title. |
 | `VITE_SITE_URL` | `https://litescope.example.com` | Your frontend's public HTTPS origin. Used for sitemap URLs submitted to Google. |
 
 Then rebuild and redeploy after setting them (Vite bakes them in at build time).
