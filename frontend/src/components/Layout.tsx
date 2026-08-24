@@ -18,6 +18,7 @@ import ErrorBoundary from './ErrorBoundary'
 import Seo from './Seo'
 import SpotlightSearch from './SpotlightSearch'
 import { buildIssueUrl } from '../utils/issueUrl'
+import { SITE_NAME } from '../seo'
 
 import HomeIcon from '@mui/icons-material/Home'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -193,7 +194,7 @@ export default function Layout() {
         '&::-webkit-scrollbar': { width: 4 },
         '&::-webkit-scrollbar-thumb': { background: md3.outlineVariant, borderRadius: 4 },
       }}>
-        <Box component="img" src="/icon.svg" alt="liteScope"
+        <Box component="img" src="/icon.svg" alt={SITE_NAME}
           sx={{ width: 36, height: 36, mb: 1.5, borderRadius: '10px', boxShadow: `0 2px 8px ${alpha(md3.primary, 0.4)}` }} />
 
         <Tooltip title={`${t('common.search')} (Ctrl+K)`} placement="right">
@@ -260,10 +261,10 @@ export default function Layout() {
           background: md3.surfaceContainerLow,
           borderBottom: `1px solid ${md3.outlineVariant}`,
         }}>
-          <Box component="img" src="/icon.svg" alt="liteScope"
+          <Box component="img" src="/icon.svg" alt={SITE_NAME}
             sx={{ width: 28, height: 28, borderRadius: '8px', boxShadow: `0 1px 4px ${alpha(md3.primary, 0.4)}` }} />
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: md3.onSurface, letterSpacing: '-0.2px' }}>
-            liteScope
+            {SITE_NAME}
           </Typography>
           <Box sx={{ flex: 1 }} />
           <Tooltip title={`${t('common.search')} (Ctrl+K)`}>

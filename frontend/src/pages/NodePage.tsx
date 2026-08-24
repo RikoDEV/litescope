@@ -18,6 +18,7 @@ import {
   CartesianGrid, Cell, PieChart, Pie, LineChart, Line, Legend,
 } from 'recharts'
 import { formatDistanceToNow, format, subHours } from 'date-fns'
+import { SITE_NAME } from '../seo'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { useRef } from 'react'
 import L from 'leaflet'
@@ -153,7 +154,7 @@ export default function NodePage() {
       const n = (res.nodes ?? []).find(x => x.pubKey.toLowerCase() === routePubKey)
       if (!n) { setError(true); setLoading(false); return }
       setNode(n)
-      document.title = `${n.name || n.pubKey.slice(0, 16)} — liteScope`
+      document.title = `${n.name || n.pubKey.slice(0, 16)} — ${SITE_NAME}`
       Promise.all([
         api.nodeOverview(n.pubKey),
         api.nodeRF(n.pubKey),

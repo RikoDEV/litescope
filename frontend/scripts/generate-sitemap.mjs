@@ -14,7 +14,7 @@ const siteUrl = (
   ''
 ).replace(/\/+$/, '')
 
-const pages = [...seoSource.matchAll(/path:\s*'([^']+)'\s*,[\s\S]*?priority:\s*([0-9.]+)/g)]
+const pages = [...seoSource.matchAll(/page\(\s*'([^']*)'[\s\S]*?,\s*([0-9.]+)\)/g)]
   .map(([, path, priority]) => ({ path, priority }))
 
 if (pages.length === 0) {

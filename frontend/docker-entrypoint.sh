@@ -7,6 +7,7 @@ set -e
 cat > /usr/share/nginx/html/env-config.js << EOF
 window.__ENV__ = {
   VITE_API_URL:          "${VITE_API_URL:-}",
+  VITE_APP_NAME:         "${VITE_APP_NAME:-}",
   VITE_SITE_URL:         "${VITE_SITE_URL:-}",
   VITE_UMAMI_URL:        "${VITE_UMAMI_URL:-}",
   VITE_UMAMI_WEBSITE_ID: "${VITE_UMAMI_WEBSITE_ID:-}",

@@ -1,3 +1,5 @@
+import { getAppName } from './env'
+
 export interface SeoPage {
   path: string
   title: string
@@ -5,118 +7,40 @@ export interface SeoPage {
   priority: number
 }
 
-export const SITE_NAME = 'liteScope'
-export const DEFAULT_TITLE = 'liteScope - MeshCore Network Analyzer'
+export const SITE_NAME = getAppName()
+export const DEFAULT_TITLE = `${SITE_NAME} - MeshCore Network Analyzer`
 export const DEFAULT_DESCRIPTION = 'Self-hosted MeshCore mesh network monitoring with live packet feeds, node analytics, RF signal charts, observer dashboards, maps, and packet decoding.'
 
-export const SEO_PAGES = [
-  {
-    path: '/',
-    title: DEFAULT_TITLE,
-    description: DEFAULT_DESCRIPTION,
-    priority: 1,
-  },
-  {
-    path: '/packets',
-    title: 'Live Packet Feed - liteScope',
-    description: 'Inspect MeshCore packet traffic in real time with decoded payload types, observer counts, RF telemetry, hashes, and packet trace links.',
-    priority: 0.9,
-  },
-  {
-    path: '/map',
-    title: 'MeshCore Node Map - liteScope',
-    description: 'Explore MeshCore nodes and observers on an interactive map with positions, roles, and recent network activity.',
-    priority: 0.85,
-  },
-  {
-    path: '/live',
-    title: 'Live Mesh Map - liteScope',
-    description: 'Watch live MeshCore network activity as packets, nodes, observers, and routes update on the map.',
-    priority: 0.85,
-  },
-  {
-    path: '/nodes',
-    title: 'MeshCore Nodes - liteScope',
-    description: 'Browse MeshCore nodes by role, name, public key, location, packet counts, retransmits, and last-seen activity.',
-    priority: 0.85,
-  },
-  {
-    path: '/channels',
-    title: 'MeshCore Channels - liteScope',
-    description: 'Analyze MeshCore channel traffic, encrypted channel hashes, message volume, activity over time, and top senders.',
-    priority: 0.8,
-  },
-  {
-    path: '/observers',
-    title: 'MeshCore Observers - liteScope',
-    description: 'Monitor MeshCore observers, regions, hardware status, packet counts, uptime, battery telemetry, and observer analytics.',
-    priority: 0.8,
-  },
-  {
-    path: '/analytics',
-    title: 'MeshCore Analytics - liteScope',
-    description: 'Review MeshCore network analytics including packet volume, RF signal quality, channels, observers, nodes, distance, scope, and hash behavior.',
-    priority: 0.9,
-  },
-  {
-    path: '/analytics/activity',
-    title: 'Packet Activity Analytics - liteScope',
-    description: 'Analyze MeshCore packet activity over time with hourly buckets, traffic trends, and region-aware filtering.',
-    priority: 0.75,
-  },
-  {
-    path: '/analytics/rf',
-    title: 'RF Signal Analytics - liteScope',
-    description: 'Inspect MeshCore RF quality with RSSI, SNR, payload-type signal summaries, and observer-level measurements.',
-    priority: 0.75,
-  },
-  {
-    path: '/analytics/nodes',
-    title: 'Node Analytics - liteScope',
-    description: 'Find top MeshCore nodes by adverts and retransmits, with role, location, and last-seen context.',
-    priority: 0.75,
-  },
-  {
-    path: '/analytics/observers',
-    title: 'Observer Analytics - liteScope',
-    description: 'Compare MeshCore observers by packet count, region, device status, uptime, and recent activity.',
-    priority: 0.75,
-  },
-  {
-    path: '/analytics/channels',
-    title: 'Channel Analytics - liteScope',
-    description: 'Understand MeshCore channel usage with message counts, hourly activity, channel roster, and sender distribution.',
-    priority: 0.75,
-  },
-  {
-    path: '/analytics/hashes',
-    title: 'Hash Analytics - liteScope',
-    description: 'Review MeshCore routing hash size distribution, hop identifiers, relayed packets, and firmware hash behavior.',
-    priority: 0.7,
-  },
-  {
-    path: '/analytics/scope',
-    title: 'Scope Analytics - liteScope',
-    description: 'Analyze MeshCore packet scopes, scoped and unscoped traffic, RF quality by scope, and observer distribution.',
-    priority: 0.7,
-  },
-  {
-    path: '/analytics/distance',
-    title: 'Distance and Hop Analytics - liteScope',
-    description: 'Study MeshCore route hops, link types, path lengths, geographic distances, and top observed routes.',
-    priority: 0.7,
-  },
-  {
-    path: '/decode',
-    title: 'MeshCore Packet Decoder - liteScope',
-    description: 'Decode raw MeshCore packet hex locally to inspect transport fields, payload metadata, routes, and channel data.',
-    priority: 0.8,
-  },
-] as const satisfies readonly SeoPage[]
+const page = (path: string, title: string, description: string, priority: number): SeoPage => ({
+  path,
+  title: title ? `${title} - ${SITE_NAME}` : DEFAULT_TITLE,
+  description,
+  priority,
+})
+
+export const SEO_PAGES: readonly SeoPage[] = [
+  page('/', '', DEFAULT_DESCRIPTION, 1),
+  page('/packets', 'Live Packet Feed', 'Inspect MeshCore packet traffic in real time with decoded payload types, observer counts, RF telemetry, hashes, and packet trace links.', 0.9),
+  page('/map', 'MeshCore Node Map', 'Explore MeshCore nodes and observers on an interactive map with positions, roles, and recent network activity.', 0.85),
+  page('/live', 'Live Mesh Map', 'Watch live MeshCore network activity as packets, nodes, observers, and routes update on the map.', 0.85),
+  page('/nodes', 'MeshCore Nodes', 'Browse MeshCore nodes by role, name, public key, location, packet counts, retransmits, and last-seen activity.', 0.85),
+  page('/channels', 'MeshCore Channels', 'Analyze MeshCore channel traffic, encrypted channel hashes, message volume, activity over time, and top senders.', 0.8),
+  page('/observers', 'MeshCore Observers', 'Monitor MeshCore observers, regions, hardware status, packet counts, uptime, battery telemetry, and observer analytics.', 0.8),
+  page('/analytics', 'MeshCore Analytics', 'Review MeshCore network analytics including packet volume, RF signal quality, channels, observers, nodes, distance, scope, and hash behavior.', 0.9),
+  page('/analytics/activity', 'Packet Activity Analytics', 'Analyze MeshCore packet activity over time with hourly buckets, traffic trends, and region-aware filtering.', 0.75),
+  page('/analytics/rf', 'RF Signal Analytics', 'Inspect MeshCore RF quality with RSSI, SNR, payload-type signal summaries, and observer-level measurements.', 0.75),
+  page('/analytics/nodes', 'Node Analytics', 'Find top MeshCore nodes by adverts and retransmits, with role, location, and last-seen context.', 0.75),
+  page('/analytics/observers', 'Observer Analytics', 'Compare MeshCore observers by packet count, region, device status, uptime, and recent activity.', 0.75),
+  page('/analytics/channels', 'Channel Analytics', 'Understand MeshCore channel usage with message counts, hourly activity, channel roster, and sender distribution.', 0.75),
+  page('/analytics/hashes', 'Hash Analytics', 'Review MeshCore routing hash size distribution, hop identifiers, relayed packets, and firmware hash behavior.', 0.7),
+  page('/analytics/scope', 'Scope Analytics', 'Analyze MeshCore packet scopes, scoped and unscoped traffic, RF quality by scope, and observer distribution.', 0.7),
+  page('/analytics/distance', 'Distance and Hop Analytics', 'Study MeshCore route hops, link types, path lengths, geographic distances, and top observed routes.', 0.7),
+  page('/decode', 'MeshCore Packet Decoder', 'Decode raw MeshCore packet hex locally to inspect transport fields, payload metadata, routes, and channel data.', 0.8),
+]
 
 export function seoForPath(pathname: string): SeoPage {
   const cleanPath = pathname.replace(/\/+$/, '') || '/'
-  return SEO_PAGES.find(page => page.path === cleanPath) ?? {
+  return SEO_PAGES.find(p => p.path === cleanPath) ?? {
     path: cleanPath,
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,

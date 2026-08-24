@@ -9,6 +9,10 @@ export function getEnv(key: string): string {
   return window.__ENV__?.[key] || (import.meta.env[key] as string | undefined) || ''
 }
 
+export function getAppName(): string {
+  return getEnv('VITE_APP_NAME') || 'liteScope'
+}
+
 export function waitForEnv(
   ready: () => boolean,
   timeoutMs = 1000,

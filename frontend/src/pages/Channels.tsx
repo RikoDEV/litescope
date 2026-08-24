@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import Popover from '@mui/material/Popover'
 import Dialog from '@mui/material/Dialog'
 import { QRCodeSVG } from 'qrcode.react'
+import { SITE_NAME } from '../seo'
 import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
@@ -518,7 +519,7 @@ export default function Channels() {
     const switchingChannel = selected?.hash !== ch.hash
     setSelected(ch)
     if (switchingChannel) setDecrypted({})
-    document.title = `${ch.name} — liteScope`
+    document.title = `${ch.name} — ${SITE_NAME}`
     const msgs = await api.channelMessages(ch.hash, PAGE_SIZE, 0, channelParams())
     initialLoad.current = true
     setMessages(msgs)

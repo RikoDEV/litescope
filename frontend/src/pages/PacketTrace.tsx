@@ -14,6 +14,7 @@ import type { PacketDetail } from '../types'
 import { PAYLOAD_NAMES, ROUTE_NAMES, PAYLOAD_COLORS } from '../types'
 import { parseHops, deduplicateObs, relativeTime } from '../utils/packets'
 import { IataFlag } from '../utils/flags'
+import { SITE_NAME } from '../seo'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -361,7 +362,7 @@ export default function PacketTrace() {
 
   useEffect(() => {
     if (!hash) return
-    document.title = `Trace · ${hash.slice(0, 12)} — liteScope`
+    document.title = `Trace · ${hash.slice(0, 12)} — ${SITE_NAME}`
     api.packet(hash)
       .then(setPkt)
       .catch(() => setError(true))
