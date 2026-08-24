@@ -43,6 +43,7 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/nodes/{pubkey}/packets", s.getNodePackets).Methods("GET", "OPTIONS")
 	api.HandleFunc("/nodes/{pubkey}/rf", s.getNodeRF).Methods("GET", "OPTIONS")
 	api.HandleFunc("/nodes/{pubkey}/overview", s.getNodeOverview).Methods("GET", "OPTIONS")
+	api.HandleFunc("/nodes/{pubkey}/clock-health", s.getNodeClockHealth).Methods("GET", "OPTIONS")
 	api.HandleFunc("/iatas", s.listIATAs).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers", s.listObservers).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}", s.getObserver).Methods("GET", "OPTIONS")
@@ -326,6 +327,16 @@ func (s *Server) getNodePackets(w http.ResponseWriter, r *http.Request) {
 		out = append(out, summarizeTx(tx))
 	}
 	writeJSON(w, out)
+}
+
+func (s *Server) getNodeClockHealth(w http.ResponseWriter, r *http.Request) {
+	pk := mux.Vars(r)["pubkey"]
+	e, ok := s.Store.NodeClockHealth(pk)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, e)
 }
 
 func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {

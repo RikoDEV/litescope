@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import Box from '@mui/material/Box'
@@ -12,16 +12,37 @@ import { alpha, useTheme, type SxProps, type Theme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
-import type { Node, NodeOverview, RFStats } from '../types'
+import type { ClockHealthEntry, Node, NodeOverview, RFStats } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
 import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
 import { roleColor as roleColorFn } from '../utils/roles'
+import { api } from '../services/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+const CLOCK_SEVERITY_COLOR: Record<ClockHealthEntry['severity'], string> = {
+  ok: '#22c55e', warning: '#f59e0b', critical: '#f97316', absurd: '#dc2626',
+}
+
+function formatClockSkew(seconds: number): string {
+  const sign = seconds < 0 ? '−' : '+'
+  const abs = Math.abs(seconds)
+  if (abs < 60) return `${sign}${abs.toFixed(0)}s`
+  if (abs < 3600) return `${sign}${(abs / 60).toFixed(1)}m`
+  if (abs < 86400) return `${sign}${(abs / 3600).toFixed(1)}h`
+  return `${sign}${(abs / 86400).toFixed(1)}d`
+}
+
+function formatClockDrift(secondsPerDay: number): string {
+  if (secondsPerDay === 0) return '—'
+  const sign = secondsPerDay < 0 ? '−' : '+'
+  return `${sign}${Math.abs(secondsPerDay).toFixed(1)} s/day`
+}
 
 function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; color: string; onClick?: () => void }) {
   const divRef = useRef<HTMLDivElement>(null)
@@ -66,6 +87,12 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
 
   const snrBuckets  = rf?.snr?.length  ? bucketize(rf.snr,  -25, 15,   8) : []
   const rssiBuckets = rf?.rssi?.length ? bucketize(rf.rssi, -120, -40, 8) : []
+
+  const [clockHealth, setClockHealth] = useState<ClockHealthEntry | null>(null)
+  useEffect(() => {
+    setClockHealth(null)
+    api.nodeClockHealth(selected.pubKey).then(setClockHealth).catch(() => setClockHealth(null))
+  }, [selected.pubKey])
 
   const mobileSx: SxProps<Theme> = {
     position: 'fixed',
@@ -235,6 +262,35 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
                   <Typography variant="caption" sx={{ color: '#22c55e', fontSize: 10, flexShrink: 0 }}>→</Typography>
                 </Box>
               ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Clock health */}
+        {clockHealth && (
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.75 }}>
+              <AccessTimeIcon sx={{ fontSize: 14, color: md3.primary }} />
+              <Typography variant="overline" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.clockHealth')}</Typography>
+            </Box>
+            <Box sx={{
+              display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1,
+              background: md3.surfaceContainerHighest, borderRadius: 2, px: 1.25, py: 0.75,
+            }}>
+              <Chip
+                label={t(`analytics.severity${clockHealth.severity.charAt(0).toUpperCase()}${clockHealth.severity.slice(1)}` as Parameters<typeof t>[0])}
+                size="small"
+                sx={{ background: alpha(CLOCK_SEVERITY_COLOR[clockHealth.severity], 0.18), color: CLOCK_SEVERITY_COLOR[clockHealth.severity], fontWeight: 700 }}
+              />
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 12 }}>
+                {t('analytics.skew')}: {formatClockSkew(clockHealth.skewSeconds)}
+              </Typography>
+              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
+                {t('analytics.drift')}: {formatClockDrift(clockHealth.driftPerDay)}
+              </Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, width: '100%' }}>
+                {t('analytics.lastAdvert')} {formatDistanceToNow(new Date(clockHealth.lastAdvert), { addSuffix: true, locale: dateLocale })}
+              </Typography>
             </Box>
           </Box>
         )}

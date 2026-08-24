@@ -2405,11 +2405,63 @@ func (s *Store) ClockHealth(f AnalyticsFilter) []ClockHealthEntry {
 	return cachedAnalyticsForFilter(s, "clockHealth", f, func() []ClockHealthEntry { return s.computeClockHealth(f) })
 }
 
+type clockSample struct{ recv, reported time.Time }
+
+func clockHealthEntry(pk string, n *Node, txs []*Tx, f AnalyticsFilter) (ClockHealthEntry, bool) {
+	samples := make([]clockSample, 0, len(txs))
+	for _, tx := range txs {
+		if f.Active() && !f.txOK(tx) {
+			continue
+		}
+		dec := tx.Decoded()
+		if dec == nil {
+			continue
+		}
+		recv, err := time.Parse(time.RFC3339, tx.FirstSeen)
+		if err != nil {
+			continue
+		}
+		iso, _ := dec["timestampISO"].(string)
+		if iso == "" {
+			continue
+		}
+		reported, err := time.Parse(time.RFC3339, iso)
+		if err != nil {
+			continue
+		}
+		samples = append(samples, clockSample{recv: recv, reported: reported})
+	}
+	if len(samples) == 0 {
+		return ClockHealthEntry{}, false
+	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i].recv.Before(samples[j].recv) })
+
+	last := samples[len(samples)-1]
+	skew := last.recv.Sub(last.reported)
+
+	var driftPerDay float64
+	if len(samples) >= 2 {
+		first := samples[0]
+		firstSkew := first.recv.Sub(first.reported)
+		elapsedDays := last.recv.Sub(first.recv).Hours() / 24
+		if elapsedDays > 0 {
+			driftPerDay = (skew - firstSkew).Seconds() / elapsedDays
+		}
+	}
+
+	return ClockHealthEntry{
+		PubKey: pk, Name: n.Name, Role: n.Role,
+		SkewSeconds: skew.Seconds(),
+		Severity:    clockSkewSeverity(skew),
+		DriftPerDay: driftPerDay,
+		LastAdvert:  last.recv.Format(time.RFC3339),
+		Samples:     len(samples),
+	}, true
+}
+
 func (s *Store) computeClockHealth(f AnalyticsFilter) []ClockHealthEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	type sample struct{ recv, reported time.Time }
 
 	out := make([]ClockHealthEntry, 0, len(s.byNode))
 	for pk, txs := range s.byNode {
@@ -2420,58 +2472,25 @@ func (s *Store) computeClockHealth(f AnalyticsFilter) []ClockHealthEntry {
 		if f.Active() && !f.nodeGeoOK(n) {
 			continue
 		}
-		samples := make([]sample, 0, len(txs))
-		for _, tx := range txs {
-			if f.Active() && !f.txOK(tx) {
-				continue
-			}
-			dec := tx.Decoded()
-			if dec == nil {
-				continue
-			}
-			recv, err := time.Parse(time.RFC3339, tx.FirstSeen)
-			if err != nil {
-				continue
-			}
-			iso, _ := dec["timestampISO"].(string)
-			if iso == "" {
-				continue
-			}
-			reported, err := time.Parse(time.RFC3339, iso)
-			if err != nil {
-				continue
-			}
-			samples = append(samples, sample{recv: recv, reported: reported})
+		if e, ok := clockHealthEntry(pk, n, txs, f); ok {
+			out = append(out, e)
 		}
-		if len(samples) == 0 {
-			continue
-		}
-		sort.Slice(samples, func(i, j int) bool { return samples[i].recv.Before(samples[j].recv) })
-
-		last := samples[len(samples)-1]
-		skew := last.recv.Sub(last.reported)
-
-		var driftPerDay float64
-		if len(samples) >= 2 {
-			first := samples[0]
-			firstSkew := first.recv.Sub(first.reported)
-			elapsedDays := last.recv.Sub(first.recv).Hours() / 24
-			if elapsedDays > 0 {
-				driftPerDay = (skew - firstSkew).Seconds() / elapsedDays
-			}
-		}
-
-		out = append(out, ClockHealthEntry{
-			PubKey: pk, Name: n.Name, Role: n.Role,
-			SkewSeconds: skew.Seconds(),
-			Severity:    clockSkewSeverity(skew),
-			DriftPerDay: driftPerDay,
-			LastAdvert:  last.recv.Format(time.RFC3339),
-			Samples:     len(samples),
-		})
 	}
 	sort.Slice(out, func(i, j int) bool { return math.Abs(out[i].SkewSeconds) > math.Abs(out[j].SkewSeconds) })
 	return out
+}
+
+// NodeClockHealth reports the clock-skew summary for a single node, or false
+// if the node is unknown or has no usable ADVERT samples.
+func (s *Store) NodeClockHealth(pubKey string) (ClockHealthEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	n := s.nodes[pubKey]
+	if n == nil {
+		return ClockHealthEntry{}, false
+	}
+	return clockHealthEntry(pubKey, n, s.byNode[pubKey], AnalyticsFilter{})
 }
 
 // RetransmitCounts returns, per node pubKey, the number of distinct packets in

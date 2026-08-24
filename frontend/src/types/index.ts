@@ -149,6 +149,17 @@ export interface RFStats {
   snr: number[]
 }
 
+export interface ClockHealthEntry {
+  pubKey: string
+  name: string
+  role: string
+  skewSeconds: number
+  severity: 'ok' | 'warning' | 'critical' | 'absurd'
+  driftPerDay: number
+  lastAdvert: string
+  samples: number
+}
+
 export interface ObserverStat {
   observerId: string
   observerName: string

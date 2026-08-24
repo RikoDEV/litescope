@@ -88,6 +88,9 @@ export const api = {
   nodeRF: (pubKey: string) =>
     get<RFStats>(`/api/nodes/${encodeURIComponent(pubKey)}/rf`),
 
+  nodeClockHealth: (pubKey: string) =>
+    get<import('../types').ClockHealthEntry>(`/api/nodes/${encodeURIComponent(pubKey)}/clock-health`),
+
   observers: () =>
     get<{ total: number; observers: Observer[] }>('/api/observers'),
 
