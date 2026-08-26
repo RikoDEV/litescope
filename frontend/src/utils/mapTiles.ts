@@ -1,5 +1,19 @@
 import L from 'leaflet'
+import { setWorkerUrl } from 'maplibre-gl'
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import '@maplibre/maplibre-gl-leaflet'
+
+// maplibre-gl locates its worker script at runtime via a *dynamic* `new URL(...)` (the
+// filename depends on a dev/prod branch computed at call time), which defeats bundlers'
+// static asset detection — so the worker file never gets emitted to the production build's
+// assets dir, and the request for it 404s (silently, since nginx's SPA fallback serves
+// index.html for any unknown path). The `?worker&url` import forces Vite to bundle the
+// worker's own internal import (`./maplibre-gl-shared.mjs`, otherwise unresolved for the
+// same reason) into a single self-contained chunk and give us its real, hashed URL — a
+// plain `?url` import copies the raw file without resolving that internal import, which
+// still leaves the worker unable to start. Without a working worker no vector tiles ever
+// get parsed, so the map renders only its style's background paint — black in dark mode.
+setWorkerUrl(maplibreWorkerUrl)
 
 // Shared base-tile setup for every Leaflet map in the app. Dark mode uses OpenFreeMap's
 // vector "dark" style (via maplibre-gl-leaflet); light mode uses OSM raster tiles — both
@@ -26,7 +40,9 @@ export function addBaseTileLayer(
   if (isDark) {
     const glLayer = L.maplibreGL({ style: DARK_STYLE_URL })
     glLayer.addTo(map)
-    if (onReady) glLayer.getMaplibreMap().once('load', onReady)
+    const glMap = glLayer.getMaplibreMap()
+    glMap.on('error', e => console.error('[maplibre]', e.error))
+    if (onReady) glMap.once('load', onReady)
     return glLayer
   }
   const tileLayer = L.tileLayer(OSM_URL, { attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19 })
