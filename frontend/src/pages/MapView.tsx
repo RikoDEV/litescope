@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import '@maplibre/maplibre-gl-leaflet'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
@@ -39,6 +38,7 @@ import { escapeHtml } from '../utils/html'
 import { passesGeo, selectedCountries } from '../utils/regions'
 import { ROLE_GLYPH, roleColor as roleColorFn, roleMarkerSvg, OBSERVER_BADGE_COLOR } from '../utils/roles'
 import { MAP_POSITION_CONFIGURED, DEFAULT_MAP_LAT, DEFAULT_MAP_LON, DEFAULT_MAP_ZOOM } from '../utils/mapDefaults'
+import { addBaseTileLayer } from '../utils/mapTiles'
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -315,18 +315,7 @@ export default function MapView() {
     const map = mapInstance.current; if (!map) return
     if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
     setTilesReady(false)
-    const isDark = theme.palette.mode === 'dark'
-    if (isDark) {
-      const glLayer = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/dark' })
-      glLayer.addTo(map)
-      glLayer.getMaplibreMap().once('load', () => setTilesReady(true))
-      tileLayerRef.current = glLayer
-    } else {
-      const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19 })
-      tileLayer.on('load', () => setTilesReady(true))
-      tileLayer.on('loading', () => setTilesReady(false))
-      tileLayerRef.current = tileLayer.addTo(map)
-    }
+    tileLayerRef.current = addBaseTileLayer(map, theme.palette.mode === 'dark', () => setTilesReady(true), () => setTilesReady(false))
     // Refresh cluster icons so they pick up the new theme colours
     clusterCtxRef.current = { mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface }
     clusterGroup.current?.refreshClusters()

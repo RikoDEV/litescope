@@ -1218,16 +1218,11 @@ packages:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
 
-<<<<<<< HEAD
   tinyqueue@3.0.0:
     resolution: {integrity: sha512-gRa9gwYU3ECmQYv3lslts5hxuIa90veaEcxDYuu3QGOIAEM2mOZkVHp48ANJuu1CURtRdHKUBY5Lm1tHV+sD4g==}
 
-  tinyrainbow@3.1.0:
-    resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
-=======
   tinyrainbow@3.1.1:
     resolution: {integrity: sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw==}
->>>>>>> 8b9cd3e7d99243ef7c1fc8a4a84c7b683dd32756
     engines: {node: '>=14.0.0'}
 
   typescript@7.0.2:
@@ -2314,13 +2309,9 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.5)
       picomatch: 4.0.5
 
-<<<<<<< HEAD
   tinyqueue@3.0.0: {}
 
-  tinyrainbow@3.1.0: {}
-=======
   tinyrainbow@3.1.1: {}
->>>>>>> 8b9cd3e7d99243ef7c1fc8a4a84c7b683dd32756
 
   typescript@7.0.2:
     optionalDependencies:

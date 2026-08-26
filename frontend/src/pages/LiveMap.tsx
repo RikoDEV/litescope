@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import '@maplibre/maplibre-gl-leaflet'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -28,6 +27,7 @@ import { hasValidLocation, validLatLon } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
 import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
 import { MAP_POSITION_CONFIGURED, DEFAULT_MAP_LAT, DEFAULT_MAP_LON, DEFAULT_MAP_ZOOM } from '../utils/mapDefaults'
+import { addBaseTileLayer } from '../utils/mapTiles'
 import { formatDistanceToNow } from 'date-fns'
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -188,10 +188,7 @@ export default function LiveMap() {
   useEffect(() => {
     const map = mapRef.current; if (!map) return
     if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
-    const isDark = theme.palette.mode === 'dark'
-    tileLayerRef.current = isDark
-      ? L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/dark' }).addTo(map)
-      : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19 }).addTo(map)
+    tileLayerRef.current = addBaseTileLayer(map, theme.palette.mode === 'dark')
   }, [theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Node markers ────────────────────────────────────────────────────────────

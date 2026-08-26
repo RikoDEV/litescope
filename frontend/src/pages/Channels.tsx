@@ -49,7 +49,7 @@ import { hashColor } from '../utils/colors'
 import { MESSAGE_TOKEN_RE, parseMessageSegments, isContact, isLocation, type ContactShare, type LocationShare } from '../utils/contacts'
 import L from 'leaflet'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import '@maplibre/maplibre-gl-leaflet'
+import { addBaseTileLayer } from '../utils/mapTiles'
 import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, loadCombinedHashes, saveCombinedHashes, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
 import { IataFlag } from '../utils/flags'
@@ -1067,11 +1067,7 @@ function LocationCard({ loc }: { loc: LocationShare }) {
       dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
     })
-    if (isDark) {
-      L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/dark' }).addTo(map)
-    } else {
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc' }).addTo(map)
-    }
+    addBaseTileLayer(map, isDark)
     L.circleMarker([loc.lat, loc.lon], { radius: 7, color: '#fff', fillColor: md3.primary, fillOpacity: 1, weight: 2.5 }).addTo(map)
     return () => { map.remove() }
   }, [loc.lat, loc.lon, isDark, md3.primary])
