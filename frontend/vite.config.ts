@@ -23,6 +23,12 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:3000', ws: true },
     },
   },
+  // maplibre-gl loads its parser as a worker via a `new URL(..., import.meta.url)`
+  // Worker() call; Vite's dep pre-bundling rewrites that URL and breaks it in dev
+  // (worker request 404s, leaving the map showing only its background paint).
+  optimizeDeps: {
+    exclude: ['maplibre-gl'],
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

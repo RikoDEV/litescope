@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import '@maplibre/maplibre-gl-leaflet'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
@@ -124,7 +126,7 @@ export default function LiveMap() {
   // Leaflet refs
   const mapRef      = useRef<L.Map | null>(null)
   const nodesLayer  = useRef<L.LayerGroup | null>(null)
-  const tileLayerRef = useRef<L.TileLayer | null>(null)
+  const tileLayerRef = useRef<L.Layer | null>(null)
 
   // Animation refs
   const rafId      = useRef<number>(0)
@@ -187,12 +189,9 @@ export default function LiveMap() {
     const map = mapRef.current; if (!map) return
     if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
     const isDark = theme.palette.mode === 'dark'
-    tileLayerRef.current = L.tileLayer(
-      isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { attribution: isDark ? '© OpenStreetMap © CARTO' : '© OpenStreetMap', subdomains: isDark ? 'abcd' : 'abc', maxZoom: 19 }
-    ).addTo(map)
+    tileLayerRef.current = isDark
+      ? L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/dark' }).addTo(map)
+      : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19 }).addTo(map)
   }, [theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Node markers ────────────────────────────────────────────────────────────

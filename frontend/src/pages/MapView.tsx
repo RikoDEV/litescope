@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import '@maplibre/maplibre-gl-leaflet'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
@@ -238,7 +240,7 @@ export default function MapView() {
     return L.divIcon({ html, className: '', iconSize: [size, size], iconAnchor: [half, half], popupAnchor: [0, -half - 3] })
   }
 
-  const tileLayerRef = useRef<L.TileLayer | null>(null)
+  const tileLayerRef = useRef<L.Layer | null>(null)
 
   // Map init
   useEffect(() => {
@@ -314,19 +316,17 @@ export default function MapView() {
     if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null }
     setTilesReady(false)
     const isDark = theme.palette.mode === 'dark'
-    const tileLayer = L.tileLayer(
-      isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {
-        attribution: isDark ? '© OpenStreetMap © CARTO' : '© OpenStreetMap',
-        subdomains: isDark ? 'abcd' : 'abc',
-        maxZoom: 19,
-      }
-    )
-    tileLayer.on('load', () => setTilesReady(true))
-    tileLayer.on('loading', () => setTilesReady(false))
-    tileLayerRef.current = tileLayer.addTo(map)
+    if (isDark) {
+      const glLayer = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/dark' })
+      glLayer.addTo(map)
+      glLayer.getMaplibreMap().once('load', () => setTilesReady(true))
+      tileLayerRef.current = glLayer
+    } else {
+      const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', subdomains: 'abc', maxZoom: 19 })
+      tileLayer.on('load', () => setTilesReady(true))
+      tileLayer.on('loading', () => setTilesReady(false))
+      tileLayerRef.current = tileLayer.addTo(map)
+    }
     // Refresh cluster icons so they pick up the new theme colours
     clusterCtxRef.current = { mode: theme.palette.mode, colors: { repeater: md3.primary, companion: md3.tertiary, room: '#22c55e', sensor: '#f59e0b' }, outline: md3.outline, surface: md3.surfaceContainerHighest, onSurface: md3.onSurface }
     clusterGroup.current?.refreshClusters()
