@@ -19,7 +19,7 @@
     "@emotion/styled": "^11.14.1",
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "@mui/icons-material": "^9.3.1",
-    "@mui/material": "^9.3.1",
+    "@mui/material": "^9.4.0",
     "country-flag-icons": "^1.6.20",
     "date-fns": "^4.4.0",
     "i18next": "^26.4.0",
