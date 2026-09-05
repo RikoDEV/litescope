@@ -188,9 +188,13 @@ type Store struct {
 	byObserver map[string][]*Obs
 	byNode     map[string][]*Tx
 	// byRelayHop maps a lowercase hex relay-hash prefix to the packets that were
-	// observed carrying it in a path. relayHopLengths is the set of distinct hop
-	// prefix lengths (in hex chars) seen, so NodePackets can probe a node's pubkey
-	// at every used length instead of scanning every packet.
+	// observed carrying it in a path, plus (via indexSrcHash) packets whose
+	// non-ADVERT payload names that hash as its own originating sender
+	// (payload.srcHash — see issue #56: without this, a node's TXT/GRP_TXT/ACK/…
+	// traffic is invisible to NodePackets since only ADVERT carries a full
+	// pubKey). relayHopLengths is the set of distinct hop prefix lengths (in hex
+	// chars) seen, so NodePackets can probe a node's pubkey at every used length
+	// instead of scanning every packet.
 	byRelayHop      map[string][]*Tx
 	relayHopLengths map[int]struct{}
 	nodes           map[string]*Node
@@ -385,6 +389,7 @@ func (s *Store) Load(txs []*db.TxRow, obss []*db.ObsRow, nodes []*db.NodeRow, ob
 	}
 	for _, tx := range s.packets {
 		s.indexByNode(tx)
+		s.indexSrcHash(tx)
 	}
 	for _, r := range nodes {
 		s.nodes[r.PubKey] = nodeFromRow(r)
@@ -451,6 +456,7 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		tx.Observations = append(tx.Observations, o)
 		mutated = true
 		s.indexByNode(tx)
+		s.indexSrcHash(tx)
 		s.indexRelayHops(tx, o)
 		// Existing packet (not first seen in this batch) gained an observation.
 		if !addedIDs[tx.ID] {
@@ -603,6 +609,34 @@ func (s *Store) indexRelayHops(tx *Tx, o *Obs) {
 		s.byRelayHop[lh] = append(s.byRelayHop[lh], tx)
 		s.relayHopLengths[len(lh)] = struct{}{}
 	}
+}
+
+// indexSrcHash registers tx under its payload's srcHash (the 1-byte hex prefix
+// of the originating node's pubkey), reusing byRelayHop so NodePackets' existing
+// hash-prefix probe also finds packets a node sent but didn't relay — TXT_MSG,
+// GRP_TXT, ACK, PATH, TRACE, ANON_REQ, … carry no full pubKey (only ADVERT
+// does), so without this a node's non-ADVERT traffic never appeared in its own
+// activity/packet history (issue #56). Deduplicated per (tx, hash) via
+// tx.relayHops, same as indexRelayHops. Caller must hold the write lock.
+func (s *Store) indexSrcHash(tx *Tx) {
+	decoded := tx.Decoded()
+	if decoded == nil {
+		return
+	}
+	h, ok := decoded["srcHash"].(string)
+	if !ok || h == "" || !isHexHop(h) {
+		return
+	}
+	lh := strings.ToLower(h)
+	if _, dup := tx.relayHops[lh]; dup {
+		return
+	}
+	if tx.relayHops == nil {
+		tx.relayHops = make(map[string]struct{})
+	}
+	tx.relayHops[lh] = struct{}{}
+	s.byRelayHop[lh] = append(s.byRelayHop[lh], tx)
+	s.relayHopLengths[len(lh)] = struct{}{}
 }
 
 // UpdateNodes merges new node rows into the in-memory node map. rows is a
