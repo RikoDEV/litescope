@@ -1,0 +1,27 @@
+bug:
+  - title: '(?i)\b(bug|crash|error|broken|fail(s|ed|ing)?|regression)\b'
+  - body: '(?i)\b(bug|crash|stack ?trace|exception|panic|error|doesn''t work|does not work)\b'
+
+enhancement:
+  - title: '(?i)\b(feature|enhancement|request|add support|please add)\b'
+  - body: '(?i)\b(would be nice|feature request|proposal|please add|it would be great)\b'
+
+question:
+  - title: '(?i)\b(question|how (do|can) i|help)\b'
+  - body: '(?i)\b(how (do|can) i|is it possible|question)\b'
+
+decoder:
+  - title: '(?i)\b(decod(er|e|ing)|packet|hash|payload)\b'
+  - body: '(?i)\b(decod(er|e|ing)|meshcore packet|content ?hash|aes)\b'
+
+ingestor:
+  - title: '(?i)\b(ingestor|mqtt|broker)\b'
+  - body: '(?i)\b(ingestor|mqtt|broker|observer)\b'
+
+frontend:
+  - title: '(?i)\b(ui|frontend|react|map|dashboard)\b'
+  - body: '(?i)\b(frontend|react|browser|maplibre|ui bug)\b'
+
+docker:
+  - title: '(?i)\b(docker|compose|container)\b'
+  - body: '(?i)\b(docker|docker compose|container|caddy|nginx)\b'
