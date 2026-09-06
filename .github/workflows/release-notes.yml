@@ -37,6 +37,7 @@ jobs:
           head-ref: ${{ steps.range.outputs.head }}
           instructions: .github/release-notes-instructions.md
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
 
       - name: Create/update draft release
