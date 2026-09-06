@@ -1,0 +1,49 @@
+name: Generate release notes
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build release notes for (e.g. v1.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag range
+        id: range
+        run: |
+          head="${{ github.event.inputs.tag || github.ref_name }}"
+          base="$(git describe --tags --abbrev=0 "${head}^" 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+          echo "head=${head}" >> "$GITHUB_OUTPUT"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate notes with Copilot
+        id: notes
+        uses: github/copilot-release-notes@main
+        with:
+          base-ref: ${{ steps.range.outputs.base }}
+          head-ref: ${{ steps.range.outputs.head }}
+          instructions: .github/release-notes-instructions.md
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+
+      - name: Create/update draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.range.outputs.head }}
+          name: ${{ steps.range.outputs.head }}
+          body: ${{ steps.notes.outputs.release-notes }}
+          draft: true
+          generate_release_notes: false
