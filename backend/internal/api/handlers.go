@@ -5,6 +5,7 @@ import (
 	"log"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -15,6 +16,9 @@ import (
 	"github.com/litescope/backend/internal/decoder"
 	"github.com/litescope/backend/internal/store"
 )
+
+// maxPageLimit caps the "limit" query param on paginated list endpoints.
+const maxPageLimit = 500
 
 // Server holds all dependencies for the HTTP handlers.
 type Server struct {
@@ -175,11 +179,19 @@ func analyticsFilterWithDefaultHours(r *http.Request, defaultHours int) store.An
 	if q.Get("hours") != "" {
 		hours = queryInt(r, "hours", 0)
 	}
-	hours = min(hours, 168) // cap at 7 days
-	regions := csvParam(q, "regions")
+	hours = min(hours, store.MaxAnalyticsWindowHours)
+	regions, lock := regionFilterParam(q)
 	countries := csvParam(q, "countries")
-	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
 	return store.NewAnalyticsFilter(hours, regions, countries, lock)
+}
+
+// regionFilterParam reads the "regions" (comma-separated IATA codes) and
+// "lock" (exclusive region matching) query params shared by every endpoint
+// that filters by observer region.
+func regionFilterParam(q url.Values) (regions []string, lock bool) {
+	regions = csvParam(q, "regions")
+	lock = q.Get("lock") == "1" || q.Get("lock") == "true"
+	return regions, lock
 }
 
 func csvParam(q map[string][]string, keys ...string) []string {
@@ -218,8 +230,7 @@ func intSetParam(q map[string][]string, keys ...string) map[int]bool {
 
 func packetQuery(r *http.Request, limit, offset int) store.PacketQuery {
 	q := r.URL.Query()
-	regions := csvParam(q, "regions")
-	lock := q.Get("lock") == "1" || q.Get("lock") == "true"
+	regions, lock := regionFilterParam(q)
 
 	pq := store.PacketQuery{
 		Limit:        limit,
@@ -247,8 +258,8 @@ func packetQuery(r *http.Request, limit, offset int) store.PacketQuery {
 func (s *Server) listPackets(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 50)
 	offset := queryInt(r, "offset", 0)
-	if limit > 500 {
-		limit = 500
+	if limit > maxPageLimit {
+		limit = maxPageLimit
 	}
 	txs, total := s.Store.PacketsFiltered(packetQuery(r, limit, offset))
 	type response struct {
@@ -525,7 +536,7 @@ func (s *Server) getChannelAnalytics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
-	limit := min(queryInt(r, "limit", 100), 500)
+	limit := min(queryInt(r, "limit", 100), maxPageLimit)
 	offset := queryInt(r, "offset", 0)
 	msgs := s.Store.ChannelMessages(hash, limit, offset, analyticsFilter(r))
 	out := make([]packetSummary, 0, len(msgs))
@@ -554,7 +565,7 @@ func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
-	hours := min(queryInt(r, "hours", 24), 168) // cap at 7 days
+	hours := min(queryInt(r, "hours", 24), store.MaxAnalyticsWindowHours)
 	writeJSON(w, s.Store.ActivityBuckets(hours, analyticsFilter(r)))
 }
 

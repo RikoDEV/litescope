@@ -1763,7 +1763,7 @@ func (s *Store) computeChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	const windowHours = 24
+	const windowHours = DefaultAnalyticsWindowHours
 	const topChannels = 6
 	now := time.Now().UTC()
 	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
@@ -1847,8 +1847,7 @@ func (s *Store) computeChannelAnalytics(f AnalyticsFilter) ChannelAnalyticsData 
 	}
 
 	hours := make([]ChannelHour, windowHours)
-	for i := range windowHours {
-		h := actStart.Add(time.Duration(i) * time.Hour)
+	for i, h := range hourlyBuckets(actStart, windowHours) {
 		counts := make(map[string]int)
 		for hash, c := range activityByHash[h.Unix()] {
 			label := otherLabel
@@ -1900,6 +1899,24 @@ type ChannelSender struct {
 }
 
 // ── Analytics filtering ────────────────────────────────────────────────────────
+
+// MaxAnalyticsWindowHours caps how far back any hours-windowed analytics
+// endpoint or chart looks (7 days).
+const MaxAnalyticsWindowHours = 168
+
+// DefaultAnalyticsWindowHours is the window used by fixed 24h dashboards and
+// by hours-windowed endpoints when no explicit window is requested.
+const DefaultAnalyticsWindowHours = 24
+
+// hourlyBuckets returns the windowHours hour-aligned timestamps starting at
+// start, one per hour, for filling in empty analytics buckets.
+func hourlyBuckets(start time.Time, windowHours int) []time.Time {
+	hours := make([]time.Time, windowHours)
+	for i := range windowHours {
+		hours[i] = start.Add(time.Duration(i) * time.Hour)
+	}
+	return hours
+}
 
 // AnalyticsFilter scopes analytics to a time window and/or a set of observer
 // regions (IATA codes). The zero value matches everything.
@@ -2199,11 +2216,10 @@ func (s *Store) ActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStat
 func (s *Store) computeActivityBuckets(windowHours int, f AnalyticsFilter) ActivityStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	const maxActivityWindowHours = 168 // 7 days
 	if windowHours <= 0 {
-		windowHours = 24
-	} else if windowHours > maxActivityWindowHours {
-		windowHours = maxActivityWindowHours
+		windowHours = DefaultAnalyticsWindowHours
+	} else if windowHours > MaxAnalyticsWindowHours {
+		windowHours = MaxAnalyticsWindowHours
 	}
 	now := time.Now().UTC()
 	start := now.Add(-time.Duration(windowHours) * time.Hour).Truncate(time.Hour)
@@ -2254,8 +2270,7 @@ func (s *Store) computeActivityBuckets(windowHours int, f AnalyticsFilter) Activ
 	}
 	// Fill all hours even if empty
 	out := make([]ActivityBucket, 0, windowHours)
-	for i := 0; i < windowHours; i++ {
-		h := start.Add(time.Duration(i) * time.Hour)
+	for _, h := range hourlyBuckets(start, windowHours) {
 		a := buckets[h.Unix()]
 		b := ActivityBucket{
 			Hour:     h.Format(time.RFC3339),
@@ -2687,8 +2702,7 @@ func (s *Store) ObserverAnalytics(id string, days int) ObserverAnalyticsData {
 	}
 
 	var timeline []ActivityBucket
-	for i := range windowHours {
-		h := start.Add(time.Duration(i) * time.Hour)
+	for _, h := range hourlyBuckets(start, windowHours) {
 		timeline = append(timeline, ActivityBucket{
 			Hour:  h.Format(time.RFC3339),
 			Label: h.Format("01/02 15h"),
@@ -3498,7 +3512,7 @@ func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 	obsByKey := make(map[obsKey]int)
 	obsInfoOf := make(map[string][2]string) // observerID → [name, iata]
 	// 24h hourly activity: bucket unix → scope → count
-	const windowHours = 24
+	const windowHours = DefaultAnalyticsWindowHours
 	now := time.Now().UTC()
 	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
 	activity := make(map[int64]map[string]int)
@@ -3611,8 +3625,7 @@ func (s *Store) computeScopeStats(f AnalyticsFilter) ScopeStatsData {
 	sort.Strings(actScopes)
 
 	hours := make([]ScopeHour, windowHours)
-	for i := range windowHours {
-		h := actStart.Add(time.Duration(i) * time.Hour)
+	for i, h := range hourlyBuckets(actStart, windowHours) {
 		counts := make(map[string]int)
 		if bkt := activity[h.Unix()]; bkt != nil {
 			maps.Copy(counts, bkt)
@@ -3738,9 +3751,15 @@ func (s *Store) computeDistanceStatsLocked(f AnalyticsFilter) DistanceStatsData 
 	var direct, singleRelay, multiRelay int
 	hopDistMap := make(map[int]int) // hopCount → frequency (all obs)
 
-	const windowHours = 24
+	windowHours := DefaultAnalyticsWindowHours
+	if f.hours > 0 {
+		windowHours = f.hours
+		if windowHours > MaxAnalyticsWindowHours {
+			windowHours = MaxAnalyticsWindowHours
+		}
+	}
 	now := time.Now().UTC()
-	actStart := now.Add(-windowHours * time.Hour).Truncate(time.Hour)
+	actStart := now.Add(-time.Duration(windowHours) * time.Hour).Truncate(time.Hour)
 	type actAcc struct{ hopSum, count int }
 	actBuckets := make(map[int64]*actAcc)
 
@@ -3866,8 +3885,7 @@ func (s *Store) computeDistanceStatsLocked(f AnalyticsFilter) DistanceStatsData 
 
 	// Hourly activity
 	actHours := make([]HopActivity, windowHours)
-	for i := range windowHours {
-		h := actStart.Add(time.Duration(i) * time.Hour)
+	for i, h := range hourlyBuckets(actStart, windowHours) {
 		a := HopActivity{Hour: h.Format(time.RFC3339), Label: h.Format("15:04")}
 		if bkt := actBuckets[h.Unix()]; bkt != nil && bkt.count > 0 {
 			a.AvgHops = float64(bkt.hopSum) / float64(bkt.count)
