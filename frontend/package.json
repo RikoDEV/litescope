@@ -22,11 +22,11 @@
     "@mui/material": "^9.4.0",
     "country-flag-icons": "^1.6.20",
     "date-fns": "^4.4.0",
-    "i18next": "^26.4.0",
+    "i18next": "^26.4.2",
     "i18next-browser-languagedetector": "^8.2.1",
     "leaflet": "1.9.4",
     "leaflet.markercluster": "^1.5.3",
-    "maplibre-gl": "^6.6.0",
+    "maplibre-gl": "^6.7.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -37,12 +37,12 @@
   "devDependencies": {
     "@types/leaflet": "^1.9.22",
     "@types/leaflet.markercluster": "^1.5.6",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
