@@ -16,6 +16,8 @@ import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import Chip from '@mui/material/Chip'
 import Skeleton from '@mui/material/Skeleton'
+import MuiTooltip from '@mui/material/Tooltip'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
@@ -199,7 +201,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
 
       {typeData.length > 0 && (
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-          <ChartCard title={t('analytics.packetTypeDistribution')} Icon={BarChartIcon}>
+          <ChartCard title={t('analytics.packetTypeDistribution')} tooltip={t('analytics.tooltips.packetTypeDistribution')} Icon={BarChartIcon}>
             <ResponsiveContainer width="100%" height={typeData.length * 22 + 16}>
               <BarChart data={typeData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} />
@@ -210,7 +212,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
-          <ChartCard title={t('analytics.payloadTypeShare')} Icon={BarChartIcon}>
+          <ChartCard title={t('analytics.payloadTypeShare')} tooltip={t('analytics.tooltips.payloadTypeShare')} Icon={BarChartIcon}>
             <ResponsiveContainer width="100%" height={typeShareData.length * 22 + 16}>
               <BarChart data={typeShareData} layout="vertical" margin={{ top: 4, right: 36, left: 0, bottom: 4 }}>
                 <XAxis type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} tickCount={5} />
@@ -284,7 +286,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
       </ChartCard>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-        <ChartCard title={t('analytics.nodeFanoutActivity')} Icon={TimelineIcon}>
+        <ChartCard title={t('analytics.nodeFanoutActivity')} tooltip={t('analytics.tooltips.nodeFanoutActivity')} Icon={TimelineIcon}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -299,7 +301,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title={t('analytics.payloadMixOverTime')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.payloadMixOverTime')} tooltip={t('analytics.tooltips.payloadMixOverTime')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -362,7 +364,7 @@ function RFTab({ params, filterKey }: TabProps) {
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mb: 2 }}>
-        <ChartCard title={t('analytics.snrDistribution')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.snrDistribution')} tooltip={t('analytics.tooltips.snrDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={snrB} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -375,7 +377,7 @@ function RFTab({ params, filterKey }: TabProps) {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
-        <ChartCard title={t('analytics.rssiDistribution')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.rssiDistribution')} tooltip={t('analytics.tooltips.rssiDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={rssiB} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -391,7 +393,7 @@ function RFTab({ params, filterKey }: TabProps) {
       </Box>
 
       {snrTypeData.length > 0 && (
-        <ChartCard title={t('analytics.snrByType')} Icon={SignalCellularAltIcon} sx={{ mb: 2 }}>
+        <ChartCard title={t('analytics.snrByType')} tooltip={t('analytics.tooltips.snrByType')} Icon={SignalCellularAltIcon} sx={{ mb: 2 }}>
           <ResponsiveContainer width="100%" height={Math.max(160, snrTypeData.length * 32)}>
             <BarChart data={snrTypeData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -459,7 +461,7 @@ function NodesTab({ params, filterKey }: TabProps) {
   return (
     <Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 260px' }, gap: 2, mb: 2 }}>
-        <ChartCard title={t('analytics.topNodes')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.topNodes')} tooltip={t('analytics.tooltips.topNodes')} Icon={BarChartIcon}>
           <ToggleButtonGroup size="small" exclusive value={topSort} onChange={(_, v) => v && setTopSort(v)}
             sx={{ mb: 1, '& .MuiToggleButton-root': { py: 0.25, px: 1.25, fontSize: 11, textTransform: 'none' } }}>
             <ToggleButton value="adverts">{t('common.adverts')}</ToggleButton>
@@ -477,7 +479,7 @@ function NodesTab({ params, filterKey }: TabProps) {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
-        <ChartCard title={t('analytics.roleDistribution')} Icon={DonutLargeIcon}>
+        <ChartCard title={t('analytics.roleDistribution')} tooltip={t('analytics.tooltips.roleDistribution')} Icon={DonutLargeIcon}>
           <ResponsiveContainer width="100%" height={rolePie.length * 28 + 16}>
             <BarChart data={rolePie} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} />
@@ -491,7 +493,7 @@ function NodesTab({ params, filterKey }: TabProps) {
         </ChartCard>
       </Box>
 
-      <ChartCard title={t('analytics.leaderboard')} Icon={LeaderboardIcon}>
+      <ChartCard title={t('analytics.leaderboard')} tooltip={t('analytics.tooltips.leaderboard')} Icon={LeaderboardIcon}>
         <Box sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ minWidth: 560 }}>
           <TableHead>
@@ -535,7 +537,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
 
   return (
     <Box>
-      <ChartCard title={t('analytics.topObserversByPacket')} Icon={BarChartIcon}>
+      <ChartCard title={t('analytics.topObserversByPacket')} tooltip={t('analytics.tooltips.topObserversByPacket')} Icon={BarChartIcon}>
         <ResponsiveContainer width="100%" height={Math.max(160, observers.length * 30)}>
           <BarChart data={observers.map(o => ({ name: o.name || o.id.toLowerCase().slice(0, 12), count: o.packetCount, iata: o.iata }))} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -547,7 +549,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
         </ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard title={t('analytics.observerRoster')} Icon={LeaderboardIcon} sx={{ mt: 2 }}>
+      <ChartCard title={t('analytics.observerRoster')} tooltip={t('analytics.tooltips.observerRoster')} Icon={LeaderboardIcon} sx={{ mt: 2 }}>
         <Box sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ minWidth: 680 }}>
           <TableHead>
@@ -627,7 +629,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-        <ChartCard title={t('analytics.channelActivity')} Icon={ForumIcon}>
+        <ChartCard title={t('analytics.channelActivity')} tooltip={t('analytics.tooltips.channelActivity')} Icon={ForumIcon}>
           <ResponsiveContainer width="100%" height={Math.max(160, channels.length * 30)}>
             <BarChart data={channels.map(c => ({ name: c.name || c.hash.slice(0, 10), count: c.messageCount }))} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -641,7 +643,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title={t('analytics.messageShare')} Icon={PieChartIcon}>
+        <ChartCard title={t('analytics.messageShare')} tooltip={t('analytics.tooltips.messageShare')} Icon={PieChartIcon}>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
@@ -662,7 +664,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
       {analytics && (analytics.activityChannels.length > 0 || analytics.topSenders.length > 0) && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mt: 2 }}>
           {analytics.activityChannels.length > 0 && (
-            <ChartCard title={t('analytics.messagesPerHourByChannel')} Icon={ShowChartIcon}>
+            <ChartCard title={t('analytics.messagesPerHourByChannel')} tooltip={t('analytics.tooltips.messagesPerHourByChannel')} Icon={ShowChartIcon}>
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={actChart}>
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -680,7 +682,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
           )}
 
           {analytics.topSenders.length > 0 && (
-            <ChartCard title={t('analytics.topSenders')} Icon={LeaderboardIcon}>
+            <ChartCard title={t('analytics.topSenders')} tooltip={t('analytics.tooltips.topSenders')} Icon={LeaderboardIcon}>
               <ResponsiveContainer width="100%" height={Math.max(160, analytics.topSenders.length * 26)}>
                 <BarChart data={analytics.topSenders.map(s => ({ name: s.sender, count: s.messageCount, channels: s.channels }))} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -696,7 +698,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
         </Box>
       )}
 
-      <ChartCard title={t('analytics.channelRoster')} Icon={LeaderboardIcon} sx={{ mt: 2 }}>
+      <ChartCard title={t('analytics.channelRoster')} tooltip={t('analytics.tooltips.channelRoster')} Icon={LeaderboardIcon} sx={{ mt: 2 }}>
         <Box sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ minWidth: 520 }}>
           <TableHead>
@@ -793,7 +795,7 @@ function HashesTab({ params, filterKey }: TabProps) {
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-        <ChartCard title={t('analytics.hashSizeDistribution')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.hashSizeDistribution')} tooltip={t('analytics.tooltips.hashSizeDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={sizeDistMerged}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -809,7 +811,7 @@ function HashesTab({ params, filterKey }: TabProps) {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title={t('analytics.byRole')} Icon={GroupWorkIcon}>
+        <ChartCard title={t('analytics.byRole')} tooltip={t('analytics.tooltips.byRole')} Icon={GroupWorkIcon}>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={byRoleData}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -826,7 +828,7 @@ function HashesTab({ params, filterKey }: TabProps) {
         </ChartCard>
       </Box>
 
-      <ChartCard title={t('analytics.hashSizeOverTime')} Icon={TimelineIcon} sx={{ mb: 2 }}>
+      <ChartCard title={t('analytics.hashSizeOverTime')} tooltip={t('analytics.tooltips.hashSizeOverTime')} Icon={TimelineIcon} sx={{ mb: 2 }}>
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={data.overTime}>
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -867,7 +869,7 @@ function HashesTab({ params, filterKey }: TabProps) {
       )}
 
       {(data.inconsistentHashes?.length ?? 0) > 0 && (
-        <ChartCard title={t('analytics.inconsistentHashTitle')} Icon={WarningAmberIcon} sx={{ mt: 2 }}>
+        <ChartCard title={t('analytics.inconsistentHashTitle')} tooltip={t('analytics.tooltips.inconsistentHashTitle')} Icon={WarningAmberIcon} sx={{ mt: 2 }}>
           <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 1.5, lineHeight: 1.5 }}>
             {t('analytics.inconsistentHashDesc1')}
             <Link href="https://github.com/meshcore-dev/MeshCore/commit/fcfdc5f" target="_blank" rel="noopener" sx={{ color: md3.primary }}>{t('analytics.inconsistentHashFirmwareBug')}</Link>
@@ -1031,7 +1033,7 @@ function ClockHealthTab({ params, filterKey }: TabProps) {
         </ToggleButtonGroup>
       </Box>
 
-      <ChartCard title={t('analytics.clockHealth')} Icon={AccessTimeIcon}>
+      <ChartCard title={t('analytics.clockHealth')} tooltip={t('analytics.tooltips.clockHealth')} Icon={AccessTimeIcon}>
         {sorted.length === 0 ? (
           <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.noClockData')}</Typography>
         ) : (
@@ -1141,7 +1143,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
         {/* Distance by Link Type */}
-        <ChartCard title={t('analytics.byLinkType')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.byLinkType')} tooltip={t('analytics.tooltips.byLinkType')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={linkTypeData} layout="vertical" margin={{ left: 8, right: 48, top: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
@@ -1157,7 +1159,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
         </ChartCard>
 
         {/* Hop Distance Distribution */}
-        <ChartCard title={t('analytics.hopDistribution')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.hopDistribution')} tooltip={t('analytics.tooltips.hopDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.hopDistribution} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -1176,7 +1178,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
       </Box>
 
       {/* Average Distance Over Time */}
-      <ChartCard title={t('analytics.avgDistOverTime')} Icon={TimelineIcon} sx={{ mb: 2 }}>
+      <ChartCard title={t('analytics.avgDistOverTime')} tooltip={t('analytics.tooltips.avgDistOverTime')} Icon={TimelineIcon} sx={{ mb: 2 }}>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data.activityByHour} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -1191,7 +1193,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
       </ChartCard>
 
       {/* Top 20 Longest Hops */}
-      <ChartCard title={t('analytics.top20Hops')} Icon={LeaderboardIcon} sx={{ mb: 2 }}>
+      <ChartCard title={t('analytics.top20Hops')} tooltip={t('analytics.tooltips.top20Hops')} Icon={LeaderboardIcon} sx={{ mb: 2 }}>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -1230,7 +1232,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
 
       {/* Top 10 Multi-Hop Paths */}
       {data.top10MultiHop.length > 0 && (
-        <ChartCard title={t('analytics.top10Paths')} Icon={AccountTreeIcon}>
+        <ChartCard title={t('analytics.top10Paths')} tooltip={t('analytics.tooltips.top10Paths')} Icon={AccountTreeIcon}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -1270,7 +1272,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
 
       {/* ── Geographic Coverage ── */}
       {(!data.geo || data.geo.nodesWithPos < 2) ? (
-        <ChartCard title={t('analytics.geoTitle')} Icon={ScatterPlotIcon} sx={{ mt: 2 }}>
+        <ChartCard title={t('analytics.geoTitle')} tooltip={t('analytics.tooltips.geoTitle')} Icon={ScatterPlotIcon} sx={{ mt: 2 }}>
           <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.noGeoData')}</Typography>
         </ChartCard>
       ) : (
@@ -1292,7 +1294,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
             {/* Distance distribution */}
-            <ChartCard title={t('analytics.geoDistribution')} Icon={BarChartIcon}>
+            <ChartCard title={t('analytics.geoDistribution')} tooltip={t('analytics.tooltips.geoDistribution')} Icon={BarChartIcon}>
               <ResponsiveContainer width="100%" height={Math.max(160, (data.geo?.distribution?.length ?? 0) * 32)}>
                 <BarChart data={data.geo?.distribution ?? []} layout="vertical" margin={{ left: 8, right: 24 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
@@ -1309,7 +1311,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
             </ChartCard>
 
             {/* Top links table */}
-            <ChartCard title={t('analytics.topLinks')} Icon={LeaderboardIcon}>
+            <ChartCard title={t('analytics.topLinks')} tooltip={t('analytics.tooltips.topLinks')} Icon={LeaderboardIcon}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -1417,7 +1419,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
         {/* Scope distribution */}
-        <ChartCard title={t('analytics.scopeDistribution')} Icon={BarChartIcon}>
+        <ChartCard title={t('analytics.scopeDistribution')} tooltip={t('analytics.tooltips.scopeDistribution')} Icon={BarChartIcon}>
           <ResponsiveContainer width="100%" height={Math.max(160, data.distribution.length * 36)}>
             <BarChart data={data.distribution} layout="vertical" margin={{ left: 8, right: 16 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
@@ -1433,7 +1435,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
         </ChartCard>
 
         {/* RF quality by scope */}
-        <ChartCard title={t('analytics.rfByScope')} Icon={SignalCellularAltIcon}>
+        <ChartCard title={t('analytics.rfByScope')} tooltip={t('analytics.tooltips.rfByScope')} Icon={SignalCellularAltIcon}>
           <ResponsiveContainer width="100%" height={Math.max(160, data.rfByScope.length * 36)}>
             <BarChart data={data.rfByScope} layout="vertical" margin={{ left: 8, right: 16 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} horizontal={false} />
@@ -1451,7 +1453,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
 
       {/* 24h activity */}
       {data.activityScopes.length > 0 && (
-        <ChartCard title={t('analytics.scopeActivity')} Icon={ShowChartIcon} sx={{ mb: 2 }}>
+        <ChartCard title={t('analytics.scopeActivity')} tooltip={t('analytics.tooltips.scopeActivity')} Icon={ShowChartIcon} sx={{ mb: 2 }}>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={activityChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
@@ -1469,7 +1471,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
       )}
 
       {/* Top observers per scope */}
-      <ChartCard title={t('analytics.topObserversByScope')} Icon={LeaderboardIcon}>
+      <ChartCard title={t('analytics.topObserversByScope')} tooltip={t('analytics.tooltips.topObserversByScope')} Icon={LeaderboardIcon}>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -1537,7 +1539,7 @@ function TabLoading() {
   )
 }
 
-function ChartCard({ title, Icon, children, sx }: { title: string; Icon?: SvgIconComponent; children: React.ReactNode; sx?: object }) {
+function ChartCard({ title, tooltip, Icon, children, sx }: { title: string; tooltip?: string; Icon?: SvgIconComponent; children: React.ReactNode; sx?: object }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   return (
     <Card sx={sx}>
@@ -1548,7 +1550,12 @@ function ChartCard({ title, Icon, children, sx }: { title: string; Icon?: SvgIco
               <Icon sx={{ fontSize: 16, color: md3.primary }} />
             </Box>
           )}
-          <Typography variant="subtitle2" sx={{ color: md3.onSurfaceVariant }}>{title}</Typography>
+          <Typography variant="subtitle2" sx={{ color: md3.onSurfaceVariant, flexGrow: 1 }}>{title}</Typography>
+          {tooltip && (
+            <MuiTooltip title={tooltip} arrow placement="top">
+              <HelpOutlineIcon sx={{ fontSize: 16, color: md3.onSurfaceVariant, opacity: 0.6, cursor: 'help', flexShrink: 0 }} />
+            </MuiTooltip>
+          )}
         </Box>
         {children}
       </CardContent>

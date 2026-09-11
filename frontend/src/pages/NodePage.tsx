@@ -178,7 +178,7 @@ export default function NodePage() {
   if (error || !node) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-        <Typography variant="body1" sx={{ color: md3.onSurfaceVariant }}>Node not found</Typography>
+        <Typography variant="body1" sx={{ color: md3.onSurfaceVariant }}>{t('nodes.notFound')}</Typography>
         <IconButton onClick={() => navigate(-1)}><ArrowBackIcon /></IconButton>
       </Box>
     )
@@ -248,7 +248,7 @@ export default function NodePage() {
           <StatCard label={t('nodes.avgHops')}    value={overview ? overview.avgHops.toFixed(1) : '…'} />
           <StatCard label={t('nodes.avgSnr')}     value={overview?.avgSnr != null ? `${overview.avgSnr.toFixed(1)} dB` : '—'}
             sub={rf?.snr?.length ? `${rf.snr.length} obs` : undefined} />
-          <StatCard label="Avg RSSI"              value={rf?.rssi?.length ? `${(rf.rssi.reduce((a, b) => a + b, 0) / rf.rssi.length).toFixed(0)} dBm` : '—'}
+          <StatCard label={t('home.avgRssi')}     value={rf?.rssi?.length ? `${(rf.rssi.reduce((a, b) => a + b, 0) / rf.rssi.length).toFixed(0)} dBm` : '—'}
             sub={rf?.rssi?.length ? `${rf.rssi.length} obs` : undefined} />
         </Box>
 
@@ -257,7 +257,7 @@ export default function NodePage() {
 
           {/* Activity timeline */}
           <Card>
-            <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📈</Box>} label="Activity — last 24 h" />
+            <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📈</Box>} label={t('nodes.activity24h')} />
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={activityData} barSize={8}>
                 <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} vertical={false} />
@@ -271,7 +271,7 @@ export default function NodePage() {
 
           {/* Payload type breakdown */}
           <Card>
-            <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📦</Box>} label="Payload types" />
+            <SectionHeader icon={<Box sx={{ fontSize: 14 }}>📦</Box>} label={t('nodes.payloadTypes')} />
             {typeData.length > 0 ? (
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <Box sx={{ width: 120, height: 120, flexShrink: 0 }}>
@@ -295,7 +295,7 @@ export default function NodePage() {
                 </Box>
               </Box>
             ) : (
-              <Typography variant="caption" sx={{ color: md3.outline }}>No packets</Typography>
+              <Typography variant="caption" sx={{ color: md3.outline }}>{t('home.noPackets')}</Typography>
             )}
           </Card>
         </Box>
@@ -307,7 +307,7 @@ export default function NodePage() {
             {/* SNR over time */}
             {snrTrend.length > 1 && (
               <Card>
-                <SectionHeader icon={<SignalCellularAltIcon sx={{ fontSize: 14 }} />} label="Signal quality trend" />
+                <SectionHeader icon={<SignalCellularAltIcon sx={{ fontSize: 14 }} />} label={t('nodes.signalQualityTrend')} />
                 <ResponsiveContainer width="100%" height={160}>
                   <LineChart data={snrTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.5)} vertical={false} />
@@ -328,7 +328,7 @@ export default function NodePage() {
             {/* RF distributions */}
             <Card>
               <SectionHeader icon={<SignalCellularAltIcon sx={{ fontSize: 14 }} />} label={`RF — ${rf.rssi?.length ?? 0} obs`} />
-              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 0.5, fontSize: 10 }}>RSSI distribution</Typography>
+              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mb: 0.5, fontSize: 10 }}>{t('nodes.rssiDistribution')}</Typography>
               <ResponsiveContainer width="100%" height={80}>
                 <BarChart data={rssiBuckets} barSize={10}>
                   <XAxis dataKey="label" tick={{ fontSize: 8, fill: md3.onSurfaceVariant }} />
@@ -339,7 +339,7 @@ export default function NodePage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mt: 1, mb: 0.5, fontSize: 10 }}>SNR distribution</Typography>
+              <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, display: 'block', mt: 1, mb: 0.5, fontSize: 10 }}>{t('nodes.snrDistribution')}</Typography>
               <ResponsiveContainer width="100%" height={80}>
                 <BarChart data={snrBuckets} barSize={10}>
                   <XAxis dataKey="label" tick={{ fontSize: 8, fill: md3.onSurfaceVariant }} />
@@ -448,7 +448,7 @@ export default function NodePage() {
                           {p.bestRssi != null && ` · ${p.bestRssi.toFixed(0)} dBm`}
                         </Typography>
                       )}
-                      <Tooltip title="View packet">
+                      <Tooltip title={t('packets.traceTooltip')}>
                         <OpenInNewIcon sx={{ fontSize: 13, color: md3.outline, ml: 'auto', flexShrink: 0 }} />
                       </Tooltip>
                     </Box>

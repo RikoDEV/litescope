@@ -86,8 +86,8 @@ function packetTitle(p: Packet): string {
   return String(label)
 }
 
-function packetSubtitle(p: Packet): string {
-  const payload = PAYLOAD_NAMES[p.payloadType] ?? `Type ${p.payloadType}`
+function packetSubtitle(p: Packet, t: (key: string) => string): string {
+  const payload = PAYLOAD_NAMES[p.payloadType] ?? `${t('common.type')} ${p.payloadType}`
   const shortHash = p.hash.slice(0, 14)
   return `${payload} · ${shortHash} · ${new Date(p.firstSeen).toLocaleString()}`
 }
@@ -193,7 +193,7 @@ export default function SpotlightSearch() {
         id: `packet:${p.hash}`,
         kind: 'packet' as const,
         title: packetTitle(p),
-        subtitle: packetSubtitle(p),
+        subtitle: packetSubtitle(p, t),
         meta: `${p.obsCount} obs`,
         path: `/packets?hash=${encodeURIComponent(p.hash)}`,
       }))
@@ -222,7 +222,7 @@ export default function SpotlightSearch() {
         path: `/channels/${encodeURIComponent(ch.hash)}`,
       })) : []
     return [...packetResults, ...nodeResults, ...channelResults]
-  }, [channels, kindFilter.size, nodes, packets, q, wantsChannels, wantsNodes, wantsPackets])
+  }, [channels, kindFilter.size, nodes, packets, q, t, wantsChannels, wantsNodes, wantsPackets])
 
   const close = () => {
     setOpen(false)

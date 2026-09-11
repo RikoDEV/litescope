@@ -736,14 +736,14 @@ export default function LiveMap() {
                   if (pendingReplayPkt.current) replayPacketTrace(pendingReplayPkt.current)
                   else startReplay(Math.max(0, vcrBuffer.current.length - missed - 1))
                 }}>
-                Replay
+                {t('map.replay')}
               </Button>
-              <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
+              <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>{t('common.live')}</Button>
             </Box>
           )}
           {mode === 'REPLAY' && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>Live</Button>
+              <Button size="small" variant="contained" startIcon={<FastForwardIcon />} onClick={skipToLive}>{t('common.live')}</Button>
               <Typography variant="caption" sx={{ color: md3.primary }}>
                 {vcrPlayhead.current + 1} / {vcrBuffer.current.length}
               </Typography>
@@ -788,7 +788,7 @@ export default function LiveMap() {
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.75, cursor: 'pointer' }}
           onClick={() => setShowLegend(v => { const next = !v; localStorage.setItem('livemap-legend', String(next)); return next })}>
-          <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, fontSize: 9, lineHeight: 1 }}>Legend</Typography>
+          <Typography variant="overline" sx={{ color: md3.onSurfaceVariant, fontSize: 9, lineHeight: 1 }}>{t('map.legend')}</Typography>
           <IconButton size="small" sx={{ color: md3.outline, p: 0, ml: 1 }}>
             {showLegend ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
           </IconButton>

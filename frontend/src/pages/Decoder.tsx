@@ -116,21 +116,22 @@ export default function Decoder() {
 
 function DecodedChips({ decoded: d }: { decoded: Record<string, unknown> }) {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
   const hdr  = d.header  as Record<string, string | number> | undefined
   const path = d.path    as Record<string, number>          | undefined
   const pl   = d.payload as Record<string, unknown>         | undefined
   const chips: { color: string; label: string; value: string }[] = []
-  if (hdr?.routeTypeName)   chips.push({ color: md3.tertiary, label: 'Route', value: String(hdr.routeTypeName) })
-  if (hdr?.payloadTypeName) chips.push({ color: md3.primary,  label: 'Type',  value: String(hdr.payloadTypeName) })
-  if (hdr?.payloadVersion != null) chips.push({ color: md3.outline, label: 'Ver', value: String(hdr.payloadVersion) })
-  if (path?.hashCount && path.hashCount > 0) chips.push({ color: '#22c55e', label: 'Hops', value: `${path.hashCount} × ${path.hashSize}B` })
-  if (pl?.pubKey)  chips.push({ color: md3.primary, label: 'PubKey', value: String(pl.pubKey).slice(0, 16) + '…' })
-  if (pl?.name)    chips.push({ color: '#f59e0b', label: 'Name',    value: String(pl.name) })
+  if (hdr?.routeTypeName)   chips.push({ color: md3.tertiary, label: t('common.route'), value: String(hdr.routeTypeName) })
+  if (hdr?.payloadTypeName) chips.push({ color: md3.primary,  label: t('common.type'),  value: String(hdr.payloadTypeName) })
+  if (hdr?.payloadVersion != null) chips.push({ color: md3.outline, label: t('decoder.ver'), value: String(hdr.payloadVersion) })
+  if (path?.hashCount && path.hashCount > 0) chips.push({ color: '#22c55e', label: t('packets.hops'), value: `${path.hashCount} × ${path.hashSize}B` })
+  if (pl?.pubKey)  chips.push({ color: md3.primary, label: t('packets.hex.pubKey'), value: String(pl.pubKey).slice(0, 16) + '…' })
+  if (pl?.name)    chips.push({ color: '#f59e0b', label: t('common.name'),    value: String(pl.name) })
   if (pl?.lat != null && pl?.lon != null) chips.push({ color: '#22c55e', label: 'GPS', value: `${(pl.lat as number).toFixed(4)}, ${(pl.lon as number).toFixed(4)}` })
-  if (pl?.channel) chips.push({ color: md3.tertiary, label: 'Channel', value: String(pl.channel) })
-  else if (pl?.channelHashHex) chips.push({ color: md3.outline, label: 'Chan hash', value: String(pl.channelHashHex) })
-  if (pl?.decryptionStatus) chips.push({ color: pl.decryptionStatus === 'decrypted' ? '#22c55e' : md3.error, label: 'Decrypt', value: String(pl.decryptionStatus) })
-  if (pl?.sender)  chips.push({ color: md3.tertiary, label: 'Sender',  value: String(pl.sender) })
+  if (pl?.channel) chips.push({ color: md3.tertiary, label: t('analytics.channelCol'), value: String(pl.channel) })
+  else if (pl?.channelHashHex) chips.push({ color: md3.outline, label: t('decoder.chanHash'), value: String(pl.channelHashHex) })
+  if (pl?.decryptionStatus) chips.push({ color: pl.decryptionStatus === 'decrypted' ? '#22c55e' : md3.error, label: t('decoder.decrypt'), value: String(pl.decryptionStatus) })
+  if (pl?.sender)  chips.push({ color: md3.tertiary, label: t('decoder.sender'),  value: String(pl.sender) })
   if (!chips.length) return null
   return (
     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>

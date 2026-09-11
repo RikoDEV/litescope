@@ -105,6 +105,7 @@ function buildFieldRows(
   payloadType: number,
   decoded: Record<string, unknown> | null | undefined,
   matchHop: (hex: string) => { name?: string; pubKey?: string } | undefined,
+  t: (key: string) => string,
 ): FieldRow[] {
   const byteStr = rawHex.match(/.{1,2}/g) ?? []
   if (byteStr.length === 0) return []
@@ -152,7 +153,7 @@ function buildFieldRows(
         const node = matchHop(hopHex)
         rows.push({
           kind: 'field', offset: i, section: 'path',
-          field: node?.name ? `Hop ${h} — ${node.name}` : `Hop ${h}`,
+          field: node?.name ? `${t('packets.hex.hop')} ${h} — ${node.name}` : `${t('packets.hex.hop')} ${h}`,
           value: hopHex, description: '',
           hopLink: node?.pubKey ? `/nodes?search=${encodeURIComponent(node.pubKey)}` : undefined,
         })
@@ -207,8 +208,9 @@ function buildFieldRows(
   if (decoded) {
     const SKIP = new Set(['type', 'channelHashHex', 'channelHash', 'decryptionStatus'])
     const LABELS: Record<string, string> = {
-      channel: 'Channel', sender: 'Sender', senderTimestamp: 'Sender Time',
-      text: 'Text', pubKey: 'PubKey', name: 'Name', lat: 'Latitude', lon: 'Longitude',
+      channel: t('analytics.channelCol'), sender: t('decoder.sender'), senderTimestamp: t('packets.hex.senderTime'),
+      text: t('packets.hex.text'), pubKey: t('packets.hex.pubKey'), name: t('common.name'),
+      lat: t('packets.hex.latitude'), lon: t('packets.hex.longitude'),
     }
     const entries = Object.entries(decoded).filter(([k, v]) => !SKIP.has(k) && v != null && v !== '')
     if (entries.length > 0) {
@@ -249,7 +251,7 @@ function FieldTable({ rawHex, routeType, payloadType, decoded, matchHop, section
     payload_advert: `${t('packets.hex.payload')} — ${PAYLOAD_NAMES[4]}`,
   }
 
-  const rows = buildFieldRows(rawHex, routeType, payloadType, decoded, matchHop)
+  const rows = buildFieldRows(rawHex, routeType, payloadType, decoded, matchHop, t)
   if (rows.length === 0) return null
 
   return (
@@ -610,10 +612,10 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
         {dec && (() => {
           const SKIP = new Set(['type', 'channelHashHex', ...(dec.text ? ['text'] : [])])
           const LABELS: Record<string, string> = {
-            channel: 'Channel', sender: 'Sender', senderTimestamp: 'Sent at',
-            text: 'Text', pubKey: 'Public Key', name: 'Name',
-            lat: 'Latitude', lon: 'Longitude',
-            channelHash: 'Channel Hash', decryptionStatus: 'Decryption',
+            channel: t('analytics.channelCol'), sender: t('decoder.sender'), senderTimestamp: t('packets.hex.sentAt'),
+            text: t('packets.hex.text'), pubKey: t('packets.hex.pubKeyFull'), name: t('common.name'),
+            lat: t('packets.hex.latitude'), lon: t('packets.hex.longitude'),
+            channelHash: t('packets.hex.channelHash'), decryptionStatus: t('packets.hex.decryption'),
           }
           const ORDER = ['channel', 'sender', 'senderTimestamp', 'text', 'name', 'lat', 'lon', 'pubKey', 'channelHash', 'decryptionStatus']
           const entries: [string, unknown][] = [

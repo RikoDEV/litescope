@@ -135,7 +135,7 @@ export default function Observers() {
         <Box sx={{ px: 2, py: 1.25, borderBottom: `1px solid ${md3.outlineVariant}`, background: md3.surfaceContainerLow, flexShrink: 0 }}>
           <Typography variant="body2" sx={{ color: md3.onSurfaceVariant }}>
             <Box component="span" sx={{ fontWeight: 700, color: md3.onSurface }}>{observers.length}</Box> {t('nav.observers').toLowerCase()} ·{' '}
-            <Box component="span" sx={{ color: '#22c55e' }}>{observers.filter(isActive).length}</Box> {t('common.active').toLowerCase()}
+            <Box component="span" sx={{ color: '#22c55e' }}>{observers.filter(isActive).length}</Box> {t('observers.activeLabel')}
           </Typography>
         </Box>
         <ObserverSetupCard />
@@ -283,6 +283,7 @@ const MQTT_PASSWORD = getEnv('VITE_MQTT_PASSWORD')
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const copy = () => {
     navigator.clipboard.writeText(value).then(() => {
@@ -300,7 +301,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         fontFamily: 'monospace', fontSize: 12, color: md3.onSurface, minWidth: 0,
       }}>
         <Box sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</Box>
-        <Tooltip title={copied ? 'Copied!' : 'Copy'}>
+        <Tooltip title={copied ? t('decoder.copied') : t('decoder.copy')}>
           <IconButton size="small" onClick={copy} sx={{ p: 0.25, color: copied ? '#22c55e' : md3.outline, flexShrink: 0 }}>
             {copied ? <CheckIcon sx={{ fontSize: 13 }} /> : <ContentCopyIcon sx={{ fontSize: 13 }} />}
           </IconButton>

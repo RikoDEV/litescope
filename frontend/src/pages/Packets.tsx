@@ -38,8 +38,8 @@ import RegionFilter from '../components/RegionFilter'
 
 const PAGE = 100
 
-const TIME_WINDOWS = [
-  { label: 'All', ms: 0 },
+const TIME_WINDOWS: Array<{ label: string | null; ms: number }> = [
+  { label: null, ms: 0 },
   { label: '15m', ms: 15 * 60e3 },
   { label: '1h',  ms: 60 * 60e3 },
   { label: '6h',  ms: 6 * 60 * 60e3 },
@@ -276,7 +276,7 @@ export default function Packets() {
               sx={{ display: { xs: 'none', md: 'flex' }, ml: 1 }}>
               {TIME_WINDOWS.map(tw => (
                 <ToggleButton key={tw.ms} value={tw.ms} sx={{ fontSize: 11, px: 1.5, py: 0.5, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
-                  {tw.label}
+                  {tw.label ?? t('common.all')}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
@@ -350,7 +350,7 @@ export default function Packets() {
               <ToggleButtonGroup exclusive size="small" value={windowMs} onChange={(_, v) => v !== null && setWindowMs(v)}>
                 {TIME_WINDOWS.map(tw => (
                   <ToggleButton key={tw.ms} value={tw.ms} sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
-                    {tw.label}
+                    {tw.label ?? t('common.all')}
                   </ToggleButton>
                 ))}
               </ToggleButtonGroup>
@@ -425,7 +425,7 @@ export default function Packets() {
                   sx={{ color: md3.secondary }} />
               )
             })}
-            {minObs > 1 && <Chip label={`obs ≥ ${minObs}`} size="small" onDelete={() => setMinObs(1)} sx={{ color: md3.tertiary }} variant="outlined" />}
+            {minObs > 1 && <Chip label={`${t('packets.obs').toLowerCase()} ≥ ${minObs}`} size="small" onDelete={() => setMinObs(1)} sx={{ color: md3.tertiary }} variant="outlined" />}
             {windowMs > 0 && <Chip label={TIME_WINDOWS.find(w => w.ms === windowMs)?.label} size="small" onDelete={() => setWindowMs(0)} sx={{ color: md3.onSurface }} variant="outlined" />}
           </Box>
         )}

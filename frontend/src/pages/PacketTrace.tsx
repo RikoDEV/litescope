@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
@@ -128,12 +129,13 @@ function collectEdges(node: TNode, edges: [TNode, TNode][] = []): [TNode, TNode]
 
 function PathGraph({ pkt, rows }: { pkt: PacketDetail; rows: PathRow[] }) {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
 
   const srcColor   = PAYLOAD_COLORS[pkt.payloadType] ?? '#94a3b8'
   const senderName = (pkt.decoded?.name as string | undefined)
     || (pkt.decoded?.sender as string | undefined)
     || (pkt.decoded?.pubKey as string | undefined)?.slice(0, 8)
-    || 'Source'
+    || t('packets.sourceLabel')
 
   const COL_W  = 150
   const SLOT_H = 64
@@ -242,6 +244,7 @@ function PathGraph({ pkt, rows }: { pkt: PacketDetail; rows: PathRow[] }) {
 
 function PropagationTimeline({ pkt }: { pkt: PacketDetail }) {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
   const obs = deduplicateObs(pkt.observations)
     .map(o => ({ ...o, ms: new Date(o.timestamp).getTime() }))
     .sort((a, b) => a.ms - b.ms)
@@ -323,7 +326,7 @@ function PropagationTimeline({ pkt }: { pkt: PacketDetail }) {
 
               {/* Timing */}
               <Typography variant="caption" sx={{ color: md3.onSurfaceVariant, fontSize: 10, whiteSpace: 'nowrap' }}>
-                {i === 0 ? 'first' : `+${delta} ms`}
+                {i === 0 ? t('packets.first') : `+${delta} ms`}
               </Typography>
 
               {/* Signal */}
@@ -355,6 +358,7 @@ export default function PacketTrace() {
   const { hash } = useParams<{ hash: string }>()
   const navigate  = useNavigate()
   const theme     = useTheme(); const md3 = theme.palette.md3
+  const { t }     = useTranslation()
 
   const [pkt,     setPkt]     = useState<PacketDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -377,7 +381,7 @@ export default function PacketTrace() {
 
   if (error || !pkt) return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-      <Typography sx={{ color: md3.onSurfaceVariant }}>Packet not found</Typography>
+      <Typography sx={{ color: md3.onSurfaceVariant }}>{t('packets.notFound')}</Typography>
       <IconButton onClick={() => navigate(-1)}><ArrowBackIcon /></IconButton>
     </Box>
   )
@@ -414,10 +418,10 @@ export default function PacketTrace() {
   }
 
   const stats = [
-    { l: 'Observers',   v: uniqueObservers.toString(),                 c: md3.primary },
-    { l: 'Observations', v: obs.length.toString(),                      c: md3.tertiary },
-    { l: 'Time Spread', v: spreadMs > 0 ? `${spreadMs} ms` : '< 1 ms', c: '#f59e0b' },
-    { l: 'Hops (max)', v: pkt.maxHops > 0 ? String(pkt.maxHops) : '0', c: '#818cf8' },
+    { l: t('nav.observers'),      v: uniqueObservers.toString(),                 c: md3.primary },
+    { l: t('home.observations'),  v: obs.length.toString(),                      c: md3.tertiary },
+    { l: t('packets.timeSpread'), v: spreadMs > 0 ? `${spreadMs} ms` : '< 1 ms', c: '#f59e0b' },
+    { l: t('packets.hopsMax'),    v: pkt.maxHops > 0 ? String(pkt.maxHops) : '0', c: '#818cf8' },
   ]
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -450,7 +454,7 @@ export default function PacketTrace() {
               {pkt.hash}
             </Typography>
           </Box>
-          <Tooltip title="Replay on Live Map">
+          <Tooltip title={t('packets.replayTooltip')}>
             <IconButton size="small" onClick={() => navigate('/live', { state: { replayPacket: pkt } })}
               sx={{ color: md3.primary, background: alpha(md3.primary, 0.1), '&:hover': { background: alpha(md3.primary, 0.2) } }}>
               <PlayArrowIcon fontSize="small" />
@@ -459,7 +463,7 @@ export default function PacketTrace() {
         </Box>
 
         {/* Stat pills */}
-        <Section title="Summary">
+        <Section title={t('packets.summary')}>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 1.5, mb: 2 }}>
             {stats.map(s => (
               <Box key={s.l} sx={{ px: 1.5, py: 1, borderRadius: 2, background: alpha(s.c, 0.1), border: `1px solid ${alpha(s.c, 0.25)}` }}>
@@ -471,15 +475,15 @@ export default function PacketTrace() {
           {/* Packet type + route badges */}
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Box sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(roleColor, 0.08), border: `1px solid ${alpha(roleColor, 0.2)}` }}>
-              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>Type: </Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{t('common.type')}: </Typography>
               <Typography variant="caption" sx={{ color: roleColor, fontWeight: 700 }}>{payloadName}</Typography>
             </Box>
             <Box sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(md3.outlineVariant, 0.15), border: `1px solid ${alpha(md3.outlineVariant, 0.4)}` }}>
-              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>Route: </Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{t('common.route')}: </Typography>
               <Typography variant="caption" sx={{ color: md3.onSurface, fontWeight: 600 }}>{routeName}</Typography>
             </Box>
             <Box sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(md3.outlineVariant, 0.15), border: `1px solid ${alpha(md3.outlineVariant, 0.4)}` }}>
-              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>Size: </Typography>
+              <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.size')}: </Typography>
               <Typography variant="caption" sx={{ color: md3.onSurface, fontWeight: 600 }}>{pkt.byteSize} B</Typography>
             </Box>
           </Box>
@@ -487,7 +491,7 @@ export default function PacketTrace() {
 
         {/* SVG Path Graph */}
         {pathRows.length > 0 && (
-          <Section title="Path Graph">
+          <Section title={t('packets.pathGraph')}>
             <Box sx={{ background: md3.surfaceContainerLow, borderRadius: 3, border: `1px solid ${md3.outlineVariant}`, p: 2 }}>
               <PathGraph pkt={pkt} rows={pathRows} />
             </Box>
@@ -495,7 +499,7 @@ export default function PacketTrace() {
         )}
 
         {/* Propagation Timeline */}
-        <Section title="Propagation Timeline">
+        <Section title={t('packets.propagationTimeline')}>
           <Box sx={{ background: md3.surfaceContainerLow, borderRadius: 3, border: `1px solid ${md3.outlineVariant}`, p: 2 }}>
             <PropagationTimeline pkt={pkt} />
           </Box>

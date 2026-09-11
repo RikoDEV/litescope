@@ -38,6 +38,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DynamicFeedIcon from '@mui/icons-material/DynamicFeed'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import SettingsIcon from '@mui/icons-material/Settings'
+import CallMergeIcon from '@mui/icons-material/CallMerge'
 import Checkbox from '@mui/material/Checkbox'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
@@ -573,7 +574,7 @@ export default function Channels() {
   }
 
   const clickSender = useCallback((senderName: string) => {
-    if (!senderName || senderName === 'Unknown') return
+    if (!senderName || senderName === t('common.unknown')) return
     const q = senderName.toLowerCase().trim()
     // 1. exact  2. node name contains sender  3. sender contains node name
     const match =
@@ -684,7 +685,7 @@ export default function Channels() {
             return n
           }
           const h = msg.data.channelHash ?? ''
-          return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? 'Unknown', messageCount: 1 }]
+          return [...prev, { hash: h, name: hashNames.current[h] ?? (d.channel as string) ?? h ?? t('common.unknown'), messageCount: 1 }]
         })
       }
       // The message just arrived in a chat the user is actively viewing — either
@@ -826,7 +827,12 @@ export default function Channels() {
                 <FormControlLabel
                   sx={{ ml: 'auto', mr: 0 }}
                   control={<Switch size="small" checked={stackDuplicates} onChange={e => setStackDuplicates(e.target.checked)} />}
-                  label={<Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>}
+                  label={
+                    <>
+                      <CallMergeIcon sx={{ fontSize: 16, color: md3.outline, display: { xs: 'inline-flex', sm: 'none' }, verticalAlign: 'middle' }} />
+                      <Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>
+                    </>
+                  }
                 />
               </Tooltip>
               <Divider orientation="vertical" flexItem sx={{ my: 0.5, borderColor: md3.outlineVariant }} />
@@ -882,7 +888,12 @@ export default function Channels() {
                 <FormControlLabel
                   sx={{ ml: 'auto', mr: 0 }}
                   control={<Switch size="small" checked={stackDuplicates} onChange={e => setStackDuplicates(e.target.checked)} />}
-                  label={<Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>}
+                  label={
+                    <>
+                      <CallMergeIcon sx={{ fontSize: 16, color: md3.outline, display: { xs: 'inline-flex', sm: 'none' }, verticalAlign: 'middle' }} />
+                      <Typography variant="caption" sx={{ color: md3.outline, display: { xs: 'none', sm: 'inline' } }}>{t('channels.stackDuplicates')}</Typography>
+                    </>
+                  }
                 />
               </Tooltip>
               <Divider orientation="vertical" flexItem sx={{ my: 0.5, borderColor: md3.outlineVariant }} />
@@ -982,7 +993,7 @@ const MessageRow = memo(function MessageRow({ msg, count, obsPacket, hopsPacket,
   const dec    = msg.decoded
   const cdec   = decrypted[msg.id]
   const noKey  = needsClientDecrypt(dec?.decryptionStatus) && !cdec
-  const sender = cdec?.sender || (dec?.sender as string) || 'Unknown'
+  const sender = cdec?.sender || (dec?.sender as string) || t('common.unknown')
   const rawT   = cdec?.text || (dec?.text as string) || ''
   const text   = rawT.startsWith(sender + ': ') ? rawT.slice(sender.length + 2) : rawT
 
@@ -1041,7 +1052,7 @@ const MessageRow = memo(function MessageRow({ msg, count, obsPacket, hopsPacket,
               <Chip label={msg.bestScope} size="small" sx={{ fontSize: 10, height: 18, background: alpha(md3.primary, 0.1), color: md3.primary }} />
             </>
           )}
-          <Tooltip title="View packet">
+          <Tooltip title={t('packets.traceTooltip')}>
             <IconButton size="small" onClick={() => navigate(`/packets?hash=${msg.hash}`)}
               sx={{ color: md3.outline, p: 0.25, ml: 'auto', '&:hover': { color: md3.primary } }}>
               <OpenInNewIcon sx={{ fontSize: 13 }} />
@@ -1221,6 +1232,7 @@ function InlineText({ text, onMentionClick, channels, onChannelClick }: {
 // ── Hops popover ─────────────────────────────────────────────────────────────
 function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: string; name: string }[] }) {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const [detail, setDetail] = useState<PacketDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1286,10 +1298,10 @@ function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: strin
         }}
       >
         {loading && (
-          <Typography variant="caption" sx={{ color: md3.outline }}>Loading…</Typography>
+          <Typography variant="caption" sx={{ color: md3.outline }}>{t('common.loading')}</Typography>
         )}
         {!loading && obsHops.length === 0 && (
-          <Typography variant="caption" sx={{ color: md3.outline }}>No path data</Typography>
+          <Typography variant="caption" sx={{ color: md3.outline }}>{t('channels.noPathData')}</Typography>
         )}
         {!loading && obsHops.map((o, oi) => (
           <Box key={oi} sx={{ mb: oi < obsHops.length - 1 ? 1 : 0 }}>
@@ -1330,6 +1342,7 @@ function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: strin
 // ── Observers popover ─────────────────────────────────────────────────────────
 function ObsPopover({ packet }: { packet: Packet }) {
   const theme = useTheme(); const md3 = theme.palette.md3
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const [detail, setDetail] = useState<PacketDetail | null>(null)
@@ -1388,8 +1401,8 @@ function ObsPopover({ packet }: { packet: Packet }) {
           },
         }}
       >
-        {loading && <Typography variant="caption" sx={{ color: md3.outline }}>Loading…</Typography>}
-        {!loading && obs.length === 0 && <Typography variant="caption" sx={{ color: md3.outline }}>No observers</Typography>}
+        {loading && <Typography variant="caption" sx={{ color: md3.outline }}>{t('common.loading')}</Typography>}
+        {!loading && obs.length === 0 && <Typography variant="caption" sx={{ color: md3.outline }}>{t('channels.noObservers')}</Typography>}
         {!loading && obs.map((o, i) => (
           <Box key={o.id} onClick={() => navigate(`/observers?id=${o.observerId}`)}
             sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: i < obs.length - 1 ? 0.75 : 0, cursor: 'pointer', borderRadius: 1, px: 0.5, '&:hover': { background: alpha(md3.primary, 0.06) } }}>
