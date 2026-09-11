@@ -1237,13 +1237,20 @@ function HopsPopover({ packet, nodes }: { packet: Packet; nodes: { pubKey: strin
   const [detail, setDetail] = useState<PacketDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Signature of the packet state the cached `detail` was fetched for — a live
+  // packetUpdate can bump packet.obsCount/maxHops (the label) after the first
+  // hover already cached an older, smaller detail (the tooltip). Without this,
+  // the tooltip would keep showing that stale snapshot forever, diverging from
+  // the label (litescope#72).
+  const fetchedFor = useRef<string | null>(null)
+  const sig = `${packet.hash}:${packet.obsCount}:${packet.maxHops}`
 
   const handleEnter = (e: React.MouseEvent<HTMLElement>) => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
     setAnchor(e.currentTarget)
-    if (!detail && !loading) {
+    if (fetchedFor.current !== sig && !loading) {
       setLoading(true)
-      api.packet(packet.hash).then(d => { setDetail(d); setLoading(false) }).catch(() => setLoading(false))
+      api.packet(packet.hash).then(d => { setDetail(d); setLoading(false); fetchedFor.current = sig }).catch(() => setLoading(false))
     }
   }
   const handleLeave = () => {
@@ -1348,13 +1355,17 @@ function ObsPopover({ packet }: { packet: Packet }) {
   const [detail, setDetail] = useState<PacketDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // See HopsPopover above: invalidate the cached detail when the packet's live
+  // counters move on, so the tooltip can't outlive the numbers it explains.
+  const fetchedFor = useRef<string | null>(null)
+  const sig = `${packet.hash}:${packet.obsCount}:${packet.maxHops}`
 
   const handleEnter = (e: React.MouseEvent<HTMLElement>) => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
     setAnchor(e.currentTarget)
-    if (!detail && !loading) {
+    if (fetchedFor.current !== sig && !loading) {
       setLoading(true)
-      api.packet(packet.hash).then(d => { setDetail(d); setLoading(false) }).catch(() => setLoading(false))
+      api.packet(packet.hash).then(d => { setDetail(d); setLoading(false); fetchedFor.current = sig }).catch(() => setLoading(false))
     }
   }
   const handleLeave = () => { closeTimer.current = setTimeout(() => setAnchor(null), 180) }
