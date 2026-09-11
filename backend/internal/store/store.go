@@ -442,13 +442,27 @@ func (s *Store) AddTxBatch(txs []*db.TxRow, obss []*db.ObsRow) (added []*Tx, upd
 		}
 		tx, ok := s.byTxID[r.TxID]
 		if !ok {
-			// The observation's transmission isn't in the store yet: its INSERT
-			// raced between LoadSince's two queries (the tx will be loaded by a
-			// later poll). Stop without advancing lastObsID so the next poll
-			// re-reads from this id and links it. obss are strictly id-ordered,
-			// so deferring the remainder costs at most one extra poll of latency
-			// and never orphans an observation.
-			break
+			if r.TxID > s.lastTxID {
+				// The observation's transmission isn't in the store yet: its INSERT
+				// raced between LoadSince's two queries (the tx will be loaded by a
+				// later poll). Stop without advancing lastObsID so the next poll
+				// re-reads from this id and links it. obss are strictly id-ordered,
+				// so deferring the remainder costs at most one extra poll of latency
+				// and never orphans an observation.
+				break
+			}
+			// r.TxID <= lastTxID: its transmission was already loaded at some
+			// point but is gone now — Prune() evicts *Tx from byTxID by age,
+			// independent of the polling watermarks, and MeshCore can re-relay
+			// identical (same content-hash, same tx_id) packet bytes long after
+			// the original was pruned from memory. That tx_id will never appear
+			// in a future tx query, so this isn't the race above: it's a
+			// permanently orphaned observation. Drop it and keep going, instead
+			// of blocking every later observation in every future poll forever.
+			if r.ID > s.lastObsID {
+				s.lastObsID = r.ID
+			}
+			continue
 		}
 		o := obsFromRow(r)
 		s.byObsID[o.ID] = o

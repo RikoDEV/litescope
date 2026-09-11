@@ -202,6 +202,42 @@ func TestAddTxBatchDoesNotBumpVersionWithoutMutation(t *testing.T) {
 	}
 }
 
+// TestAddTxBatchSkipsPermanentlyOrphanedObservation covers a gap that is NOT
+// the LoadSince race: the missing tx_id is below the current watermark, so it
+// was already loaded once and evicted by Prune (a re-relay of identical,
+// content-hash-deduped packet bytes can reference a tx the store no longer
+// holds). Unlike the future-race gap above, this must not block forever —
+// it should be dropped so later observations in the same and future polls
+// keep merging.
+func TestAddTxBatchSkipsPermanentlyOrphanedObservation(t *testing.T) {
+	s := New()
+	s.Load(
+		[]*db.TxRow{
+			{ID: 1, Hash: "a", RawHex: "00", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{}`},
+			{ID: 2, Hash: "b", RawHex: "01", FirstSeen: "2024-01-01T00:00:00Z", PayloadType: 4, DecodedJSON: `{}`},
+		},
+		[]*db.ObsRow{{ID: 1, TxID: 2, ObserverID: "obs1"}},
+		nil, nil,
+	)
+	// Simulate Prune() evicting tx 1 from byTxID without touching watermarks.
+	delete(s.byTxID, 1)
+
+	added, updated := s.AddTxBatch(nil, []*db.ObsRow{
+		{ID: 2, TxID: 1, ObserverID: "obs2"}, // orphaned: tx 1 pruned, id <= lastTxID
+		{ID: 3, TxID: 2, ObserverID: "obs3"}, // should still merge despite the gap above
+	})
+	if len(added) != 0 {
+		t.Fatalf("expected no new packets, got %d", len(added))
+	}
+	if len(updated) != 1 || updated[0].ID != 2 {
+		t.Fatalf("expected tx 2 to be updated past the orphaned gap, got %+v", updated)
+	}
+	_, lastObsID := s.LastIDs()
+	if lastObsID != 3 {
+		t.Fatalf("expected lastObsID to advance past the orphan to 3, got %d", lastObsID)
+	}
+}
+
 func TestMetadataRefreshBumpsVersionOnlyOnChange(t *testing.T) {
 	s := New()
 	lat, lon := 52.0, 21.0
