@@ -80,7 +80,7 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
       doubleClickZoom: false, boxZoom: false, keyboard: false,
     })
     addBaseTileLayer(map, isDark)
-    L.circleMarker([lat, lon], { radius: 9, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5 }).addTo(map)
+    L.circleMarker([lat, lon], { radius: 9, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5, interactive: false }).addTo(map)
     const frame = requestAnimationFrame(() => map.invalidateSize({ pan: false }))
     return () => {
       cancelAnimationFrame(frame)

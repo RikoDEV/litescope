@@ -1079,7 +1079,7 @@ function LocationCard({ loc }: { loc: LocationShare }) {
       doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
     })
     addBaseTileLayer(map, isDark)
-    L.circleMarker([loc.lat, loc.lon], { radius: 7, color: '#fff', fillColor: md3.primary, fillOpacity: 1, weight: 2.5 }).addTo(map)
+    L.circleMarker([loc.lat, loc.lon], { radius: 7, color: '#fff', fillColor: md3.primary, fillOpacity: 1, weight: 2.5, interactive: false }).addTo(map)
     return () => { map.remove() }
   }, [loc.lat, loc.lon, isDark, md3.primary])
 

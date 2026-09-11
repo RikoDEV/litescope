@@ -59,7 +59,10 @@ function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; c
       doubleClickZoom: false, boxZoom: false, keyboard: false,
     })
     addBaseTileLayer(map, isDark)
-    L.circleMarker([lat, lon], { radius: 7, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5 }).addTo(map)
+    // interactive: false — a clickable marker stops propagation on click, which
+    // would swallow it before it reaches this container's own onClick (navigate
+    // to the full map) since the marker sits at the visual center of the card.
+    L.circleMarker([lat, lon], { radius: 7, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5, interactive: false }).addTo(map)
     return () => { map.remove() }
   }, [lat, lon, color, isDark])
 
