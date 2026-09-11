@@ -23,6 +23,7 @@ import { useDateLocale } from '../hooks/useDateLocale'
 import { useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { addBaseTileLayer } from '../utils/mapTiles'
 import { api } from '../services/api'
 import type { Node, NodeOverview, Packet, RFStats, RichPacket } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
@@ -68,6 +69,8 @@ function buildSnrTrend(packets: RichPacket[]) {
 // ── mini map ─────────────────────────────────────────────────────────────────
 function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: string }) {
   const divRef = useRef<HTMLDivElement>(null)
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
   useEffect(() => {
     if (!divRef.current) return
     const map = L.map(divRef.current, {
@@ -76,14 +79,14 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
       dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false,
     })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
+    addBaseTileLayer(map, isDark)
     L.circleMarker([lat, lon], { radius: 9, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5 }).addTo(map)
     const frame = requestAnimationFrame(() => map.invalidateSize({ pan: false }))
     return () => {
       cancelAnimationFrame(frame)
       map.remove()
     }
-  }, [lat, lon, color])
+  }, [lat, lon, color, isDark])
   return (
     <Box
       ref={divRef}

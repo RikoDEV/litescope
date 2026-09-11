@@ -24,6 +24,7 @@ import { roleColor as roleColorFn } from '../utils/roles'
 import { api } from '../services/api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { addBaseTileLayer } from '../utils/mapTiles'
 
 const CLOCK_SEVERITY_COLOR: Record<ClockHealthEntry['severity'], string> = {
   ok: '#22c55e', warning: '#f59e0b', critical: '#f97316', absurd: '#dc2626',
@@ -46,6 +47,8 @@ function formatClockDrift(secondsPerDay: number): string {
 
 function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; color: string; onClick?: () => void }) {
   const divRef = useRef<HTMLDivElement>(null)
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
 
   useEffect(() => {
     if (!divRef.current) return
@@ -55,10 +58,10 @@ function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; c
       dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false,
     })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
+    addBaseTileLayer(map, isDark)
     L.circleMarker([lat, lon], { radius: 7, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5 }).addTo(map)
     return () => { map.remove() }
-  }, [lat, lon, color])
+  }, [lat, lon, color, isDark])
 
   return (
     <div ref={divRef} onClick={onClick}
