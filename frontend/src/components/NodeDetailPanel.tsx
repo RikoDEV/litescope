@@ -67,8 +67,17 @@ function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; c
   }, [lat, lon, color, isDark])
 
   return (
-    <div ref={divRef} onClick={onClick}
-      style={{ height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12, cursor: onClick ? 'pointer' : undefined }} />
+    <div style={{ position: 'relative', height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+      <div ref={divRef} style={{ position: 'absolute', inset: 0 }} />
+      {/* A transparent overlay, not a descendant of the Leaflet container, so
+          the click can't be swallowed by Leaflet/maplibre's own DOM event
+          handling (e.g. an interactive marker's click stopPropagation) —
+          the browser hit-tests to whichever element is on top, and this sits
+          above the map in stacking order without being part of its subtree. */}
+      {onClick && (
+        <div onClick={onClick} style={{ position: 'absolute', inset: 0, zIndex: 1000, cursor: 'pointer' }} />
+      )}
+    </div>
   )
 }
 
