@@ -1074,7 +1074,7 @@ function LocationCard({ loc }: { loc: LocationShare }) {
     if (!divRef.current) return
     const map = L.map(divRef.current, {
       center: [loc.lat, loc.lon], zoom: 13,
-      zoomControl: false, attributionControl: false,
+      zoomControl: false,
       dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
     })

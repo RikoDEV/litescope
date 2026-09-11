@@ -54,7 +54,7 @@ function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; c
     if (!divRef.current) return
     const map = L.map(divRef.current, {
       center: [lat, lon], zoom: 13,
-      zoomControl: false, attributionControl: false,
+      zoomControl: false,
       dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false,
     })
