@@ -26,12 +26,12 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "leaflet": "1.9.4",
     "leaflet.markercluster": "^1.5.3",
-    "maplibre-gl": "^6.7.0",
+    "maplibre-gl": "^6.9.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-i18next": "^17.0.12",
-    "react-router-dom": "^7.18.2",
+    "react-i18next": "^17.0.13",
+    "react-router-dom": "^7.18.3",
     "recharts": "^3.10.1"
   },
   "devDependencies": {
@@ -40,9 +40,9 @@
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "vitest": "^5.0.0"
   }
 }
