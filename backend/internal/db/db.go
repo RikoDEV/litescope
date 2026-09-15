@@ -462,7 +462,7 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 		}
 	}
 	if needObsv {
-		if upObsv, err = dbtx.Prepare(`INSERT INTO observers (id, name, iata, last_seen, first_seen, packet_count) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET name = COALESCE(NULLIF(excluded.name,''), name), iata = COALESCE(NULLIF(excluded.iata,''), iata), last_seen = excluded.last_seen, packet_count = packet_count + 1`); err != nil {
+		if upObsv, err = dbtx.Prepare(`INSERT INTO observers (id, name, iata, last_seen, first_seen, packet_count) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET name = COALESCE(NULLIF(excluded.name,''), name), iata = COALESCE(NULLIF(excluded.iata,''), iata), last_seen = excluded.last_seen, packet_count = packet_count + ?`); err != nil {
 			return fmt.Errorf("prepare observer: %w", err)
 		}
 	}
@@ -473,6 +473,10 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 	}
 
 	for _, it := range items {
+		// dupObsForObserver marks a redundant delivery of a packet this observer has
+		// already reported (e.g. the same physical observer relayed through two
+		// configured mqttSources) — packet_count below must not double-count it.
+		dupObsForObserver := false
 		if it.Tx != nil && it.Obs != nil {
 			tx, obs := it.Tx, it.Obs
 			res, err := insTx.Exec(tx.RawHex, tx.Hash, tx.FirstSeen, tx.RouteType, tx.PayloadType, tx.DecodedJSON, nilIfEmpty(tx.ChannelHash))
@@ -492,11 +496,15 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 			}
 			// observation_count tracks unique observers; bump only when this is the
 			// first observation of an existing transmission from this observer.
+			// A count > 1 after insert means this observer already had a row for
+			// this transmission — a duplicate delivery, not a new observation.
 			if !isNew {
 				var c int
 				cntObs.QueryRow(txID, obs.ObserverID).Scan(&c)
 				if c == 1 {
 					bumpCnt.Exec(txID)
+				} else if c > 1 {
+					dupObsForObserver = true
 				}
 			}
 		}
@@ -516,7 +524,11 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 		}
 		if it.Observer != nil {
 			ob := it.Observer
-			if _, err := upObsv.Exec(ob.ID, ob.Name, ob.IATA, ob.Now, ob.Now); err != nil {
+			packetBump := 1
+			if dupObsForObserver {
+				packetBump = 0
+			}
+			if _, err := upObsv.Exec(ob.ID, ob.Name, ob.IATA, ob.Now, ob.Now, packetBump); err != nil {
 				return fmt.Errorf("upsert observer: %w", err)
 			}
 			if ob.Meta != nil {
