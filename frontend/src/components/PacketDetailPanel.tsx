@@ -104,7 +104,7 @@ function buildFieldRows(
   routeType: number,
   payloadType: number,
   decoded: Record<string, unknown> | null | undefined,
-  matchHop: (hex: string) => { name?: string; pubKey?: string } | undefined,
+  matchHops: (hex: string) => Node[],
   t: (key: string) => string,
 ): FieldRow[] {
   const byteStr = rawHex.match(/.{1,2}/g) ?? []
@@ -150,12 +150,17 @@ function buildFieldRows(
       rows.push({ kind: 'section', label: `path_${hopCount}`, section: 'path' })
       for (let h = 0; h < hopCount && i + hashSize <= byteStr.length; h++) {
         const hopHex = sliceHex(i, hashSize)
-        const node = matchHop(hopHex)
+        const matches = matchHops(hopHex)
+        const node = matches[0]
+        const ambiguous = matches.length > 1
+        let field = node?.name ? `${t('packets.hex.hop')} ${h} — ${node.name}` : `${t('packets.hex.hop')} ${h}`
+        if (ambiguous) field += ` (+${matches.length - 1} ${t('packets.hex.hopAmbiguous')})`
         rows.push({
           kind: 'field', offset: i, section: 'path',
-          field: node?.name ? `${t('packets.hex.hop')} ${h} — ${node.name}` : `${t('packets.hex.hop')} ${h}`,
-          value: hopHex, description: '',
-          hopLink: node?.pubKey ? `/nodes?search=${encodeURIComponent(node.pubKey)}` : undefined,
+          field,
+          value: hopHex,
+          description: ambiguous ? matches.map(n => n.name).join(', ') : '',
+          hopLink: !ambiguous && node?.pubKey ? `/nodes?search=${encodeURIComponent(node.pubKey)}` : undefined,
         })
         i += hashSize
       }
@@ -234,11 +239,11 @@ interface FieldTableProps {
   routeType: number
   payloadType: number
   decoded: Record<string, unknown> | null | undefined
-  matchHop: (hex: string) => { name?: string; pubKey?: string } | undefined
+  matchHops: (hex: string) => Node[]
   sectionColor: Record<HexSection, string>
 }
 
-function FieldTable({ rawHex, routeType, payloadType, decoded, matchHop, sectionColor }: FieldTableProps) {
+function FieldTable({ rawHex, routeType, payloadType, decoded, matchHops, sectionColor }: FieldTableProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -251,7 +256,7 @@ function FieldTable({ rawHex, routeType, payloadType, decoded, matchHop, section
     payload_advert: `${t('packets.hex.payload')} — ${PAYLOAD_NAMES[4]}`,
   }
 
-  const rows = buildFieldRows(rawHex, routeType, payloadType, decoded, matchHop, t)
+  const rows = buildFieldRows(rawHex, routeType, payloadType, decoded, matchHops, t)
   if (rows.length === 0) return null
 
   return (
@@ -468,8 +473,10 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
   useEffect(() => { api.nodes().then(r => setNodes(r.nodes ?? [])) }, [])
   // A path hop is a routing-hash prefix, so only repeaters can be on a path.
   // Restrict resolution to repeaters; otherwise a companion whose pubkey shares
-  // the hop prefix would be shown in the path.
-  const matchHop = (hex: string) => nodes.find(n => n.role === 'repeater' && n.pubKey.toUpperCase().startsWith(hex.toUpperCase()))
+  // the hop prefix would be shown in the path. Short (esp. 1-byte) prefixes can
+  // match several repeaters, so callers must consider *all* matches, not just
+  // the first one — a single match can't be trusted as "the" node either.
+  const matchHops = (hex: string) => nodes.filter(n => n.role === 'repeater' && n.pubKey.toUpperCase().startsWith(hex.toUpperCase()))
 
   const obs = deduplicateObs(selected.observations ?? [])
   const obsWithHops = obs.map(o => ({ ...o, hops: parseHops(o.pathJson) }))
@@ -594,13 +601,34 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
             <Typography variant="overline" sx={{ color: md3.outline, fontSize: 10 }}>{t('packets.longestPath', { count: focusedObs.hops.length })}</Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center', mt: 0.5 }}>
               {focusedObs.hops.map((hop, i) => {
-                const node = matchHop(hop)
-                const label = node?.name ? `${hop.toUpperCase()} · ${node.name}` : hop.toUpperCase()
+                const matches = matchHops(hop)
+                const node = matches[0]
+                const ambiguous = matches.length > 1
+                const label = ambiguous
+                  ? `${hop.toUpperCase()} · ${matches.length} ${t('packets.hex.hopAmbiguous')}`
+                  : (node?.name ? `${hop.toUpperCase()} · ${node.name}` : hop.toUpperCase())
+                const color = ambiguous ? '#f59e0b' : '#22c55e'
+                const chip = (
+                  <Chip label={label} size="small"
+                    sx={{ fontFamily: 'monospace', fontSize: 10, height: 20, background: alpha(color, 0.1), color, border: `1px solid ${alpha(color, 0.3)}` }} />
+                )
                 return (
                   <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     {i > 0 && <Typography variant="caption" sx={{ color: md3.outline, fontSize: 12 }}>→</Typography>}
-                    <Chip label={label} size="small"
-                      sx={{ fontFamily: 'monospace', fontSize: 10, height: 20, background: alpha('#22c55e', 0.1), color: '#22c55e', border: `1px solid ${alpha('#22c55e', 0.3)}` }} />
+                    {ambiguous ? (
+                      <Tooltip title={
+                        <Box>
+                          <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, mb: 0.25 }}>
+                            {t('packets.hex.hopAmbiguousTooltip')}
+                          </Typography>
+                          {matches.map(m => (
+                            <Typography key={m.pubKey} variant="caption" sx={{ display: 'block' }}>{m.name}</Typography>
+                          ))}
+                        </Box>
+                      }>
+                        {chip}
+                      </Tooltip>
+                    ) : chip}
                   </Box>
                 )
               })}
@@ -755,7 +783,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
           routeType={selected.routeType}
           payloadType={selected.payloadType}
           decoded={dec}
-          matchHop={matchHop}
+          matchHops={matchHops}
           sectionColor={sectionColor}
         />
       </Box>

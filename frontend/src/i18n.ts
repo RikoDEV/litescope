@@ -166,6 +166,7 @@ const en = {
       latitude: 'Latitude', longitude: 'Longitude', name: 'Name', payload: 'Payload',
       hop: 'Hop', senderTime: 'Sender Time', text: 'Text', sentAt: 'Sent at',
       pubKeyFull: 'Public Key', channelHash: 'Channel Hash', decryption: 'Decryption',
+      hopAmbiguous: 'possible matches', hopAmbiguousTooltip: 'Ambiguous hop — prefix matches multiple nodes:',
     },
   },
   nodes: {
@@ -462,6 +463,7 @@ const pl: typeof en = {
       latitude: 'Szerokość', longitude: 'Długość', name: 'Nazwa', payload: 'Ładunek',
       hop: 'Skok', senderTime: 'Czas nadawcy', text: 'Tekst', sentAt: 'Wysłano o',
       pubKeyFull: 'Klucz publiczny', channelHash: 'Hash kanału', decryption: 'Deszyfrowanie',
+      hopAmbiguous: 'możliwych węzłów', hopAmbiguousTooltip: 'Niejednoznaczny skok — prefiks odpowiada kilku węzłom:',
     },
   },
   nodes: {
@@ -758,6 +760,7 @@ const de: typeof en = {
       latitude: 'Breitengrad', longitude: 'Längengrad', name: 'Name', payload: 'Nutzlast',
       hop: 'Hop', senderTime: 'Absenderzeit', text: 'Text', sentAt: 'Gesendet um',
       pubKeyFull: 'Öffentlicher Schlüssel', channelHash: 'Kanal-Hash', decryption: 'Entschlüsselung',
+      hopAmbiguous: 'mögliche Treffer', hopAmbiguousTooltip: 'Mehrdeutiger Hop — Präfix passt zu mehreren Knoten:',
     },
   },
   nodes: {
@@ -1041,6 +1044,7 @@ const fr = {
       latitude: 'Latitude', longitude: 'Longitude', name: 'Nom', payload: 'Charge',
       hop: 'Hop', senderTime: 'Heure expéditeur', text: 'Texte', sentAt: 'Envoyé à',
       pubKeyFull: 'Clé publique', channelHash: 'Hash canal', decryption: 'Déchiffrement',
+      hopAmbiguous: 'correspondances possibles', hopAmbiguousTooltip: 'Saut ambigu — le préfixe correspond à plusieurs nœuds :',
     },
   },
   nodes: {
@@ -1281,6 +1285,7 @@ const uk = {
       latitude: 'Широта', longitude: 'Довгота', name: 'Назва', payload: 'Дані',
       hop: 'Хоп', senderTime: 'Час відправника', text: 'Текст', sentAt: 'Надіслано о',
       pubKeyFull: 'Публічний ключ', channelHash: 'Хеш каналу', decryption: 'Розшифрування',
+      hopAmbiguous: 'можливих збігів', hopAmbiguousTooltip: 'Неоднозначний хоп — префікс збігається з кількома вузлами:',
     },
   },
   nodes: {
@@ -1521,6 +1526,7 @@ const ru = {
       latitude: 'Широта', longitude: 'Долгота', name: 'Имя', payload: 'Данные',
       hop: 'Хоп', senderTime: 'Время отправителя', text: 'Текст', sentAt: 'Отправлено в',
       pubKeyFull: 'Публичный ключ', channelHash: 'Хеш канала', decryption: 'Расшифровка',
+      hopAmbiguous: 'возможных совпадений', hopAmbiguousTooltip: 'Неоднозначный хоп — префикс совпадает с несколькими узлами:',
     },
   },
   nodes: {
@@ -1761,6 +1767,7 @@ const nl = {
       latitude: 'Breedtegraad', longitude: 'Lengtegraad', name: 'Naam', payload: 'Lading',
       hop: 'Hop', senderTime: 'Afzendertijd', text: 'Tekst', sentAt: 'Verzonden om',
       pubKeyFull: 'Openbare sleutel', channelHash: 'Kanaalhash', decryption: 'Ontsleuteling',
+      hopAmbiguous: 'mogelijke overeenkomsten', hopAmbiguousTooltip: 'Ambigue hop — prefix komt overeen met meerdere nodes:',
     },
   },
   nodes: {
@@ -2001,6 +2008,7 @@ const es = {
       latitude: 'Latitud', longitude: 'Longitud', name: 'Nombre', payload: 'Carga',
       hop: 'Salto', senderTime: 'Hora del remitente', text: 'Texto', sentAt: 'Enviado a las',
       pubKeyFull: 'Clave pública', channelHash: 'Hash de canal', decryption: 'Descifrado',
+      hopAmbiguous: 'coincidencias posibles', hopAmbiguousTooltip: 'Salto ambiguo — el prefijo coincide con varios nodos:',
     },
   },
   nodes: {
@@ -2241,6 +2249,7 @@ const cs = {
       latitude: 'Zeměpisná šířka', longitude: 'Zeměpisná délka', name: 'Název', payload: 'Data',
       hop: 'Skok', senderTime: 'Čas odesílatele', text: 'Text', sentAt: 'Odesláno v',
       pubKeyFull: 'Veřejný klíč', channelHash: 'Hash kanálu', decryption: 'Dešifrování',
+      hopAmbiguous: 'možných shod', hopAmbiguousTooltip: 'Nejednoznačný skok — prefix odpovídá více uzlům:',
     },
   },
   nodes: {
@@ -2481,6 +2490,7 @@ const sk = {
       latitude: 'Zemepisná šírka', longitude: 'Zemepisná dĺžka', name: 'Názov', payload: 'Dáta',
       hop: 'Skok', senderTime: 'Čas odosielateľa', text: 'Text', sentAt: 'Odoslané o',
       pubKeyFull: 'Verejný kľúč', channelHash: 'Hash kanála', decryption: 'Dešifrovanie',
+      hopAmbiguous: 'možných zhôd', hopAmbiguousTooltip: 'Nejednoznačný skok — prefix zodpovedá viacerým uzlom:',
     },
   },
   nodes: {
@@ -2721,6 +2731,7 @@ const it = {
       latitude: 'Latitudine', longitude: 'Longitudine', name: 'Nome', payload: 'Dati',
       hop: 'Hop', senderTime: 'Ora mittente', text: 'Testo', sentAt: 'Inviato alle',
       pubKeyFull: 'Chiave pubblica', channelHash: 'Hash canale', decryption: 'Decrittazione',
+      hopAmbiguous: 'possibili corrispondenze', hopAmbiguousTooltip: 'Hop ambiguo — il prefisso corrisponde a più nodi:',
     },
   },
   nodes: {
