@@ -639,7 +639,7 @@ export default function Channels() {
       // propagated — patch the matching message in place.
       if (msg.type === 'packetUpdate') {
         const u = msg.data
-        setMessages(prev => {
+        const patch = (prev: Packet[]) => {
           const idx = prev.findIndex(m => m.id === u.id)
           if (idx < 0) return prev
           const n = [...prev]
@@ -654,7 +654,12 @@ export default function Channels() {
             regions: u.regions ?? existing.regions,
           }
           return n
-        })
+        }
+        setMessages(patch)
+        // The combined feed holds its own copy of these messages — patch it too,
+        // otherwise obs/hops counters go stale there while the single-channel
+        // view (and the popover's on-demand fetch) show the current value.
+        setCombinedMessages(patch)
         return
       }
       if (msg.type !== 'packet') return
