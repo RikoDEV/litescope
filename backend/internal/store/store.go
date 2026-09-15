@@ -1033,10 +1033,11 @@ func (s *Store) computeScopeRegions(f AnalyticsFilter) []ScopeRegion {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	observerNodes := make(map[string]*Node, len(s.byObserver))
+	observerIDs := make([]string, 0, len(s.byObserver))
 	for id := range s.byObserver {
-		observerNodes[id] = s.nodeForObserverID(id)
+		observerIDs = append(observerIDs, id)
 	}
+	observerNodes := s.observerNodeIndex(observerIDs, hasUsableLocation)
 
 	type acc struct {
 		region       string
@@ -1129,25 +1130,65 @@ func (s *Store) computeScopeRegions(f AnalyticsFilter) []ScopeRegion {
 	return out
 }
 
-func (s *Store) nodeForObserverID(id string) *Node {
-	if id == "" {
-		return nil
+// observerNodeIndex resolves a batch of observer IDs to their matching node —
+// by exact ID, or (when the ID is a routing-hash prefix of a longer pubkey)
+// the node whose pubkey starts with it — in one pass over s.nodes per
+// distinct ID length, instead of rescanning every node for every observer
+// (O(nodes) amortized vs. the O(observers*nodes) the per-ID lookup used to
+// cost). Ambiguous prefixes resolve deterministically to the lexicographically
+// smallest matching pubkey. Caller must hold the store lock (read or write).
+func (s *Store) observerNodeIndex(ids []string, usable func(*Node) bool) map[string]*Node {
+	out := make(map[string]*Node, len(ids))
+	needPrefix := make(map[int][]string)
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if n := s.nodes[id]; usable(n) {
+			out[id] = n
+			continue
+		}
+		needPrefix[len(id)] = append(needPrefix[len(id)], id)
 	}
-	if n := s.nodes[id]; hasUsableLocation(n) {
-		return n
+	if len(needPrefix) == 0 {
+		return out
 	}
-	uid := strings.ToUpper(id)
+
+	type entry struct {
+		pk string
+		n  *Node
+	}
+	usableNodes := make([]entry, 0, len(s.nodes))
 	for pk, n := range s.nodes {
-		if hasUsableLocation(n) && strings.HasPrefix(strings.ToUpper(pk), uid) {
-			return n
+		if usable(n) {
+			usableNodes = append(usableNodes, entry{strings.ToUpper(pk), n})
 		}
 	}
-	return nil
+	sort.Slice(usableNodes, func(i, j int) bool { return usableNodes[i].pk < usableNodes[j].pk })
+
+	for length, idsAtLen := range needPrefix {
+		prefixMap := make(map[string]*Node, len(usableNodes))
+		for _, e := range usableNodes {
+			if len(e.pk) < length {
+				continue
+			}
+			p := e.pk[:length]
+			if _, exists := prefixMap[p]; !exists {
+				prefixMap[p] = e.n
+			}
+		}
+		for _, id := range idsAtLen {
+			if n, ok := prefixMap[strings.ToUpper(id)]; ok {
+				out[id] = n
+			}
+		}
+	}
+	return out
 }
 
 // ObserverNodePubKeys returns the set of node pubkeys that are also acting as
 // an observer, matched by hex-prefix (an observer's ID is a prefix of its own
-// node's pubkey) — the inverse direction of nodeForObserverID. Any node
+// node's pubkey) — the inverse direction of observerNodeIndex. Any node
 // capable of logging packets it hears (including companions) can double as
 // an observer, so this drives the "is observer" badge on the map views.
 func (s *Store) ObserverNodePubKeys() map[string]bool {
@@ -1217,10 +1258,11 @@ func (s *Store) computeMapHeat(f AnalyticsFilter) []MapHeatPoint {
 		a.observeCount += observations
 	}
 
-	observerNodes := make(map[string]*Node, len(s.byObserver))
+	observerIDs := make([]string, 0, len(s.byObserver))
 	for id := range s.byObserver {
-		observerNodes[id] = s.nodeForObserverID(id)
+		observerIDs = append(observerIDs, id)
 	}
+	observerNodes := s.observerNodeIndex(observerIDs, hasUsableLocation)
 
 	for _, tx := range s.packets {
 		if !f.txOK(tx) {
@@ -1415,13 +1457,15 @@ func (s *Store) directLinkSnapshot(f AnalyticsFilter) ([]directLinkEvent, []rout
 		}
 	}
 
-	observerNodes := make(map[string]directLinkNodeSnapshot, len(s.byObserver))
+	observerIDs := make([]string, 0, len(s.byObserver))
 	for id := range s.byObserver {
-		if n := s.nodeForObserverID(id); hasUsableLocation(n) {
-			observerNodes[id] = directLinkNodeSnapshot{
-				PubKey: n.PubKey, Name: n.Name, Role: n.Role,
-				Lat: *n.Lat, Lon: *n.Lon,
-			}
+		observerIDs = append(observerIDs, id)
+	}
+	observerNodes := make(map[string]directLinkNodeSnapshot, len(observerIDs))
+	for id, n := range s.observerNodeIndex(observerIDs, hasUsableLocation) {
+		observerNodes[id] = directLinkNodeSnapshot{
+			PubKey: n.PubKey, Name: n.Name, Role: n.Role,
+			Lat: *n.Lat, Lon: *n.Lon,
 		}
 	}
 
@@ -1525,7 +1569,19 @@ func normalizeIATA(s string) string {
 // iata="SJC" → only nodes heard by observers in that region.
 // status="active"|"stale" → filter by last-seen age against role thresholds.
 // lastHeard="1h"|"6h"|"24h"|"7d"|"30d" → only nodes heard within that window.
+//
+// Unlike most Store getters this walks every node (and, with an iata filter,
+// every observation of every node's adverts) on a cache miss, so — like the
+// heavier analytics functions — it's memoized by cachedAnalytics: reused while
+// the store version is unchanged, or for up to analyticsCacheTTL afterwards.
 func (s *Store) NodesFiltered(iata, status, lastHeard string) []*Node {
+	key := "nodesFiltered|iata=" + iata + "|status=" + status + "|lastHeard=" + lastHeard
+	return cachedAnalytics(s, key, func() []*Node {
+		return s.computeNodesFiltered(iata, status, lastHeard)
+	})
+}
+
+func (s *Store) computeNodesFiltered(iata, status, lastHeard string) []*Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -2875,12 +2931,11 @@ func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 		n.LocationApprox = false
 		setNodeCountry(n)
 	}
-	observerNodes := make(map[string]*Node, len(s.byObserver))
+	observerIDs := make([]string, 0, len(s.byObserver))
 	for id := range s.byObserver {
-		if n := s.rawNodeForObserverIDLocked(id); n != nil {
-			observerNodes[id] = n
-		}
+		observerIDs = append(observerIDs, id)
 	}
+	observerNodes := s.observerNodeIndex(observerIDs, hasUsableRawLocation)
 	stats.ObserverNodes = len(observerNodes)
 
 	consensus := make(map[string]*consensusAcc)
@@ -2939,22 +2994,6 @@ func (s *Store) repairNodeLocationsLocked() LocationRepairStats {
 	stats.Duration = time.Since(start)
 	s.lastRepair = stats
 	return stats
-}
-
-func (s *Store) rawNodeForObserverIDLocked(id string) *Node {
-	if id == "" {
-		return nil
-	}
-	if n := s.nodes[id]; hasUsableRawLocation(n) {
-		return n
-	}
-	uid := strings.ToUpper(id)
-	for pk, n := range s.nodes {
-		if hasUsableRawLocation(n) && strings.HasPrefix(strings.ToUpper(pk), uid) {
-			return n
-		}
-	}
-	return nil
 }
 
 func observerFromRow(r *db.ObserverRow) *Observer {
