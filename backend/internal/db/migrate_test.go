@@ -164,8 +164,13 @@ func TestAdoptLegacySchema(t *testing.T) {
 	}
 	defer d.Close()
 
-	if got, dirty := schemaVersion(t, d); got != 2 || dirty {
-		t.Fatalf("schema version = %d dirty=%v, want 2 clean", got, dirty)
+	// Adopted at 2, then the later migrations run on top as usual.
+	want, err := latestMigrationVersion()
+	if err != nil {
+		t.Fatalf("latestMigrationVersion: %v", err)
+	}
+	if got, dirty := schemaVersion(t, d); got != want || dirty {
+		t.Fatalf("schema version = %d dirty=%v, want %d clean", got, dirty, want)
 	}
 	// user_version must be reset, otherwise the adoption branch re-fires on every
 	// later start and stamps the version back down to 2.
@@ -239,7 +244,7 @@ func TestAwaitSchemaWaitsThroughTransientDirty(t *testing.T) {
 		t.Fatalf("awaitSchema returned early while a migration was in flight: %v", err)
 	default:
 	}
-	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = 2, dirty = 0`); err != nil {
+	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = 3, dirty = 0`); err != nil {
 		t.Fatalf("complete migration: %v", err)
 	}
 

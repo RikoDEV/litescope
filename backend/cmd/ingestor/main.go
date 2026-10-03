@@ -224,7 +224,12 @@ func buildOpts(src config.MQTTSource) *mqtt.ClientOptions {
 		SetAutoReconnect(true).
 		SetConnectRetry(true).
 		SetMaxReconnectInterval(30 * time.Second).
-		SetKeepAlive(30 * time.Second)
+		SetKeepAlive(30 * time.Second).
+		// Run publish handlers off paho's network goroutine. With ordering on, a
+		// handler blocked on a full writeCh (slow DB flush, hourly prune) also stops
+		// paho reading PINGRESP, so the keepalive fails and the client drops and
+		// reconnects in a loop. Observation order doesn't matter to us.
+		SetOrderMatters(false)
 	if src.Username != "" {
 		opts.SetUsername(src.Username)
 	}
