@@ -153,8 +153,11 @@ export default function NodePage() {
     if (!pubkey) return
     const routePubKey = pubkey.toLowerCase()
     setLoading(true); setError(false)
-    api.nodes().then(res => {
+    api.nodes().then(async res => {
+      // An observer whose own advert was never heard has no node record and so
+      // isn't in the list; the single-node endpoint synthesizes one for it.
       const n = (res.nodes ?? []).find(x => x.pubKey.toLowerCase() === routePubKey)
+        ?? await api.node(routePubKey).catch(() => null)
       if (!n) { setError(true); setLoading(false); return }
       setNode(n)
       document.title = `${n.name || n.pubKey.slice(0, 16)} — ${SITE_NAME}`

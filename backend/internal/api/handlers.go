@@ -319,7 +319,7 @@ func (s *Server) listIATAs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getNode(w http.ResponseWriter, r *http.Request) {
 	pk := mux.Vars(r)["pubkey"]
-	n := s.Store.NodeByPubKey(pk)
+	n := s.Store.NodeOrObserver(pk)
 	if n == nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -352,11 +352,12 @@ func (s *Server) getNodeClockHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 	pk := mux.Vars(r)["pubkey"]
-	n := s.Store.NodeByPubKey(pk)
+	n := s.Store.NodeOrObserver(pk)
 	if n == nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	pk = n.PubKey // canonical case (an observer-only node is requested by observer ID)
 
 	packets := s.Store.NodePackets(pk, 0)
 	today := time.Now().UTC().Truncate(24 * time.Hour)
@@ -479,6 +480,8 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(heardBy, func(i, j int) bool { return heardBy[i].Count > heardBy[j].Count })
 
+	ns := summarizeNode(n)
+	ns.IsObserver = s.Store.IsObserverNode(n.PubKey)
 	writeJSON(w, struct {
 		nodeSummary
 		PacketsToday  int          `json:"packetsToday"`
@@ -488,7 +491,7 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 		HeardBy       []obsStat    `json:"heardBy"`
 		RecentPackets []richPacket `json:"recentPackets"`
 	}{
-		nodeSummary:   summarizeNode(n),
+		nodeSummary:   ns,
 		PacketsToday:  packetsToday,
 		TotalPackets:  len(packets),
 		AvgHops:       avgHops,

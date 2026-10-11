@@ -94,3 +94,33 @@ func TestUpdateNodesRepairsMissingLocationViaObserverPrefixMatch(t *testing.T) {
 		t.Fatalf("expected repaired location to match the observer's raw location (50,19), got (%v,%v)", *n.Lat, *n.Lon)
 	}
 }
+
+// TestNodeOrObserverFallsBackToObserver covers an observer whose own advert was
+// never heard: it has no node record, so its node page must be served from the
+// observer record (matched case-insensitively — observer IDs are upper-case,
+// node pubkeys lower-case) instead of 404ing. A real node always wins.
+func TestNodeOrObserverFallsBackToObserver(t *testing.T) {
+	s := New()
+	real := &Node{PubKey: "aaaa1111", Name: "real", Role: "repeater"}
+	s.nodes = map[string]*Node{real.PubKey: real}
+	s.observers = map[string]*Observer{
+		"2D003B5D": {ID: "2D003B5D", Name: "GLaDOS", LastSeen: "2026-10-11T07:19:48Z", FirstSeen: "2026-07-14T07:53:49Z"},
+	}
+
+	if got := s.NodeOrObserver("aaaa1111"); got != real {
+		t.Fatalf("expected the stored node, got %+v", got)
+	}
+	got := s.NodeOrObserver("2d003b5d")
+	if got == nil {
+		t.Fatalf("expected a node synthesized from the observer, got nil")
+	}
+	if got.PubKey != "2d003b5d" || got.Name != "GLaDOS" || got.Role != "observer" || got.LastSeen != "2026-10-11T07:19:48Z" {
+		t.Fatalf("unexpected synthesized node: %+v", got)
+	}
+	if _, stored := s.nodes["2d003b5d"]; stored {
+		t.Fatalf("synthesized node must not be added to the store")
+	}
+	if got := s.NodeOrObserver("ffff"); got != nil {
+		t.Fatalf("expected nil for an unknown key, got %+v", got)
+	}
+}

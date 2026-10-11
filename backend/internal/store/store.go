@@ -1673,6 +1673,27 @@ func (s *Store) NodeByPubKey(pk string) *Node {
 	return s.nodes[pk]
 }
 
+// NodeOrObserver returns the node for pk, or — when no advert from it was ever
+// heard, so it has no node record — a node synthesized from the observer with
+// that ID (role "observer"). An observer reports its own pubkey as its ID but
+// only becomes a node once somebody hears its advert; without this fallback its
+// node page 404s. The synthesized node is not stored. Returns nil if neither
+// exists.
+func (s *Store) NodeOrObserver(pk string) *Node {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if n := s.nodes[pk]; n != nil { return n }
+	if pk == "" { return nil }
+	for id, o := range s.observers {
+		if !strings.EqualFold(id, pk) { continue }
+		return &Node{
+			PubKey: strings.ToLower(id), Name: o.Name, Role: "observer",
+			LastSeen: o.LastSeen, FirstSeen: o.FirstSeen, BatteryMv: o.BatteryMv,
+		}
+	}
+	return nil
+}
+
 // NodePackets returns recent packets the node was involved in — its own adverts
 // (which carry its pubkey) plus packets it relayed (its hash appears in the
 // path) — newest first. Without the relayed packets a node's payload-type
