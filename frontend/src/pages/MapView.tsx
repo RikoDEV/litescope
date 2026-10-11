@@ -94,7 +94,7 @@ const ROLE_SHAPES = ROLE_GLYPH
 
 export default function MapView() {
   const theme = useTheme(); const md3 = theme.palette.md3
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
 
 
@@ -895,7 +895,7 @@ export default function MapView() {
     const title = escapeHtml(n.name || n.pubKey.slice(0, 12))
     const role  = escapeHtml(n.role)
     const adverts = Number.isFinite(n.advertCount) ? n.advertCount : 0
-    const last = escapeHtml(new Date(n.lastSeen).toLocaleString())
+    const last = new Date(n.lastSeen).toLocaleString(i18n.language)
     const observerBadge = n.isObserver
       ? `<div style="margin:4px 0 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${OBSERVER_BADGE_COLOR}22;color:${OBSERVER_BADGE_COLOR};font-size:11px">${escapeHtml(t('map.observerBadge'))}</div>`
       : ''
@@ -908,7 +908,7 @@ export default function MapView() {
       <div style="margin:4px 0;padding:2px 8px;border-radius:8px;display:inline-block;background:${color}22;color:${color};font-size:11px">${role}</div>
       ${observerBadge}
       ${scopeBadges}
-      <div style="font-size:11px;color:#49454F;margin-top:4px">Adverts: ${adverts}<br/>Last: ${last}</div>
+      <div style="font-size:11px;color:#49454F;margin-top:4px">${escapeHtml(t('map.popupAdverts', { count: adverts }))}<br/>${escapeHtml(t('map.popupLast', { time: last }))}</div>
     </div>`
   }
 
