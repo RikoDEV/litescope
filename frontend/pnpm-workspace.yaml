@@ -1,2 +1,3 @@
 overrides:
   baseline-browser-mapping: "2.10.32"
+  electron-to-chromium: "1.5.375"
