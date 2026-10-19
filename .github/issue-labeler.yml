@@ -1,27 +1,29 @@
+# Patterns are JavaScript regexes — no inline (?i) flags allowed, so
+# case-insensitivity is expressed with character-class alternatives.
 bug:
-  - '(?i)\b(bug|crash|error|broken|fail(s|ed|ing)?|regression)\b'
-  - '(?i)\b(stack ?trace|exception|panic|doesn''t work|does not work)\b'
+  - '\b([Bb]ug|[Cc]rash|[Ee]rror|[Bb]roken|[Ff]ail(s|ed|ing)?|[Rr]egression)\b'
+  - '\b([Ss]tack ?[Tt]race|[Ee]xception|[Pp]anic|[Dd]oesn''t work|[Dd]oes not work)\b'
 
 enhancement:
-  - '(?i)\b(feature|enhancement|request|add support|please add)\b'
-  - '(?i)\b(would be nice|feature request|proposal|it would be great)\b'
+  - '\b([Ff]eature|[Ee]nhancement|[Rr]equest|[Aa]dd support|[Pp]lease add)\b'
+  - '\b([Ww]ould be nice|[Ff]eature request|[Pp]roposal|[Ii]t would be great)\b'
 
 question:
-  - '(?i)\b(question|how (do|can) i|help)\b'
-  - '(?i)\b(is it possible)\b'
+  - '\b([Qq]uestion|[Hh]ow (do|can) [Ii]|[Hh]elp)\b'
+  - '\b([Ii]s it possible)\b'
 
 decoder:
-  - '(?i)\b(decod(er|e|ing)|packet|hash|payload)\b'
-  - '(?i)\b(meshcore packet|content ?hash|aes)\b'
+  - '\b([Dd]ecod(er|e|ing)|[Pp]acket|[Hh]ash|[Pp]ayload)\b'
+  - '\b([Mm]eshcore packet|[Cc]ontent ?[Hh]ash|[Aa][Ee][Ss])\b'
 
 ingestor:
-  - '(?i)\b(ingestor|mqtt|broker)\b'
-  - '(?i)\b(observer)\b'
+  - '\b([Ii]ngestor|[Mm][Qq][Tt][Tt]|[Bb]roker)\b'
+  - '\b([Oo]bserver)\b'
 
 frontend:
-  - '(?i)\b(ui|frontend|react|map|dashboard)\b'
-  - '(?i)\b(browser|maplibre|ui bug)\b'
+  - '\b([Uu][Ii]|[Ff]rontend|[Rr]eact|[Mm]ap|[Dd]ashboard)\b'
+  - '\b([Bb]rowser|[Mm]aplibre|ui bug)\b'
 
 docker:
-  - '(?i)\b(docker|compose|container)\b'
-  - '(?i)\b(docker compose|caddy|nginx)\b'
+  - '\b([Dd]ocker|[Cc]ompose|[Cc]ontainer|[Cc]addy|[Nn][Gg][Ii][Nn][Xx])\b'
+  - '\b([Dd]ocker compose)\b'
