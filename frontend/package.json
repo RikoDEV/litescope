@@ -23,8 +23,8 @@
     "leaflet.markercluster": "^1.5.3",
     "maplibre-gl": "^6.14.0",
     "qrcode.react": "^4.2.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.2.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-i18next": "^17.0.16",
     "react-router-dom": "^7.18.4",
     "recharts": "^3.10.1"
