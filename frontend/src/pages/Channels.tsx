@@ -298,6 +298,11 @@ export default function Channels() {
   const combinedScrollRef = useRef<HTMLDivElement>(null)
   const combinedInitialLoad = useRef(false)
   const combinedSkipAutoScroll = useRef(false)
+  // Whether the user is parked at (or near) the bottom of the chat. Live
+  // messages only auto-scroll when this is true, so reading history isn't
+  // yanked back down every time something new arrives (#110).
+  const atBottom = useRef(true)
+  const combinedAtBottom = useRef(true)
   // Persisted channelHash → decrypted-name map, re-applied to every server-loaded
   // channel list so client-side names survive refetches and reloads.
   const hashNames = useRef<Record<string, string>>(loadChannelHashNames())
@@ -332,8 +337,10 @@ export default function Channels() {
     if (skipAutoScroll.current) { skipAutoScroll.current = false; return }
     // Initial channel load: jump instantly so the smooth animation doesn't pass
     // through the top and spuriously trigger loadMore().
+    if (!initialLoad.current && !atBottom.current) return
     const behavior = initialLoad.current ? 'auto' : 'smooth'
     initialLoad.current = false
+    atBottom.current = true
     bottomRef.current?.scrollIntoView({ behavior })
   }, [messages])
 
@@ -349,8 +356,10 @@ export default function Channels() {
     // straight to the bottom instead of animating through it.
     if (!combinedActive) return
     if (combinedSkipAutoScroll.current) { combinedSkipAutoScroll.current = false; return }
+    if (!combinedInitialLoad.current && !combinedAtBottom.current) return
     const behavior = combinedInitialLoad.current ? 'auto' : 'smooth'
     combinedInitialLoad.current = false
+    combinedAtBottom.current = true
     combinedBottomRef.current?.scrollIntoView({ behavior })
   }, [combinedMessages]) // eslint-disable-line react-hooks/exhaustive-deps
   // Server-side region filter shared with the map/packets pages: the channel
@@ -476,10 +485,12 @@ export default function Channels() {
     const el = e.currentTarget
     if (el.scrollTop < 80) loadMoreCombined()
     const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    combinedAtBottom.current = fromBottom < 80
     setCombinedShowScrollBottom(fromBottom > 240)
   }
 
   const scrollToBottomCombined = () => {
+    combinedAtBottom.current = true
     combinedBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     setCombinedShowScrollBottom(false)
   }
@@ -565,10 +576,12 @@ export default function Channels() {
     const el = e.currentTarget
     if (el.scrollTop < 80) loadMore()
     const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    atBottom.current = fromBottom < 80
     setShowScrollBottom(fromBottom > 240)
   }
 
   const scrollToBottom = () => {
+    atBottom.current = true
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     setShowScrollBottom(false)
   }

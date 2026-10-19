@@ -6,3 +6,4 @@ frontend/dist
 # Secrets — use .env.example / config.example.json as templates
 .env
 config.json
+*.tsbuildinfo
