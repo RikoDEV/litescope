@@ -15,6 +15,8 @@ import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import Chip from '@mui/material/Chip'
+import Switch from '@mui/material/Switch'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import Skeleton from '@mui/material/Skeleton'
 import MuiTooltip from '@mui/material/Tooltip'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
@@ -592,52 +594,66 @@ function ChannelsTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
   const [channels, setChannels] = useState<Array<{ hash: string; name: string; messageCount: number }> | null>(null)
+  const [showUnknown, setShowUnknown] = useState(false)
   const [analytics, setAnalytics] = useState<{
     activityChannels: string[]
     activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
     topSenders: Array<{ sender: string; messageCount: number; channels: number }>
   } | null>(null)
   useEffect(() => {
-    api.channelsFiltered(params).then(d => setChannels([...(d ?? [])].filter(c => c.name && c.name !== c.hash).sort((a, b) => b.messageCount - a.messageCount)))
+    api.channelsFiltered(params).then(d => setChannels([...(d ?? [])].sort((a, b) => b.messageCount - a.messageCount)))
     api.analyticsChannels(params).then(setAnalytics)
   }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!channels) return <TabLoading />
 
+  // Unknown channels are those we couldn't decrypt/read: the API reports the raw
+  // hash as the name. Hidden by default; the toggle below reveals them.
+  const visible = channels.filter(c => showUnknown || (c.name && c.name !== c.hash))
+  const isUnknown = (c: { name: string; hash: string }) => !c.name || c.name === c.hash
+
   const chColor = (name: string, i: number) => name === 'Other' ? md3.outline : paletteColor(i)
   const actChart = (analytics?.activity ?? []).map((h, i) => ({ label: h.label, displayLabel: i % 4 === 0 ? h.label : '', ...h.counts }))
 
-  const total = channels.reduce((s, c) => s + c.messageCount, 0)
+  const total = visible.reduce((s, c) => s + c.messageCount, 0)
 
-  if (channels.length === 0) return (
-    <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noChannelData')}</Typography>
+  if (visible.length === 0) return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <FormControlLabel control={<Switch size="small" checked={showUnknown} onChange={e => setShowUnknown(e.target.checked)} />} label={<Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.showUnknownChannels')}</Typography>} />
+      </Box>
+      <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noChannelData')}</Typography>
+    </Box>
   )
 
   return (
     <Box>
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
         {[
-          { l: t('analytics.totalChannels'), v: channels.length.toString(), c: md3.primary },
+          { l: t('analytics.totalChannels'), v: visible.length.toString(), c: md3.primary },
           { l: t('analytics.totalMessages'), v: total.toLocaleString(), c: '#ec4899' },
-          { l: t('analytics.mostActive'), v: channels[0]?.name || channels[0]?.hash.slice(0, 8), c: md3.tertiary },
+          { l: t('analytics.mostActive'), v: visible[0]?.name || visible[0]?.hash.slice(0, 8), c: md3.tertiary },
         ].map(p => (
           <Box key={p.l} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(p.c, 0.1), border: `1px solid ${alpha(p.c, 0.25)}` }}>
             <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{p.l}{'  '}</Typography>
             <Typography variant="body2" sx={{ color: p.c, fontWeight: 700, display: 'inline' }}>{p.v}</Typography>
           </Box>
         ))}
+        <Box>
+          <FormControlLabel control={<Switch size="small" checked={showUnknown} onChange={e => setShowUnknown(e.target.checked)} />} label={<Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t('analytics.showUnknownChannels')}</Typography>} />
+        </Box>
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
         <ChartCard title={t('analytics.channelActivity')} tooltip={t('analytics.tooltips.channelActivity')} Icon={ForumIcon}>
-          <ResponsiveContainer width="100%" height={Math.max(160, channels.length * 30)}>
-            <BarChart data={channels.map(c => ({ name: c.name || c.hash.slice(0, 10), count: c.messageCount }))} layout="vertical">
+          <ResponsiveContainer width="100%" height={Math.max(160, visible.length * 30)}>
+            <BarChart data={visible.map(c => ({ name: c.name || '#' + c.hash.slice(0, 10), count: c.messageCount, unknown: isUnknown(c) }))} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(md3.outlineVariant, 0.4)} />
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                {channels.map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
+                {visible.map((c, i) => <Cell key={i} fill={isUnknown(c) ? md3.outline : paletteColor(i)} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -647,12 +663,12 @@ function ChannelsTab({ params, filterKey }: TabProps) {
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
-                data={channels.slice(0, 8).map(c => ({ name: c.name || c.hash.slice(0, 8), value: c.messageCount }))}
+                data={visible.slice(0, 8).map(c => ({ name: c.name || '#' + c.hash.slice(0, 8), value: c.messageCount }))}
                 dataKey="value" cx="50%" cy="50%" outerRadius={85}
                 label={({ name, percent }: { name?: string; percent?: number }) => (percent ?? 0) > 0.04 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : ''}
                 labelLine={false}
               >
-                {channels.slice(0, 8).map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
+                {visible.slice(0, 8).map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
               </Pie>
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Legend wrapperStyle={{ fontSize: 11, color: md3.onSurfaceVariant }} />
@@ -707,12 +723,12 @@ function ChannelsTab({ params, filterKey }: TabProps) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {channels.map((c, i) => (
+            {visible.map((c, i) => (
               <TableRow key={c.hash}>
                 <TableCell sx={{ color: md3.outline }}>{i + 1}</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>
-                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: paletteColor(i), display: 'inline-block', mr: 1 }} />
-                  {c.name || '—'}
+                <TableCell sx={{ fontWeight: isUnknown(c) ? 400 : 600, fontStyle: isUnknown(c) ? 'italic' : 'normal', color: isUnknown(c) ? md3.onSurfaceVariant : 'inherit' }}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', background: isUnknown(c) ? md3.outline : paletteColor(i), display: 'inline-block', mr: 1 }} />
+                  {c.name || `#${c.hash.slice(0, 8)}`}
                 </TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontSize: 10, color: md3.outline }}>{c.hash.slice(0, 16)}…</TableCell>
                 <TableCell sx={{ color: '#ec4899', fontWeight: 700 }}>{c.messageCount.toLocaleString()}</TableCell>
