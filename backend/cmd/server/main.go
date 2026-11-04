@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -62,8 +64,24 @@ func main() {
 		logLocationRepair("startup", st.LastLocationRepairStats())
 	}
 
+	st.SetCoverageLimits(cfg.Wardrive.MaxRepeaterDistanceKm, cfg.Wardrive.MinDevicesPerCell)
+	if wrows, err := database.LoadWardriveSince(0); err != nil {
+		log.Printf("wardrive load: %v", err)
+	} else if len(wrows) > 0 {
+		log.Printf("loaded %d wardrive sample(s)", st.AddWardrive(wrows))
+	}
+
 	hub := api.NewHub(cfg.AllowedOrigins)
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
+	srv.WardriveEnabled = cfg.Wardrive.Enabled
+	if cfg.Wardrive.Enabled {
+		if p, err := wardriveProxy(cfg.Wardrive.IngestorURL); err != nil {
+			log.Printf("wardrive proxy disabled: %v", err)
+		} else {
+			srv.WardriveProxy = p
+			log.Printf("forwarding POST /api/wardrive to ingestor at %s", cfg.Wardrive.IngestorURL)
+		}
+	}
 
 	// Refresh node/observer metadata on a slower cadence — these tables are
 	// reloaded wholesale, so doing it every packet tick was wasteful.
@@ -103,6 +121,9 @@ func main() {
 			if n := st.Prune(cutoff); n > 0 {
 				log.Printf("pruned %d packets older than %d day(s) from memory", n, cfg.RetentionDays)
 			}
+			if n := st.PruneCoverage(cutoff); n > 0 {
+				log.Printf("pruned %d wardrive sample(s) older than %d day(s) from memory", n, cfg.RetentionDays)
+			}
 		}
 		prune() // once at startup so a large reloaded history is trimmed immediately
 		go func() {
@@ -119,6 +140,13 @@ func main() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
+			// Wardrive samples are independent of packets: poll them first so a
+			// quiet packet tick (the continue below) doesn't skip them.
+			if wrows, err := database.LoadWardriveSince(st.LastWardriveID()); err != nil {
+				log.Printf("wardrive poll: %v", err)
+			} else {
+				st.AddWardrive(wrows)
+			}
 			newTxs, newObss, err := database.LoadSince(lastTxID, lastObsID)
 			if err != nil {
 				log.Printf("poll error: %v", err)
@@ -240,14 +268,19 @@ func pruneDatabaseRetention(database *db.DB, retentionDays int, label string) {
 		return
 	}
 	start := time.Now()
-	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format(time.RFC3339)
-	n, err := database.PruneOlderThan(cutoff)
+	cutoffT := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	n, err := database.PruneOlderThan(cutoffT.Format(time.RFC3339))
 	if err != nil {
 		log.Printf("%s DB retention prune: %v", label, err)
 		return
 	}
 	log.Printf("%s DB retention prune: pruned %d transmissions older than %d day(s) (duration=%s)",
 		label, n, retentionDays, time.Since(start).Round(time.Millisecond))
+	if w, err := database.PruneWardriveOlderThan(cutoffT.Unix()); err != nil {
+		log.Printf("%s wardrive retention prune: %v", label, err)
+	} else if w > 0 {
+		log.Printf("%s wardrive retention prune: pruned %d sample(s)", label, w)
+	}
 }
 
 func pruneDeadEntities(database *db.DB, nodeRetentionDays int, label string) {
@@ -265,6 +298,23 @@ func pruneDeadEntities(database *db.DB, nodeRetentionDays int, label string) {
 		log.Printf("%s dead-entity prune: removed %d node(s), %d observer(s) inactive for %d+ day(s) (duration=%s)",
 			label, nodes, observers, nodeRetentionDays, time.Since(start).Round(time.Millisecond))
 	}
+}
+
+// wardriveProxy forwards MeshMapper uploads to the ingestor, which owns DB
+// writes. httputil appends this hop to X-Forwarded-For; the ingestor trusts
+// loopback/private peers and walks the chain to find the real client for its
+// rate limiter.
+func wardriveProxy(target string) (http.Handler, error) {
+	u, err := url.Parse(target)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("invalid wardrive.ingestorURL %q", target)
+	}
+	p := httputil.NewSingleHostReverseProxy(u)
+	p.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
+		log.Printf("wardrive proxy: %v", err)
+		http.Error(w, "wardrive ingestor unavailable", http.StatusServiceUnavailable)
+	}
+	return p, nil
 }
 
 func logLocationRepair(prefix string, stats store.LocationRepairStats) {

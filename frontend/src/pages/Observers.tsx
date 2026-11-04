@@ -17,17 +17,15 @@ import TableCell from '@mui/material/TableCell'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import IconButton from '@mui/material/IconButton'
-import Tooltip from '@mui/material/Tooltip'
 import Divider from '@mui/material/Divider'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
 import CloseIcon from '@mui/icons-material/Close'
-import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import CheckIcon from '@mui/icons-material/Check'
 import WifiIcon from '@mui/icons-material/Wifi'
 import { api } from '../services/api'
+import CopyField from '../components/CopyField'
 import type { Observer } from '../types'
 import { bucketize } from '../utils/stats'
 import { useDateLocale } from '../hooks/useDateLocale'
@@ -280,36 +278,6 @@ const MQTT_HOST     = getEnv('VITE_MQTT_HOST')     || window.location.hostname
 const MQTT_PORT     = getEnv('VITE_MQTT_PORT')     || '1883'
 const MQTT_USERNAME = getEnv('VITE_MQTT_USERNAME')
 const MQTT_PASSWORD = getEnv('VITE_MQTT_PASSWORD')
-
-function CopyField({ label, value }: { label: string; value: string }) {
-  const theme = useTheme(); const md3 = theme.palette.md3
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true); setTimeout(() => setCopied(false), 1800)
-    })
-  }
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
-      <Typography variant="caption" sx={{ color: md3.outline, width: 80, flexShrink: 0 }}>{label}</Typography>
-      <Box sx={{
-        flex: 1, display: 'flex', alignItems: 'center', gap: 0.75,
-        px: 1.25, py: 0.4, borderRadius: 1.5,
-        background: alpha(md3.surfaceContainerHighest, 0.8),
-        border: `1px solid ${alpha(md3.outlineVariant, 0.5)}`,
-        fontFamily: 'monospace', fontSize: 12, color: md3.onSurface, minWidth: 0,
-      }}>
-        <Box sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</Box>
-        <Tooltip title={copied ? t('decoder.copied') : t('decoder.copy')}>
-          <IconButton size="small" onClick={copy} sx={{ p: 0.25, color: copied ? '#22c55e' : md3.outline, flexShrink: 0 }}>
-            {copied ? <CheckIcon sx={{ fontSize: 13 }} /> : <ContentCopyIcon sx={{ fontSize: 13 }} />}
-          </IconButton>
-        </Tooltip>
-      </Box>
-    </Box>
-  )
-}
 
 function ObserverSetupCard() {
   const theme = useTheme(); const md3 = theme.palette.md3

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -22,6 +24,7 @@ import (
 	"github.com/litescope/backend/internal/decoder"
 	"github.com/litescope/backend/internal/iata"
 	"github.com/litescope/backend/internal/version"
+	"github.com/litescope/backend/internal/wardrive"
 )
 
 func main() {
@@ -93,6 +96,8 @@ func main() {
 		runWriter(database, writeCh)
 	})
 
+	wardriveSrv := startWardrive(database, cfg.Wardrive)
+
 	var clients []mqtt.Client
 	connected := 0
 	for _, src := range cfg.MQTTSources {
@@ -138,6 +143,13 @@ func main() {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	log.Println("shutting down")
+	if wardriveSrv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := wardriveSrv.Shutdown(ctx); err != nil {
+			log.Printf("wardrive shutdown: %v", err)
+		}
+		cancel()
+	}
 	for _, c := range clients {
 		c.Disconnect(2000)
 	}
@@ -152,14 +164,59 @@ func pruneDatabaseRetention(database *db.DB, retentionDays int, label string) {
 		return
 	}
 	start := time.Now()
-	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format(time.RFC3339)
-	n, err := database.PruneOlderThan(cutoff)
+	cutoffT := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	n, err := database.PruneOlderThan(cutoffT.Format(time.RFC3339))
 	if err != nil {
 		log.Printf("%s DB retention prune: %v", label, err)
 		return
 	}
 	log.Printf("%s DB retention prune: pruned %d transmissions older than %d day(s) (duration=%s)",
 		label, n, retentionDays, time.Since(start).Round(time.Millisecond))
+	if w, err := database.PruneWardriveOlderThan(cutoffT.Unix()); err != nil {
+		log.Printf("%s wardrive retention prune: %v", label, err)
+	} else if w > 0 {
+		log.Printf("%s wardrive retention prune: pruned %d sample(s)", label, w)
+	}
+}
+
+// startWardrive serves the MeshMapper Custom API endpoint when enabled. It runs
+// in the ingestor because the ingestor is the only database writer.
+func startWardrive(database *db.DB, cfg config.Wardrive) *http.Server {
+	if !cfg.Enabled {
+		return nil
+	}
+	salt, err := database.WardriveSalt()
+	if err != nil {
+		log.Printf("wardrive disabled: salt: %v", err)
+		return nil
+	}
+	h := wardrive.NewHandler(database, wardrive.Options{
+		SharedKey:      cfg.SharedKey,
+		MaxPingAge:     time.Duration(cfg.MaxPingAgeHours) * time.Hour,
+		Salt:           salt,
+		TrustedProxies: cfg.TrustedProxies,
+	})
+	mux := http.NewServeMux()
+	mux.Handle("/api/wardrive", h)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	srv := &http.Server{
+		Addr:              cfg.Listen,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+	}
+	go func() {
+		keyMode := "open (no sharedKey)"
+		if cfg.SharedKey != "" {
+			keyMode = "sharedKey required"
+		}
+		log.Printf("wardrive endpoint listening on %s/api/wardrive — %s", cfg.Listen, keyMode)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("wardrive http: %v", err)
+		}
+	}()
+	return srv
 }
 
 func pruneDeadEntities(database *db.DB, nodeRetentionDays int, label string) {

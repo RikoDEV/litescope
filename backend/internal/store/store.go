@@ -214,6 +214,10 @@ type Store struct {
 	cacheMu     sync.Mutex
 	cache       map[string]cacheEntry
 	cacheFlight map[string]cacheFlight
+
+	// cov holds wardrive coverage samples (see coverage.go). It has its own lock
+	// and version so wardrive uploads don't churn the packet analytics caches.
+	cov coverageState
 }
 
 type cacheEntry struct {

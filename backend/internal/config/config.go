@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -36,6 +37,35 @@ type Config struct {
 	// implausible. Off (repair enabled) by default; set true to always trust
 	// advertised coordinates as-is, even when absent.
 	DisableLocationRepair bool `json:"disableLocationRepair"`
+	// Wardrive configures the optional MeshMapper "Custom API" endpoint that
+	// collects GPS-tagged coverage pings for the /map coverage layer.
+	Wardrive Wardrive `json:"wardrive"`
+}
+
+// Wardrive configures coverage-ping ingestion (issue #114). The ingestor hosts
+// the HTTP endpoint (it is the only DB writer); the server reads and aggregates.
+type Wardrive struct {
+	// Enabled registers the endpoint. Off by default.
+	Enabled bool `json:"enabled"`
+	// Listen is the ingestor's HTTP listen address for POST /api/wardrive.
+	Listen string `json:"listen"`
+	// IngestorURL is where the server forwards POST /api/wardrive (so existing
+	// reverse-proxy setups that route /api/* to the server need no change).
+	// Defaults to http://127.0.0.1:<Listen port> (both run in one container).
+	IngestorURL string `json:"ingestorURL"`
+	// SharedKey, when non-empty, must match the X-API-Key header. It is an
+	// instance-wide key (not a user login); empty accepts any key.
+	SharedKey string `json:"sharedKey"`
+	// MaxPingAgeHours rejects pings with a timestamp older than this.
+	MaxPingAgeHours int `json:"maxPingAgeHours"`
+	// MaxRepeaterDistanceKm drops a "heard" entry whose repeater is known to be
+	// farther than this from the ping location.
+	MaxRepeaterDistanceKm float64 `json:"maxRepeaterDistanceKm"`
+	// MinDevicesPerCell hides coverage cells confirmed by fewer distinct devices.
+	MinDevicesPerCell int `json:"minDevicesPerCell"`
+	// TrustedProxies are CIDRs whose X-Forwarded-For / CF-Connecting-IP headers
+	// are trusted when resolving the client IP for rate limiting.
+	TrustedProxies []string `json:"trustedProxies"`
 }
 
 type MQTTSource struct {
@@ -70,6 +100,20 @@ func Load(path string) (*Config, error) {
 	}
 	if len(cfg.AllowedOrigins) == 0 {
 		cfg.AllowedOrigins = []string{"*"}
+	}
+	if cfg.Wardrive.Listen == ""                { cfg.Wardrive.Listen = ":3001" }
+	if cfg.Wardrive.IngestorURL == "" {
+		port := cfg.Wardrive.Listen
+		if i := strings.LastIndex(port, ":"); i >= 0 {
+			port = port[i+1:]
+		}
+		cfg.Wardrive.IngestorURL = "http://127.0.0.1:" + port
+	}
+	if cfg.Wardrive.MaxPingAgeHours <= 0        { cfg.Wardrive.MaxPingAgeHours = 72 }
+	if cfg.Wardrive.MaxRepeaterDistanceKm <= 0  { cfg.Wardrive.MaxRepeaterDistanceKm = 150 }
+	if cfg.Wardrive.MinDevicesPerCell <= 0      { cfg.Wardrive.MinDevicesPerCell = 1 }
+	if cfg.Wardrive.TrustedProxies == nil {
+		cfg.Wardrive.TrustedProxies = []string{"127.0.0.1/32", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
 	}
 	// Built-in public channel key from MeshCore firmware defaults
 	if _, ok := cfg.ChannelKeys["Public"]; !ok {

@@ -132,4 +132,16 @@ func TestNodesAndAnalyticsEndpointsAfterObserverIndexRefactor(t *testing.T) {
 	if body := get("/api/analytics/direct-links"); len(body) == 0 {
 		t.Fatalf("empty /api/analytics/direct-links response")
 	}
+
+	// /api/analytics/coverage: no wardrive data yet → an empty, non-null cell list.
+	var cov struct {
+		Enabled bool              `json:"enabled"`
+		Cells   []json.RawMessage `json:"cells"`
+	}
+	if err := json.Unmarshal(get("/api/analytics/coverage?precision=fine&repeater=4e&unverified=1"), &cov); err != nil {
+		t.Fatalf("decode /api/analytics/coverage: %v", err)
+	}
+	if cov.Cells == nil || len(cov.Cells) != 0 {
+		t.Fatalf("expected empty cells array, got %+v", cov.Cells)
+	}
 }

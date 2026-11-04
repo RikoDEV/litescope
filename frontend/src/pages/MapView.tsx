@@ -22,16 +22,19 @@ import TextField from '@mui/material/TextField'
 import Slider from '@mui/material/Slider'
 import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
+import Autocomplete from '@mui/material/Autocomplete'
 import { alpha, useTheme } from '@mui/material/styles'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import MapIcon from '@mui/icons-material/Map'
 import LayersIcon from '@mui/icons-material/Layers'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import { useTranslation } from 'react-i18next'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
-import type { DirectLink, MapHeatPoint, Node, NodeOverview, Packet, RFStats, ScopeRegion } from '../types'
+import type { CoverageCell, CoverageResult, DirectLink, MapHeatPoint, Node, NodeOverview, Packet, RFStats, ScopeRegion } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
+import CoverageSetupDialog, { hasSeenCoverageGuide, markCoverageGuideSeen } from '../components/CoverageSetupDialog'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
 import { escapeHtml } from '../utils/html'
@@ -88,6 +91,19 @@ function hashText(s: string) {
   return h >>> 0
 }
 
+// Coverage cells switch to the ~300 m grid once zoomed in far enough for it to read.
+const COVERAGE_FINE_ZOOM = 12
+// Leaflet's canvas renderer copes with a few thousand rectangles; past that the
+// least-driven cells are dropped first.
+const COVERAGE_MAX_CELLS = 8000
+
+// Red (never heard) → amber → green (reliably heard). Cells with only
+// unverified (DEFER) pings have no ratio and render neutral.
+function coverageColor(c: CoverageCell) {
+  if (c.heard + c.dead === 0) return '#64748b'
+  return `hsl(${Math.round(c.ratio * 120)}, 78%, 45%)`
+}
+
 // Canonical role symbols/colours/markers are shared app-wide via utils/roles.
 const ROLE_SHAPES = ROLE_GLYPH
 
@@ -119,6 +135,8 @@ export default function MapView() {
   const clusterGroup = useRef<L.MarkerClusterGroup | null>(null)
   const markersRef   = useRef<Map<string, L.Marker>>(new Map())
   const scopeLayerRef = useRef<L.LayerGroup | null>(null)
+  const coverageLayerRef = useRef<L.LayerGroup | null>(null)
+  const coverageRendererRef = useRef<L.Canvas | null>(null)
   const heatCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const neighborCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const neighborSegmentsRef = useRef<NeighborSegment[]>([])
@@ -151,6 +169,12 @@ export default function MapView() {
   const [byteSizeFilter, setByteSizeFilter] = useState<'all' | '1' | '2' | '3'>('all')
   const [showScopeRegions, setShowScopeRegions] = useState(false)
   const [showHeatMap, setShowHeatMap] = useState(false)
+  const [showCoverage, setShowCoverage] = useState(() => searchParams.get('coverage') != null)
+  const [coverage, setCoverage] = useState<CoverageResult | null>(null)
+  const [coverageRepeater, setCoverageRepeater] = useState(() => searchParams.get('coverage') ?? '')
+  const [coverageUnverified, setCoverageUnverified] = useState(false)
+  const [coverageGuideOpen, setCoverageGuideOpen] = useState(false)
+  const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM)
   const [showNeighbors, setShowNeighbors] = useState(false)
   const [neighborThreshold, setNeighborThreshold] = useState(1)
   const [scopeFilter, setScopeFilter] = useState('all')
@@ -271,7 +295,12 @@ export default function MapView() {
       },
     })
     cluster.addTo(map)
+    // Coverage cells go in the overlay pane (below markers and popups) on one
+    // shared canvas renderer, so thousands of squares stay cheap and clickable.
+    coverageRendererRef.current = L.canvas({ padding: 0.3 })
+    coverageLayerRef.current = L.layerGroup().addTo(map)
     scopeLayerRef.current = L.layerGroup().addTo(map)
+    map.on('zoomend', () => setMapZoom(map.getZoom()))
 
     const heatCanvas = document.createElement('canvas')
     heatCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:420;opacity:0;'
@@ -306,7 +335,7 @@ export default function MapView() {
       neighborCanvas.remove()
       neighborTooltipRef.current?.remove()
       map.remove(); mapInstance.current = null; clusterGroup.current = null
-      scopeLayerRef.current = null; heatCanvasRef.current = null; neighborCanvasRef.current = null; neighborTooltipRef.current = null
+      scopeLayerRef.current = null; coverageLayerRef.current = null; coverageRendererRef.current = null; heatCanvasRef.current = null; neighborCanvasRef.current = null; neighborTooltipRef.current = null
     }
   }, [])
 
@@ -365,6 +394,41 @@ export default function MapView() {
     ...scopeParams,
     hours: scopeParams.hours ?? 24,
   }), [scopeParams])
+
+  // Deep-link: ?coverage=<repeater pubKey|prefix> (from the node panel) opens the
+  // coverage layer filtered to that repeater; ?coverage alone opens it unfiltered.
+  useEffect(() => {
+    const cov = searchParams.get('coverage')
+    if (cov == null) return
+    setShowCoverage(true)
+    setCoverageRepeater(cov)
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('coverage'); return next }, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  // First time the coverage layer is turned on (toggle or deep link), explain
+  // how to feed it from the MeshMapper app. Reopenable via the help icon.
+  useEffect(() => {
+    if (showCoverage && !hasSeenCoverageGuide()) setCoverageGuideOpen(true)
+  }, [showCoverage])
+  const closeCoverageGuide = useCallback(() => {
+    markCoverageGuideSeen()
+    setCoverageGuideOpen(false)
+  }, [])
+
+  const coveragePrecision: 'fine' | 'coarse' = mapZoom >= COVERAGE_FINE_ZOOM ? 'fine' : 'coarse'
+
+  useEffect(() => {
+    if (!showCoverage) return
+    let cancelled = false
+    const load = () => {
+      api.analyticsCoverage({ ...scopeParams, precision: coveragePrecision, repeater: coverageRepeater || undefined, unverified: coverageUnverified })
+        .then(res => { if (!cancelled) setCoverage(res) })
+        .catch(() => { if (!cancelled) setCoverage(null) })
+    }
+    load()
+    const id = window.setInterval(load, 30_000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [showCoverage, scopeParams, coveragePrecision, coverageRepeater, coverageUnverified])
 
   useEffect(() => {
     if (!showScopeRegions) return
@@ -763,6 +827,60 @@ export default function MapView() {
     }
   }, [showScopeRegions, scopeRegions, scopeFilter, scopeColor, t])
 
+  useEffect(() => {
+    const layer = coverageLayerRef.current
+    const renderer = coverageRendererRef.current
+    if (!layer || !renderer) return
+    layer.clearLayers()
+    if (!showCoverage || !coverage) return
+
+    let cells = coverage.cells
+    if (cells.length > COVERAGE_MAX_CELLS) cells = [...cells].sort((a, b) => b.pings - a.pings).slice(0, COVERAGE_MAX_CELLS)
+    const fmtSnr = (v: number) => v.toFixed(1)
+    for (const c of cells) {
+      const color = coverageColor(c)
+      const confidence = Math.min(1, Math.log2(c.pings + 1) / 5)
+      const rect = L.rectangle([[c.lat, c.lon], [c.lat + c.sizeLat, c.lon + c.sizeLon]], {
+        renderer,
+        color,
+        weight: 0.6,
+        opacity: 0.7,
+        fillColor: color,
+        fillOpacity: 0.22 + confidence * 0.38,
+        dashArray: c.heard + c.dead === 0 ? '3 3' : undefined,
+      })
+      rect.bindPopup(() => {
+        const reps = c.topRepeaters.map(r => {
+          const name = r.names?.length ? r.names.join(' / ') : r.prefix
+          const snr = r.bestSnr != null ? ` · ${fmtSnr(r.bestSnr)} dB` : ''
+          return `<div style="display:flex;justify-content:space-between;gap:12px"><span><code>${escapeHtml(r.prefix)}</code> ${escapeHtml(name)}</span><b>${r.count}${snr}</b></div>`
+        }).join('')
+        return `<div style="font-family:system-ui;min-width:190px;font-size:12px;line-height:1.45">
+          <b style="color:${color}">${Math.round(c.ratio * 100)}%</b>
+          <span style="color:#64748b"> · ${escapeHtml(t('map.coverageCellSummary', { pings: c.pings, devices: c.devices }))}</span>
+          <div>${escapeHtml(t('map.coverageHeardDead', { heard: c.heard, dead: c.dead }))}</div>
+          ${c.claimed ? `<div style="color:#64748b">${escapeHtml(t('map.coverageClaimed', { count: c.claimed }))}</div>` : ''}
+          ${c.bestSnr != null ? `<div>${escapeHtml(t('map.coverageBestSnr', { snr: fmtSnr(c.bestSnr) }))}</div>` : ''}
+          <div style="color:#64748b">${escapeHtml(t('map.coverageLastDriven', { time: new Date(c.lastTs * 1000).toLocaleString(i18n.language) }))}</div>
+          ${reps ? `<div style="margin-top:4px;font-weight:600">${escapeHtml(t('map.coverageRepeaters'))}</div>${reps}` : ''}
+        </div>`
+      })
+      layer.addLayer(rect)
+    }
+  }, [showCoverage, coverage, t, i18n.language])
+
+  const coverageRepeaterOptions = useMemo(() =>
+    nodes.filter(n => n.role === 'repeater' || n.role === 'room')
+      .map(n => ({ pubKey: n.pubKey, label: `${n.name || n.pubKey.slice(0, 8)} (${n.pubKey.slice(0, 4).toUpperCase()})` }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  [nodes])
+  const coverageRepeaterValue = useMemo(() => {
+    if (!coverageRepeater) return null
+    const key = coverageRepeater.toLowerCase()
+    return coverageRepeaterOptions.find(o => o.pubKey.toLowerCase() === key)
+      ?? { pubKey: coverageRepeater, label: coverageRepeater.toUpperCase() }
+  }, [coverageRepeater, coverageRepeaterOptions])
+
   // Sync markers with current filters
   useEffect(() => {
     const map = mapInstance.current; if (!map) return
@@ -1015,6 +1133,64 @@ export default function MapView() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.4 }}>
                 <Checkbox
                   size="small"
+                  checked={showCoverage}
+                  onChange={e => setShowCoverage(e.target.checked)}
+                  sx={{ p: 0.25, color: '#22c55e', '&.Mui-checked': { color: '#22c55e' } }}
+                />
+                <LayersIcon sx={{ fontSize: 14, color: '#22c55e' }} />
+                <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 11 }}>{t('map.coverage')}</Typography>
+                <Tooltip title={t('map.coverageGuideHelp')}>
+                  <IconButton size="small" aria-label={t('map.coverageGuideHelp')} onClick={() => setCoverageGuideOpen(true)} sx={{ p: 0.1, color: md3.outline }}>
+                    <HelpOutlineIcon sx={{ fontSize: 13 }} />
+                  </IconButton>
+                </Tooltip>
+                <Box sx={{ flex: 1 }} />
+                {showCoverage && coverage && (
+                  <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{coverage.cells.length}</Typography>
+                )}
+              </Box>
+              {showCoverage && (
+                <Box sx={{ pl: 3, pr: 1, mb: 0.6, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {coverage && coverage.samples === 0 && (
+                    <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10, lineHeight: 1.3 }}>
+                      {coverage.enabled ? t('map.coverageNoData') : t('map.coverageDisabled')}
+                    </Typography>
+                  )}
+                  <Autocomplete
+                    size="small"
+                    options={coverageRepeaterOptions}
+                    value={coverageRepeaterValue}
+                    onChange={(_, v) => setCoverageRepeater(v?.pubKey ?? '')}
+                    isOptionEqualToValue={(a, b) => a.pubKey.toLowerCase() === b.pubKey.toLowerCase()}
+                    getOptionLabel={o => o.label}
+                    renderInput={params => (
+                      <TextField {...params} placeholder={t('map.coverageAllRepeaters')}
+                        sx={{ '& .MuiInputBase-root': { fontSize: 11, py: '0 !important', minHeight: 28 } }} />
+                    )}
+                    slotProps={{ listbox: { sx: { fontSize: 12 } } }}
+                  />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Checkbox
+                      size="small"
+                      checked={coverageUnverified}
+                      onChange={e => setCoverageUnverified(e.target.checked)}
+                      sx={{ p: 0.25 }}
+                    />
+                    <Typography variant="caption" sx={{ color: md3.onSurface, fontSize: 10 }}>{t('map.coverageUnverified')}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                    {([[1, 'map.coverageGood'], [0.5, 'map.coverageWeak'], [0, 'map.coverageDead']] as const).map(([ratio, key]) => (
+                      <Box key={key} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>
+                        <Box sx={{ width: 10, height: 10, borderRadius: '2px', background: `hsl(${ratio * 120}, 78%, 45%)`, opacity: 0.8 }} />
+                        <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{t(key)}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.4 }}>
+                <Checkbox
+                  size="small"
                   checked={showNeighbors}
                   onChange={e => setShowNeighbors(e.target.checked)}
                   sx={{ p: 0.25, color: '#14b8a6', '&.Mui-checked': { color: '#14b8a6' } }}
@@ -1240,6 +1416,7 @@ export default function MapView() {
           }}
         />
       )}
+      <CoverageSetupDialog open={coverageGuideOpen} onClose={closeCoverageGuide} enabled={coverage?.enabled} />
     </Box>
   )
 }

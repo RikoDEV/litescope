@@ -143,9 +143,57 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   // back to a consensus of the observers that heard it directly, flagging the
   // result as approximate in the UI. false (default) keeps this on; set true to
   // always trust advertised coordinates as-is, even when absent.
-  "disableLocationRepair": false
+  "disableLocationRepair": false,
+
+  // Wardrive coverage layer (MeshMapper "Custom API"). See "Wardrive coverage" below.
+  "wardrive": {
+    "enabled": false,             // register POST /api/wardrive
+    "sharedKey": "",              // optional instance-wide X-API-Key; "" accepts any
+    "maxPingAgeHours": 72,        // drop pings older than this
+    "maxRepeaterDistanceKm": 150, // drop "heard" entries from repeaters farther than this
+    "minDevicesPerCell": 1,       // hide grid cells confirmed by fewer distinct devices
+    "listen": ":3001",            // ingestor-internal listener (server forwards to it)
+    "trustedProxies": ["127.0.0.1/32", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  }
 }
 ```
+
+---
+
+## Wardrive coverage
+
+The **Coverage** layer on `/map` shows where the mesh is actually reachable. It is
+built from GPS-tagged pings collected with the [MeshMapper](https://play.google.com/store/apps/details?id=net.meshmapper.app)
+app, which can forward every wardrive upload to a third-party endpoint
+([format](https://wiki.meshmapper.net/app_third_party_api/)).
+
+1. Set `"wardrive": { "enabled": true }` in `config.json` and restart the backend.
+2. In MeshMapper → Settings → Custom API, set the URL to `<your-domain>/api/wardrive`
+   (HTTPS is required by the app) and any API key — or the `sharedKey`, if you set one.
+   Deep link: `meshmapper://custom-api?url=<your-domain>/api/wardrive&key=<sharedKey>`
+3. Drive. Cells appear on the map within a few seconds of each upload.
+
+How pings are counted: a `TX` heard by a repeater, `RX`, a successful `DISC` and an
+answered `TRACE` count as **heard**; a `TX` with `None` or a failed `DISC` counts as
+**not heard**. `DEFER` ("the app believed this square covered") is unverified and only
+shown with *Include unverified*. Cells are coloured by the heard ratio (red → green)
+on a ~1.2 km grid, switching to ~300 m when zoomed in. Pick a repeater in the layer
+panel, or use *Show coverage* in a repeater's detail panel, to see one repeater's footprint.
+
+Because there are no accounts, the endpoint is open unless `sharedKey` is set. Abuse
+is bounded by a per-IP rate limit and plausibility checks at read time: a hear must
+name a known repeater within `maxRepeaterDistanceKm`, pings implying > 300 km/h from
+one device are discarded, and `minDevicesPerCell` can require several devices per cell.
+Bad data can be removed with SQL, e.g. `DELETE FROM wardrive_samples WHERE ts BETWEEN …`.
+
+**Privacy:** the app's contact key prefix is never stored — only a salted hash used to
+group one device's pings. The API exposes aggregated cells only, never individual
+pings or routes. Samples follow `retentionDays`.
+
+The ingestor (the only database writer) receives the uploads on `wardrive.listen`; the
+server forwards `POST /api/wardrive` to it, so any proxy that already routes `/api/*`
+to the backend needs no change. Behind Cloudflare, add Cloudflare's IP ranges to
+`trustedProxies` so the rate limit sees real client IPs.
 
 ---
 
@@ -391,6 +439,8 @@ All endpoints are prefixed with `/api`. The WebSocket is at `/ws`.
 | `GET` | `/api/analytics/observers-top` | Top observers by packet count |
 | `GET` | `/api/analytics/snr-by-type` | Average SNR per payload type |
 | `GET` | `/api/analytics/hashes` | Hash size distribution and multi-byte adopters |
+| `GET` | `/api/analytics/coverage` | Wardrive coverage grid (query: `hours`, `regions`, `countries`, `precision=fine\|coarse`, `repeater`, `unverified=1`) |
+| `POST` | `/api/wardrive` | MeshMapper Custom API upload (`{"data":[…]}`, header `X-API-Key`); only when `wardrive.enabled` |
 | `POST` | `/api/decode` | Decode a raw hex packet (body: `{"hex":"...","channelKeys":{…}}`) |
 | `WS` | `/ws` | Live push of new packets and observer updates |
 
@@ -403,6 +453,7 @@ liteScope uses a single SQLite file. Notable fields:
 - `transmissions.observation_count` — number of **unique** observers that received the packet (not raw row count)
 - `observations.raw_hex` — the raw packet bytes as received by that specific observer (routing header differs per hop count)
 - `observations.flood_scope` — resolved scope name for `TRANSPORT_FLOOD` packets, matched against `scopeList`
+- `wardrive_samples` / `wardrive_hears` — MeshMapper coverage pings and the repeaters that heard them (`device_hash` is a salted hash, never the raw key)
 
 Migrations run automatically on startup; existing databases are upgraded in place.
 

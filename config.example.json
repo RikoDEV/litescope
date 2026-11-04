@@ -19,5 +19,12 @@
   "allowedOrigins": ["*"],
   "retentionDays": 0,
   "nodeRetentionDays": 0,
-  "disableLocationRepair": false
+  "disableLocationRepair": false,
+  "wardrive": {
+    "enabled": false,
+    "sharedKey": "",
+    "maxPingAgeHours": 72,
+    "maxRepeaterDistanceKm": 150,
+    "minDevicesPerCell": 1
+  }
 }

@@ -26,6 +26,12 @@ type Server struct {
 	Hub            *Hub
 	ChannelKeys    map[string]string
 	AllowedOrigins []string
+	// WardriveEnabled mirrors config.wardrive.enabled so the coverage layer can
+	// tell "no data yet" apart from "feature off".
+	WardriveEnabled bool
+	// WardriveProxy, when set, forwards POST /api/wardrive to the ingestor
+	// (the only DB writer). nil leaves the route unregistered.
+	WardriveProxy http.Handler
 }
 
 func NewServer(st *store.Store, hub *Hub, channelKeys map[string]string, allowedOrigins []string) *Server {
@@ -64,12 +70,16 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/analytics/scope", s.getAnalyticsScope).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/scope-regions", s.getAnalyticsScopeRegions).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/map-heat", s.getAnalyticsMapHeat).Methods("GET", "OPTIONS")
+	api.HandleFunc("/analytics/coverage", s.getAnalyticsCoverage).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/direct-links", s.getAnalyticsDirectLinks).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/channels", s.getChannelAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/distance", s.getAnalyticsDistance).Methods("GET", "OPTIONS")
 	api.HandleFunc("/analytics/clock-health", s.getAnalyticsClockHealth).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}/analytics", s.getObserverAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/decode", s.decodePacket).Methods("POST", "OPTIONS")
+	if s.WardriveProxy != nil {
+		api.Handle("/wardrive", s.WardriveProxy).Methods("POST", "OPTIONS")
+	}
 
 	return r
 }
@@ -603,6 +613,20 @@ func (s *Server) getAnalyticsScopeRegions(w http.ResponseWriter, r *http.Request
 
 func (s *Server) getAnalyticsMapHeat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.Store.MapHeat(analyticsFilter(r)))
+}
+
+// getAnalyticsCoverage serves the wardrive coverage grid. Besides the shared
+// analytics filter it accepts precision=fine|coarse, repeater=<hex prefix> and
+// unverified=1 (include MeshMapper DEFER "claimed" squares).
+func (s *Server) getAnalyticsCoverage(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	res := s.Store.Coverage(analyticsFilter(r), store.CoverageOpts{
+		Precision:  q.Get("precision"),
+		Repeater:   q.Get("repeater"),
+		Unverified: q.Get("unverified") == "1" || q.Get("unverified") == "true",
+	})
+	res.Enabled = s.WardriveEnabled
+	writeJSON(w, res)
 }
 
 func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request) {

@@ -44,6 +44,16 @@ describe('api service', () => {
     expect(fetchMock).toHaveBeenCalledWith('/base/api/packets?limit=100&offset=200&search=relay&types=4%2C2&routeType=1&regions=WAW%2CLUZ&lock=1&minObs=3&sinceMs=1710000000123&sort=obsCount&dir=asc')
   })
 
+  it('serializes coverage options alongside the shared analytics filter', async () => {
+    const { api, fetchMock } = await loadApi('/base')
+
+    await api.analyticsCoverage({ hours: 24, regions: ['WAW'], precision: 'fine', repeater: '4E11', unverified: true })
+    await api.analyticsCoverage({ precision: 'coarse', unverified: false })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/base/api/analytics/coverage?precision=fine&repeater=4E11&unverified=1&hours=24&regions=WAW')
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/base/api/analytics/coverage?precision=coarse')
+  })
+
   it('URL-encodes route parameters', async () => {
     const { api, fetchMock } = await loadApi()
 

@@ -10,6 +10,7 @@ export const LS_KEYS = {
   channelsCombined: 'litescope-channels-combined',
   themeMode: 'litescope-theme-mode',
   themeAccent: 'litescope-theme-accent',
+  coverageGuideSeen: 'litescope-coverage-guide-seen',
 } as const
 
 // NOTE: channel decryption keys live in plaintext localStorage. They are

@@ -205,6 +205,16 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
           <NodeMiniMap lat={selected.lat} lon={selected.lon} color={roleColor(selected.role)}
             onClick={() => navigate(`/map?node=${encodeURIComponent(selected.pubKey)}`)} />
         )}
+        {(selected.role === 'repeater' || selected.role === 'room') && (
+          <Box sx={{ mb: 2, mt: -1 }}>
+            <Typography variant="caption" component="button" type="button"
+              onClick={() => navigate(`/map?coverage=${encodeURIComponent(selected.pubKey)}`)}
+              sx={{ color: md3.primary, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'none', border: 0, p: 0,
+                '&:hover': { textDecoration: 'underline' } }}>
+              {t('map.showCoverage')} →
+            </Typography>
+          </Box>
+        )}
 
         {/* Recent packets */}
         {overview && overview.recentPackets.length > 0 && (

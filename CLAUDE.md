@@ -38,6 +38,7 @@ Concurrency invariants — **respect these when adding fields or indexes**:
 
 ### Other cross-cutting pieces
 
+- **Wardrive coverage** (`internal/wardrive`, `store/coverage.go`) — MeshMapper "Custom API" pings. The ingestor hosts the HTTP endpoint on `wardrive.listen` (keeping it the only writer); the server forwards `POST /api/wardrive` to it via a reverse proxy and polls `wardrive_samples` by id like packets. Coverage samples have their **own lock and version** (`Store.cov`), so never nest `cov.mu` inside `s.mu`. Plausibility (known repeater within range, device speed) is applied at read time in `computeCoverage`, not at ingest, so it re-evaluates as the node registry changes.
 - **`internal/decoder`** — pure MeshCore binary decode + AES-128 channel decryption. `ComputeContentHash` is the dedup key for a transmission (`observations.raw_hex` differs per hop, so the same packet has many observation rows but one transmission).
 - **`internal/geo`** — embedded Natural-Earth polygons + ray-casting `CountryAt(lat,lon)`, memoized on a grid. Used for "strict" geographic (country) filtering, distinct from observer-region (IATA) filtering.
 - **`observation_count`** means *unique observers*, not raw row count. Both the DB increment logic and `BestObservation` enforce this.

@@ -244,7 +244,11 @@ func TestAwaitSchemaWaitsThroughTransientDirty(t *testing.T) {
 		t.Fatalf("awaitSchema returned early while a migration was in flight: %v", err)
 	default:
 	}
-	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = 3, dirty = 0`); err != nil {
+	latest, err := latestMigrationVersion()
+	if err != nil {
+		t.Fatalf("latestMigrationVersion: %v", err)
+	}
+	if _, err := d.db.Exec(`UPDATE schema_migrations SET version = ?, dirty = 0`, latest); err != nil {
 		t.Fatalf("complete migration: %v", err)
 	}
 

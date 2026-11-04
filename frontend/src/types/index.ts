@@ -109,6 +109,50 @@ export interface MapHeatPoint {
   weight: number
 }
 
+// Wardrive coverage grid (MeshMapper pings, /api/analytics/coverage).
+export interface CoverageRepeater {
+  prefix: string
+  count: number
+  bestSnr?: number
+  names?: string[]
+  pubKeys?: string[]
+}
+
+export interface CoverageCell {
+  lat: number      // south-west corner
+  lon: number
+  sizeLat: number
+  sizeLon: number
+  pings: number
+  heard: number
+  dead: number
+  claimed: number
+  devices: number
+  ratio: number    // heard / (heard + dead)
+  bestSnr?: number
+  avgSnr?: number
+  topRepeaters: CoverageRepeater[]
+  lastTs: number   // Unix seconds
+}
+
+export interface CoverageResult {
+  enabled: boolean
+  cellDeg: number
+  samples: number
+  devices: number
+  rejected: number
+  cells: CoverageCell[]
+}
+
+export interface CoverageParams {
+  hours?: number | undefined
+  regions?: string[] | undefined
+  countries?: string[] | undefined
+  precision?: 'fine' | 'coarse' | undefined
+  repeater?: string | undefined
+  unverified?: boolean | undefined
+}
+
 export interface DirectLink {
   nodeA: DirectLinkNode
   nodeB: DirectLinkNode

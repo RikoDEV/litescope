@@ -1,4 +1,4 @@
-import type { Channel, DirectLink, MapHeatPoint, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats, ScopeRegion } from '../types'
+import type { Channel, CoverageParams, CoverageResult, DirectLink, MapHeatPoint, Node, Observer, OverviewStats, Packet, PacketDetail, RFStats, ScopeRegion } from '../types'
 import { getEnv } from '../env'
 
 const BASE = getEnv('VITE_API_URL')
@@ -167,6 +167,14 @@ export const api = {
 
   analyticsMapHeat: (p?: AnalyticsParams) =>
     get<MapHeatPoint[]>(`/api/analytics/map-heat${aq(p)}`),
+
+  analyticsCoverage: (p?: CoverageParams) => {
+    const extra: Record<string, string> = {}
+    if (p?.precision) extra.precision = p.precision
+    if (p?.repeater) extra.repeater = p.repeater
+    if (p?.unverified) extra.unverified = '1'
+    return get<CoverageResult>(`/api/analytics/coverage${aq(p, extra)}`)
+  },
 
   analyticsDirectLinks: (p?: AnalyticsParams) =>
     get<DirectLink[]>(`/api/analytics/direct-links${aq(p)}`),
