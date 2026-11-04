@@ -41,17 +41,27 @@ interface Props {
   onClose: () => void
   // false → the instance has wardrive collection turned off; undefined → not known yet.
   enabled?: boolean | undefined
+  // The instance requires the operator's shared key; apiKey is that key, or
+  // "" when the operator hid it from the public guide.
+  keyRequired?: boolean
+  apiKey?: string
 }
+
+// Placeholder shown when the instance accepts any key.
+const ANY_KEY = 'litescope'
+
 
 // First-run guide for the /map coverage layer: how to point the MeshMapper
 // app's Custom API at this instance. Mirrors the observers MQTT setup card.
-export default function CoverageSetupDialog({ open, onClose, enabled }: Props) {
+export default function CoverageSetupDialog({ open, onClose, enabled, keyRequired = false, apiKey: sharedKey = '' }: Props) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
 
   const endpoint = wardriveEndpoint()
-  const apiKey = 'litescope'
-  const setupLink = `meshmapper://custom-api?url=${encodeURIComponent(endpoint)}&key=${encodeURIComponent(apiKey)}`
+  const keyHidden = keyRequired && !sharedKey
+  const apiKey = keyRequired ? sharedKey : ANY_KEY
+  const setupLink = `meshmapper://custom-api?url=${encodeURIComponent(endpoint)}` + (apiKey ? `&key=${encodeURIComponent(apiKey)}` : '')
+  const keyNote = keyHidden ? t('map.coverageGuideKeyHidden') : keyRequired ? t('map.coverageGuideKeyShared') : t('map.coverageGuideKeyNote')
   const steps = [t('map.coverageGuideStep1'), t('map.coverageGuideStep2'), t('map.coverageGuideStep3'), t('map.coverageGuideStep4')]
 
   return (
@@ -95,10 +105,10 @@ export default function CoverageSetupDialog({ open, onClose, enabled }: Props) {
 
         <Typography variant="overline" sx={{ color: md3.outline, fontSize: 9, display: 'block', mt: 1.5, mb: 0.5 }}>{t('map.coverageGuideDetails')}</Typography>
         <CopyField label={t('map.coverageGuideEndpoint')} value={endpoint} labelWidth={90} />
-        <CopyField label={t('map.coverageGuideApiKey')} value={apiKey} labelWidth={90} />
+        {!keyHidden && <CopyField label={t('map.coverageGuideApiKey')} value={apiKey} labelWidth={90} />}
         <CopyField label={t('map.coverageGuideLink')} value={setupLink} labelWidth={90} />
         <Typography variant="caption" sx={{ color: md3.outline, display: 'block', mt: 0.5, lineHeight: 1.5 }}>
-          {t('map.coverageGuideKeyNote')}
+          {keyNote}
         </Typography>
 
         <Box sx={{

@@ -250,6 +250,8 @@ const cs = {
     coverageGuideApiKey: 'API klíč',
     coverageGuideLink: 'Odkaz nastavení',
     coverageGuideKeyNote: 'Funguje libovolný API klíč, pokud provozovatel nenastavil sdílený klíč.',
+    coverageGuideKeyShared: 'Tato instance vyžaduje výše uvedený sdílený API klíč.',
+    coverageGuideKeyHidden: 'Tato instance vyžaduje soukromý API klíč — požádejte o něj provozovatele.',
     coverageGuideLegend: 'Zelené čtverce slyšel opakovač, červené nikdo; neověřené (DEFER) se zobrazí jen se „Zahrnout neověřené“.',
     coverageGuidePrivacy: 'Váš kontaktní klíč se nikdy neukládá — jen solený hash — a zveřejňují se pouze agregované čtverce.',
     coverageGuideDisabled: 'Sběr wardrive je na této instanci vypnutý — provozovatel musí nastavit "wardrive": { "enabled": true } v config.json.',

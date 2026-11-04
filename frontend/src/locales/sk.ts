@@ -250,6 +250,8 @@ const sk = {
     coverageGuideApiKey: 'API kľúč',
     coverageGuideLink: 'Odkaz nastavenia',
     coverageGuideKeyNote: 'Funguje ľubovoľný API kľúč, pokiaľ prevádzkovateľ nenastavil zdieľaný kľúč.',
+    coverageGuideKeyShared: 'Táto inštancia vyžaduje vyššie uvedený zdieľaný API kľúč.',
+    coverageGuideKeyHidden: 'Táto inštancia vyžaduje súkromný API kľúč — požiadajte oň prevádzkovateľa.',
     coverageGuideLegend: 'Zelené štvorce počul opakovač, červené nikto; neoverené (DEFER) sa zobrazia len so „Zahrnúť neoverené“.',
     coverageGuidePrivacy: 'Váš kontaktný kľúč sa nikdy neukladá — len solený hash — a zverejňujú sa iba agregované štvorce.',
     coverageGuideDisabled: 'Zber wardrive je na tejto inštancii vypnutý — prevádzkovateľ musí nastaviť "wardrive": { "enabled": true } v config.json.',

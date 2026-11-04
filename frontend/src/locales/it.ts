@@ -250,6 +250,8 @@ const it = {
     coverageGuideApiKey: 'Chiave API',
     coverageGuideLink: 'Link config.',
     coverageGuideKeyNote: 'Va bene qualsiasi chiave API, a meno che l’operatore non abbia impostato una chiave condivisa.',
+    coverageGuideKeyShared: 'Questa istanza richiede la chiave API condivisa qui sopra.',
+    coverageGuideKeyHidden: 'Questa istanza richiede una chiave API privata — chiedila all’operatore.',
     coverageGuideLegend: 'I quadrati verdi sono stati sentiti da un ripetitore, i rossi da nessuno; quelli non verificati (DEFER) compaiono solo con «Includi non verificati».',
     coverageGuidePrivacy: 'La tua chiave di contatto non viene mai salvata — solo un hash con sale — e vengono pubblicati solo quadrati aggregati.',
     coverageGuideDisabled: 'La raccolta wardrive è disattivata su questa istanza — l’operatore deve impostare "wardrive": { "enabled": true } in config.json.',

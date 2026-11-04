@@ -265,6 +265,8 @@ const de: Translation = {
     coverageGuideApiKey: 'API-Schlüssel',
     coverageGuideLink: 'Setup-Link',
     coverageGuideKeyNote: 'Jeder API-Schlüssel funktioniert, außer der Betreiber hat einen gemeinsamen Schlüssel festgelegt.',
+    coverageGuideKeyShared: 'Diese Instanz erfordert den obigen gemeinsamen API-Schlüssel.',
+    coverageGuideKeyHidden: 'Diese Instanz erfordert einen privaten API-Schlüssel – frag den Betreiber danach.',
     coverageGuideLegend: 'Grüne Felder hat ein Repeater gehört, rote niemand; unbestätigte (DEFER) Felder erscheinen nur mit „Unbestätigte einbeziehen“.',
     coverageGuidePrivacy: 'Dein Kontaktschlüssel wird nie gespeichert – nur ein gesalzener Hash – und veröffentlicht werden nur aggregierte Felder.',
     coverageGuideDisabled: 'Die Wardrive-Erfassung ist auf dieser Instanz deaktiviert – der Betreiber muss "wardrive": { "enabled": true } in config.json setzen.',

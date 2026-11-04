@@ -265,6 +265,8 @@ const pl: Translation = {
     coverageGuideApiKey: 'Klucz API',
     coverageGuideLink: 'Link konfiguracji',
     coverageGuideKeyNote: 'Działa dowolny klucz API, chyba że operator tej instancji ustawił klucz współdzielony.',
+    coverageGuideKeyShared: 'Ta instancja wymaga powyższego współdzielonego klucza API.',
+    coverageGuideKeyHidden: 'Ta instancja wymaga prywatnego klucza API — poproś o niego operatora.',
     coverageGuideLegend: 'Zielone kwadraty usłyszał repeater, czerwone — nikt; niezweryfikowane (DEFER) widać tylko z „Uwzględnij niezweryfikowane”.',
     coverageGuidePrivacy: 'Twój klucz kontaktu nigdy nie jest zapisywany — tylko solony hash — a publikowane są wyłącznie zagregowane kwadraty.',
     coverageGuideDisabled: 'Zbieranie danych wardrive jest obecnie wyłączone na tej instancji — operator musi ustawić "wardrive": { "enabled": true } w config.json.',

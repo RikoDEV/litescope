@@ -26,6 +26,7 @@
   "wardrive": {
     "enabled": false,
     "sharedKey": "",
+    "hideSharedKey": false,
     "maxPingAgeHours": 72,
     "maxRepeaterDistanceKm": 150,
     "minDevicesPerCell": 1

@@ -250,6 +250,8 @@ const fr = {
     coverageGuideApiKey: 'Clé API',
     coverageGuideLink: 'Lien de config.',
     coverageGuideKeyNote: 'N’importe quelle clé API fonctionne, sauf si l’opérateur a défini une clé partagée.',
+    coverageGuideKeyShared: 'Cette instance exige la clé API partagée ci-dessus.',
+    coverageGuideKeyHidden: 'Cette instance exige une clé API privée — demandez-la à l’opérateur.',
     coverageGuideLegend: 'Les carrés verts ont été entendus par un répéteur, les rouges par personne ; les carrés non vérifiés (DEFER) n’apparaissent qu’avec « Inclure les non vérifiés ».',
     coverageGuidePrivacy: 'Votre clé de contact n’est jamais stockée — seulement un hash salé — et seuls des carrés agrégés sont publiés.',
     coverageGuideDisabled: 'La collecte wardrive est désactivée sur cette instance — l’opérateur doit définir "wardrive": { "enabled": true } dans config.json.',

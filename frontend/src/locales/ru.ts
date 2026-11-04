@@ -250,6 +250,8 @@ const ru = {
     coverageGuideApiKey: 'API-ключ',
     coverageGuideLink: 'Ссылка',
     coverageGuideKeyNote: 'Подойдёт любой API-ключ, если оператор не задал общий ключ.',
+    coverageGuideKeyShared: 'Этому экземпляру нужен общий API-ключ, указанный выше.',
+    coverageGuideKeyHidden: 'Этому экземпляру нужен приватный API-ключ — запросите его у оператора.',
     coverageGuideLegend: 'Зелёные квадраты услышал ретранслятор, красные — никто; непроверенные (DEFER) видны только с «Включать непроверенные».',
     coverageGuidePrivacy: 'Ваш контактный ключ никогда не сохраняется — только солёный хеш — и публикуются только агрегированные квадраты.',
     coverageGuideDisabled: 'Сбор wardrive отключён на этом экземпляре — оператору нужно установить "wardrive": { "enabled": true } в config.json.',

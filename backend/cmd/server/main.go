@@ -104,6 +104,10 @@ func main() {
 	hub := api.NewHub(cfg.AllowedOrigins)
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
 	srv.WardriveEnabled = cfg.Wardrive.Enabled
+	srv.WardriveKeyRequired = cfg.Wardrive.SharedKey != ""
+	if !cfg.Wardrive.HideSharedKey {
+		srv.WardriveKey = cfg.Wardrive.SharedKey
+	}
 	srv.ObsRawHex = database.ObservationRawHex
 	if memWindow > 0 {
 		// A separate handle (own connection) for archive reads: SQLite in WAL

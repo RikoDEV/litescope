@@ -43,7 +43,13 @@ function cachedNodes(): Promise<NodesResponse> {
 export interface Features {
   /** Wardrive coverage map layer (config wardrive.enabled). */
   coverage: boolean
+  /** Uploads need the operator's shared key (config wardrive.sharedKey). */
+  wardriveKeyRequired: boolean
+  /** That key for the setup guide; "" when unset or hidden (wardrive.hideSharedKey). */
+  wardriveKey: string
 }
+
+const NO_FEATURES: Features = { coverage: false, wardriveKeyRequired: false, wardriveKey: '' }
 
 // Feature flags only change on a server restart: fetch once per page load.
 // A failed request (e.g. an older backend without the endpoint) resolves to
@@ -53,11 +59,15 @@ let featuresCache: Promise<Features> | null = null
 function cachedFeatures(): Promise<Features> {
   if (featuresCache) return featuresCache
   const promise = get<Partial<Features>>('/api/features')
-    .then(f => ({ coverage: f.coverage === true }))
+    .then(f => ({
+      coverage: f.coverage === true,
+      wardriveKeyRequired: f.wardriveKeyRequired === true,
+      wardriveKey: typeof f.wardriveKey === 'string' ? f.wardriveKey : '',
+    }))
   featuresCache = promise
   return promise.catch(() => {
     if (featuresCache === promise) featuresCache = null
-    return { coverage: false }
+    return NO_FEATURES
   })
 }
 

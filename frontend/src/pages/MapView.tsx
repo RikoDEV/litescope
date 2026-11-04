@@ -177,7 +177,7 @@ export default function MapView() {
   // The coverage layer exists only when the backend runs the wardrive feature;
   // while off (or until /api/features answers) a deep link or saved toggle is
   // remembered but nothing is fetched or shown.
-  const { coverage: coverageEnabled } = useFeatures()
+  const { coverage: coverageEnabled, wardriveKeyRequired, wardriveKey } = useFeatures()
   const [coverageWanted, setCoverageWanted] = useState(() => searchParams.get('coverage') != null)
   const showCoverage = coverageWanted && coverageEnabled
   const [coverage, setCoverage] = useState<CoverageResult | null>(null)
@@ -1459,7 +1459,7 @@ export default function MapView() {
           }}
         />
       )}
-      <CoverageSetupDialog open={coverageGuideOpen} onClose={closeCoverageGuide} enabled={coverage?.enabled} />
+      <CoverageSetupDialog open={coverageGuideOpen} onClose={closeCoverageGuide} enabled={coverage?.enabled} keyRequired={wardriveKeyRequired} apiKey={wardriveKey} />
     </Box>
   )
 }

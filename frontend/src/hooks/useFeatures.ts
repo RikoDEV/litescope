@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Features } from '../services/api'
 
-const DISABLED: Features = { coverage: false }
+const DISABLED: Features = { coverage: false, wardriveKeyRequired: false, wardriveKey: '' }
 
 /**
  * Backend feature flags. Until the (once-per-page-load) request resolves every

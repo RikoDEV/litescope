@@ -250,6 +250,8 @@ const es = {
     coverageGuideApiKey: 'Clave API',
     coverageGuideLink: 'Enlace config.',
     coverageGuideKeyNote: 'Sirve cualquier clave API, salvo que el operador haya configurado una clave compartida.',
+    coverageGuideKeyShared: 'Esta instancia requiere la clave API compartida de arriba.',
+    coverageGuideKeyHidden: 'Esta instancia requiere una clave API privada — pídesela al operador.',
     coverageGuideLegend: 'Los cuadros verdes los oyó un repetidor, los rojos nadie; los no verificados (DEFER) solo aparecen con «Incluir no verificados».',
     coverageGuidePrivacy: 'Tu clave de contacto nunca se guarda — solo un hash con sal — y solo se publican cuadros agregados.',
     coverageGuideDisabled: 'La recogida wardrive está desactivada en esta instancia — el operador debe poner "wardrive": { "enabled": true } en config.json.',

@@ -250,6 +250,8 @@ const uk = {
     coverageGuideApiKey: 'API-ключ',
     coverageGuideLink: 'Посилання',
     coverageGuideKeyNote: 'Підійде будь-який API-ключ, якщо оператор не задав спільний ключ.',
+    coverageGuideKeyShared: 'Цьому екземпляру потрібен спільний API-ключ, наведений вище.',
+    coverageGuideKeyHidden: 'Цьому екземпляру потрібен приватний API-ключ — попросіть його в оператора.',
     coverageGuideLegend: 'Зелені квадрати почув ретранслятор, червоні — ніхто; неперевірені (DEFER) видно лише з «Включати неперевірені».',
     coverageGuidePrivacy: 'Ваш контактний ключ ніколи не зберігається — лише солоний хеш — і публікуються тільки агреговані квадрати.',
     coverageGuideDisabled: 'Збір wardrive вимкнено на цьому екземплярі — оператор має встановити "wardrive": { "enabled": true } у config.json.',

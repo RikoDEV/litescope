@@ -250,6 +250,8 @@ const nl = {
     coverageGuideApiKey: 'API-sleutel',
     coverageGuideLink: 'Setup-link',
     coverageGuideKeyNote: 'Elke API-sleutel werkt, tenzij de beheerder een gedeelde sleutel heeft ingesteld.',
+    coverageGuideKeyShared: 'Deze instantie vereist de gedeelde API-sleutel hierboven.',
+    coverageGuideKeyHidden: 'Deze instantie vereist een privé API-sleutel — vraag de beheerder erom.',
     coverageGuideLegend: 'Groene vakken zijn door een repeater gehoord, rode door niemand; onbevestigde (DEFER) vakken verschijnen alleen met „Onbevestigde meenemen”.',
     coverageGuidePrivacy: 'Je contactsleutel wordt nooit opgeslagen — alleen een gezouten hash — en alleen samengevoegde vakken worden gepubliceerd.',
     coverageGuideDisabled: 'Wardrive-verzameling staat uit op deze instantie — de beheerder moet "wardrive": { "enabled": true } in config.json zetten.',

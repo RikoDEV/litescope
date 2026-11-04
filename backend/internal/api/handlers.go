@@ -31,6 +31,11 @@ type Server struct {
 	// WardriveEnabled mirrors config.wardrive.enabled so the coverage layer can
 	// tell "no data yet" apart from "feature off".
 	WardriveEnabled bool
+	// WardriveKeyRequired reports that uploads need config.wardrive.sharedKey;
+	// WardriveKey is that key as shown in the public setup guide ("" when the
+	// operator set hideSharedKey).
+	WardriveKeyRequired bool
+	WardriveKey         string
 	// WardriveProxy, when set, forwards POST /api/wardrive to the ingestor
 	// (the only DB writer). nil leaves the route unregistered.
 	WardriveProxy http.Handler
@@ -753,7 +758,17 @@ func (s *Server) getAnalyticsCoverage(w http.ResponseWriter, r *http.Request) {
 // getFeatures reports which optional, config-gated features are enabled, so the
 // UI can hide controls for features this instance doesn't run.
 func (s *Server) getFeatures(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]bool{"coverage": s.WardriveEnabled})
+	f := features{Coverage: s.WardriveEnabled}
+	if s.WardriveEnabled {
+		f.WardriveKeyRequired, f.WardriveKey = s.WardriveKeyRequired, s.WardriveKey
+	}
+	writeJSON(w, f)
+}
+
+type features struct {
+	Coverage            bool   `json:"coverage"`
+	WardriveKeyRequired bool   `json:"wardriveKeyRequired"`
+	WardriveKey         string `json:"wardriveKey,omitempty"`
 }
 
 func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request) {

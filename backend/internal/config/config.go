@@ -72,6 +72,9 @@ type Wardrive struct {
 	// SharedKey, when non-empty, must match the X-API-Key header. It is an
 	// instance-wide key (not a user login); empty accepts any key.
 	SharedKey string `json:"sharedKey"`
+	// HideSharedKey keeps SharedKey out of the public coverage setup guide
+	// (GET /api/features); drivers then have to get the key from the operator.
+	HideSharedKey bool `json:"hideSharedKey"`
 	// MaxPingAgeHours rejects pings with a timestamp older than this.
 	MaxPingAgeHours int `json:"maxPingAgeHours"`
 	// MaxRepeaterDistanceKm drops a "heard" entry whose repeater is known to be

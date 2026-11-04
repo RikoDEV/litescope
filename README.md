@@ -168,6 +168,7 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   "wardrive": {
     "enabled": false,             // register POST /api/wardrive
     "sharedKey": "",              // optional instance-wide X-API-Key; "" accepts any
+    "hideSharedKey": false,       // don't show sharedKey in the public setup guide on /map
     "maxPingAgeHours": 72,        // drop pings older than this
     "maxRepeaterDistanceKm": 150, // drop "heard" entries from repeaters farther than this
     "minDevicesPerCell": 1,       // hide grid cells confirmed by fewer distinct devices
@@ -198,6 +199,10 @@ answered `TRACE` count as **heard**; a `TX` with `None` or a failed `DISC` count
 shown with *Include unverified*. Cells are coloured by the heard ratio (red → green)
 on a ~1.2 km grid, switching to ~300 m when zoomed in. Pick a repeater in the layer
 panel, or use *Show coverage* in a repeater's detail panel, to see one repeater's footprint.
+
+The setup guide on `/map` shows the real `sharedKey` so anyone can join. Set
+`"hideSharedKey": true` to keep it private: the guide then says a key is required
+and drivers have to ask you for it.
 
 Because there are no accounts, the endpoint is open unless `sharedKey` is set. Abuse
 is bounded by a per-IP rate limit and plausibility checks at read time: a hear must

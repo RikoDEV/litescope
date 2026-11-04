@@ -264,6 +264,8 @@ const en = {
     coverageGuideApiKey: 'API key',
     coverageGuideLink: 'Setup link',
     coverageGuideKeyNote: 'Any API key works unless the operator of this instance configured a shared key.',
+    coverageGuideKeyShared: 'This instance requires the shared API key above.',
+    coverageGuideKeyHidden: 'This instance requires a private API key — ask the operator for it.',
     coverageGuideLegend: 'Green squares were heard by a repeater, red ones by nobody; unverified (DEFER) squares appear only with “Include unverified”.',
     coverageGuidePrivacy: 'Your contact key is never stored — only a salted hash — and only aggregated squares are published.',
     coverageGuideDisabled: 'Wardrive collection is currently off on this instance — the operator needs to set "wardrive": { "enabled": true } in config.json.',
