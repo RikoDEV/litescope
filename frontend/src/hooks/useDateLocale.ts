@@ -17,6 +17,11 @@ const LOADERS: Record<string, () => Promise<Locale>> = {
   pl: () => import('date-fns/locale/pl').then(m => m.pl),
   uk: () => import('date-fns/locale/uk').then(m => m.uk),
   ru: () => import('date-fns/locale/ru').then(m => m.ru),
+  pt: () => import('date-fns/locale/pt-BR').then(m => m.ptBR),
+  sv: () => import('date-fns/locale/sv').then(m => m.sv),
+  fi: () => import('date-fns/locale/fi').then(m => m.fi),
+  hu: () => import('date-fns/locale/hu').then(m => m.hu),
+  ro: () => import('date-fns/locale/ro').then(m => m.ro),
 }
 
 const loaded = new Map<string, Locale>([['en', enUS]])

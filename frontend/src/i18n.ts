@@ -15,6 +15,11 @@ export const LANGUAGES = [
   { code: 'pl', label: 'Polski',     cc: 'PL' },
   { code: 'uk', label: 'Українська', cc: 'UA' },
   { code: 'ru', label: 'Русский',    cc: 'RU' },
+  { code: 'pt', label: 'Português',  cc: 'BR' },
+  { code: 'sv', label: 'Svenska',    cc: 'SE' },
+  { code: 'fi', label: 'Suomi',      cc: 'FI' },
+  { code: 'hu', label: 'Magyar',     cc: 'HU' },
+  { code: 'ro', label: 'Română',     cc: 'RO' },
 ]
 
 // Only English (the fallback) is bundled into the entry chunk. Every other
@@ -31,6 +36,11 @@ const LOADERS: Record<string, () => Promise<{ default: unknown }>> = {
   pl: () => import('./locales/pl'),
   uk: () => import('./locales/uk'),
   ru: () => import('./locales/ru'),
+  pt: () => import('./locales/pt'),
+  sv: () => import('./locales/sv'),
+  fi: () => import('./locales/fi'),
+  hu: () => import('./locales/hu'),
+  ro: () => import('./locales/ro'),
 }
 
 const lazyLocales: BackendModule = {
@@ -57,7 +67,7 @@ export const i18nReady = i18n
     resources: { en: { translation: en } },
     partialBundledLanguages: true,
     fallbackLng: 'en',
-    supportedLngs: ['en', 'fr', 'de', 'nl', 'es', 'it', 'cs', 'sk', 'pl', 'uk', 'ru'],
+    supportedLngs: ['en', 'fr', 'de', 'nl', 'es', 'it', 'cs', 'sk', 'pl', 'uk', 'ru', 'pt', 'sv', 'fi', 'hu', 'ro'],
     detection: {
       order: ['localStorage', 'navigator'],
       lookupLocalStorage: 'litescope-lang',
