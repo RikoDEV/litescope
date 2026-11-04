@@ -29,6 +29,7 @@ import { ROLES, ROLE_GLYPH, roleColor, roleMarkerSvg } from '../utils/roles'
 import { MAP_POSITION_CONFIGURED, DEFAULT_MAP_LAT, DEFAULT_MAP_LON, DEFAULT_MAP_ZOOM } from '../utils/mapDefaults'
 import { addBaseTileLayer } from '../utils/mapTiles'
 import { formatDistanceToNow } from 'date-fns'
+import { useDateLocale } from '../hooks/useDateLocale'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ function drawDot(
 export default function LiveMap() {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
+  const dateLocale = useDateLocale()
   const location = useLocation()
   const navigate = useNavigate()
   const [replayBanner, setReplayBanner] = useState<string | null>(null)
@@ -944,7 +946,7 @@ export default function LiveMap() {
                     <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{hops} hops</Typography>
                   )}
                   <Typography variant="caption" sx={{ color: md3.outline, ml: 'auto', fontSize: 10, flexShrink: 0 }}>
-                    {formatDistanceToNow(new Date(pkt.firstSeen), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(pkt.firstSeen), { addSuffix: true, locale: dateLocale })}
                   </Typography>
                 </Box>
                 {name && (

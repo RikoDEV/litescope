@@ -456,7 +456,7 @@ interface PacketDetailPanelProps {
 
 export default function PacketDetailPanel({ selected, onClose, paperSx, selectedObserverId, onObserverSelect }: PacketDetailPanelProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const hexSectionLabels: Record<HexSection, string> = {
     header: t('packets.hex.header'), transport: t('packets.hex.transport'),
     pathLen: t('packets.hex.pathLen'), path: t('packets.hex.path'),
@@ -558,7 +558,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
         {/* Stats row */}
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mb: 2 }}>
           {[
-            { l: t('common.firstSeen'), v: relativeTime(selected.firstSeen) },
+            { l: t('common.firstSeen'), v: relativeTime(selected.firstSeen, i18n.language) },
             { l: t('packets.propagation'), v: propagationMs > 0 ? `${(propagationMs / 1000).toFixed(1)}s` : '—' },
             { l: t('packets.maxHops'), v: focusedObs?.hops.length ? `${focusedObs.hops.length}` : '—' },
           ].map(({ l, v }) => (
@@ -757,7 +757,7 @@ export default function PacketDetailPanel({ selected, onClose, paperSx, selected
                         {o.rssi != null ? `${o.rssi}` : '—'}
                       </TableCell>
                       <TableCell sx={{ fontSize: 10, color: md3.outline, whiteSpace: 'nowrap' }}>
-                        {relativeTime(o.timestamp)}
+                        {relativeTime(o.timestamp, i18n.language)}
                       </TableCell>
                     </TableRow>
                   )})}

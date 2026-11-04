@@ -554,7 +554,7 @@ interface PacketRowProps {
 const PacketRow = React.memo(function PacketRow({ p, isSelected, isExpanded, subObs, selectedObserverId, localeCode, onSelect, onToggleExpand, onSelectObservation }: PacketRowProps) {
   const theme = useTheme()
   const md3 = theme.palette.md3
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const dec = p.decoded
   const color = PAYLOAD_COLORS[p.payloadType] ?? md3.outline
   const msgText = dec?.text as string | undefined
@@ -641,7 +641,7 @@ const PacketRow = React.memo(function PacketRow({ p, isSelected, isExpanded, sub
                       </Box>
                       {/* time */}
                       <Box sx={{ flex: 1, fontSize: 10, color: md3.outline }}>
-                        {relativeTime(o.timestamp)}
+                        {relativeTime(o.timestamp, i18n.language)}
                       </Box>
                     </Box>
                   )

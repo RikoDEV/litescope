@@ -28,12 +28,28 @@ export function deduplicateObs<T extends { observerId: string; snr: number | nul
   return [...map.values()]
 }
 
-/** Compact "Ns/Nm/Nh ago" relative timestamp for packet lists. */
-export function relativeTime(ts: string): string {
+const relativeFormats = new Map<string, Intl.RelativeTimeFormat>()
+
+// "narrow" is the compact "25s ago" in English, but in some locales (ru) it
+// drops the "ago" word for a bare minus sign, so the others use "short".
+function relativeFormat(lang: string): Intl.RelativeTimeFormat {
+  const base = lang.split('-')[0] || 'en'
+  let f = relativeFormats.get(base)
+  if (!f) {
+    try { f = new Intl.RelativeTimeFormat(base, { style: base === 'en' ? 'narrow' : 'short' }) }
+    catch { f = new Intl.RelativeTimeFormat('en', { style: 'narrow' }) }
+    relativeFormats.set(base, f)
+  }
+  return f
+}
+
+/** Compact localized "Ns/Nm/Nh ago" relative timestamp for packet lists. */
+export function relativeTime(ts: string, lang = 'en'): string {
   const diff = (Date.now() - new Date(ts).getTime()) / 1000
-  if (diff < 60) return `${Math.round(diff)}s ago`
-  if (diff < 3600) return `${Math.round(diff / 60)}m ago`
-  return `${Math.round(diff / 3600)}h ago`
+  const f = relativeFormat(lang)
+  if (diff < 60) return f.format(-Math.round(diff), 'second')
+  if (diff < 3600) return f.format(-Math.round(diff / 60), 'minute')
+  return f.format(-Math.round(diff / 3600), 'hour')
 }
 
 /**

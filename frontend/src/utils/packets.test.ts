@@ -30,5 +30,10 @@ describe('packet helpers', () => {
       expect(relativeTime('2026-06-11T11:35:00Z')).toBe('25m ago')
       expect(relativeTime('2026-06-11T07:30:00Z')).toBe('5h ago')
     })
+
+    it('localizes to the UI language', () => {
+      expect(relativeTime('2026-06-11T11:35:00Z', 'pl')).toBe('25 min temu')
+      expect(relativeTime('2026-06-11T07:30:00Z', 'ru')).toBe('5 ч назад')
+    })
   })
 })

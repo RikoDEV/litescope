@@ -358,7 +358,7 @@ export default function PacketTrace() {
   const { hash } = useParams<{ hash: string }>()
   const navigate  = useNavigate()
   const theme     = useTheme(); const md3 = theme.palette.md3
-  const { t }     = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const [pkt,     setPkt]     = useState<PacketDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -447,7 +447,7 @@ export default function PacketTrace() {
               <Chip label={payloadName} size="small" sx={{ background: alpha(roleColor, 0.15), color: roleColor, fontWeight: 700 }} />
               <Chip label={routeName}   size="small" sx={{ background: alpha(md3.secondary, 0.12), color: md3.secondary }} />
               <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>
-                {relativeTime(pkt.firstSeen)}
+                {relativeTime(pkt.firstSeen, i18n.language)}
               </Typography>
             </Box>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: md3.outline, fontSize: 11, wordBreak: 'break-all' }}>
