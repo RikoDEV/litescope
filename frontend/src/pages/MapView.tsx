@@ -52,6 +52,10 @@ L.Icon.Default.mergeOptions({
 })
 
 const ACTIVE_MS = 24 * 3600e3
+
+// Node marker plus the bookkeeping that lets the marker effect skip unchanged
+// nodes (see iconKey) and refresh only the ones whose record changed.
+type NodeMarker = L.Marker & { _nodeRole?: string; _iconKey?: string; _node?: Node; _onClick?: () => void }
 const SCOPE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316']
 
 const LH_MS: Record<string, number> = {
@@ -199,6 +203,7 @@ export default function MapView() {
   // (role, status, last-heard, byte size, approx-location, region). Shared
   // with the Neighbors canvas layer so link lines never connect a node the
   // filters have hidden.
+  const prevVisibleRef = useRef<Set<string>>(new Set())
   const visibleNodePubKeys = useMemo(() => {
     const now       = Date.now()
     const activeCut = now - ACTIVE_MS
@@ -220,6 +225,12 @@ export default function MapView() {
       }
       set.add(n.pubKey)
     }
+    // Keep the previous Set while membership is unchanged: a live advert gives
+    // `nodes` a new identity, and a new Set every time re-ran (tore down and
+    // redrew) the neighbours canvas layer even though nothing visible changed.
+    const prev = prevVisibleRef.current
+    if (prev.size === set.size && [...set].every(k => prev.has(k))) return prev
+    prevVisibleRef.current = set
     return set
   }, [nodes, roleVis, statusFilter, lastHeardFilter, byteSizeFilter, hideApproxLocation, geoCountries])
 
@@ -929,13 +940,36 @@ export default function MapView() {
       const hashLabel  = showHashLabels ? n.pubKey.slice(0, prefixBytes * 2).toUpperCase() : ''
       const titleLabel = showTitleLabels ? (n.name || n.pubKey.slice(0, 8)) : ''
       const label  = hashLabel || titleLabel ? { hash: hashLabel, title: titleLabel } : undefined
-      const icon   = makeIcon(n.role, active, label, n.isObserver)
-      const exist  = markersRef.current.get(n.pubKey)
-      if (exist) { exist.setIcon(icon); (exist as any)._nodeRole = n.role; return }
+      // Everything makeIcon's output depends on: rebuild the icon (which
+      // recreates the marker's DOM) only when this changes, instead of for
+      // every visible marker whenever any single node updates.
+      const iconKey = `${n.role}|${active ? 1 : 0}|${hashLabel}|${titleLabel}|${n.isObserver ? 1 : 0}|${theme.palette.mode}|${md3.primary}|${md3.tertiary}`
       const [dLat, dLon] = jitter.get(n.pubKey) ?? [0, 0]
-      const m = L.marker([n.lat! + dLat, n.lon! + dLon], { icon }).bindPopup(makePopup(n));
-      (m as any)._nodeRole = n.role
-      m.on('click', () => selectNode(n))
+      const exist  = markersRef.current.get(n.pubKey) as NodeMarker | undefined
+      if (exist) {
+        if (exist._iconKey !== iconKey) { exist.setIcon(makeIcon(n.role, active, label, n.isObserver)); exist._iconKey = iconKey }
+        exist._nodeRole = n.role
+        if (exist._node !== n) {
+          // The node record changed (new advert): follow it if it moved, and
+          // refresh the popup and click target, which used to stay stale.
+          const ll = L.latLng(n.lat! + dLat, n.lon! + dLon)
+          if (!exist.getLatLng().equals(ll)) exist.setLatLng(ll)
+          exist.setPopupContent(makePopup(n))
+          // Swap only our own handler — a bare off('click') would also drop the
+          // listener bindPopup registered, and the popup would stop opening.
+          if (exist._onClick) exist.off('click', exist._onClick)
+          exist._onClick = () => selectNode(n)
+          exist.on('click', exist._onClick)
+          exist._node = n
+        }
+        return
+      }
+      const m = L.marker([n.lat! + dLat, n.lon! + dLon], { icon: makeIcon(n.role, active, label, n.isObserver) }).bindPopup(makePopup(n)) as NodeMarker
+      m._nodeRole = n.role
+      m._iconKey = iconKey
+      m._node = n
+      m._onClick = () => selectNode(n)
+      m.on('click', m._onClick)
       markersRef.current.set(n.pubKey, m)
       toAdd.push(m)
     })
@@ -956,9 +990,10 @@ export default function MapView() {
 
   // WebSocket
   useEffect(() => {
-    const unsub = stream.subscribe(msg => {
-      if (msg.type !== 'packet') return
-      processPacket(msg.data)
+    // Batched: all adverts of a burst update `nodes` in one commit, so the
+    // marker effect runs once per batch rather than once per packet.
+    const unsub = stream.subscribeBatched(msgs => {
+      for (const msg of msgs) if (msg.type === 'packet') processPacket(msg.data)
     })
     return unsub
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

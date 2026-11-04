@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { iataCountry, isIataCode } from './flags'
+import { isIataCode } from './flags'
+import { iataCountry } from './iataFlags'
 
 describe('iataCountry', () => {
   it('resolves a known IATA code case-insensitively', () => {

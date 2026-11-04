@@ -2697,21 +2697,90 @@ func (s *Store) computeGlobalRFStats(f AnalyticsFilter) GlobalRF {
 			}
 		}
 	}
+	// Server-side histograms and a paired scatter sample, so the RF dashboard
+	// doesn't download (and re-bin on every render) the raw per-observation
+	// arrays, which grow to megabytes of JSON with history.
+	pairs := 0
+	for _, tx := range s.txsSince(f.sinceMs) {
+		if !f.txOK(tx) {
+			continue
+		}
+		for _, o := range tx.Observations {
+			if o.HasSNR && o.HasRSSI && f.obsOK(o) {
+				pairs++
+			}
+		}
+	}
+	scatter := make([]RFPoint, 0, min(pairs, rfScatterPoints))
+	if pairs > 0 {
+		step := (pairs + rfScatterPoints - 1) / rfScatterPoints // ceil → at most rfScatterPoints, evenly spread
+		i := 0
+		for _, tx := range s.txsSince(f.sinceMs) {
+			if !f.txOK(tx) {
+				continue
+			}
+			for _, o := range tx.Observations {
+				if !o.HasSNR || !o.HasRSSI || !f.obsOK(o) {
+					continue
+				}
+				if i%step == 0 {
+					scatter = append(scatter, RFPoint{SNR: o.SNR, RSSI: o.RSSI})
+				}
+				i++
+			}
+		}
+	}
 	return GlobalRF{
 		RSSI:              rssi,
 		SNR:               snr,
 		TotalObservations: len(rssi),
 		SNRSummary:        summarizeFloats(snr),
 		RSSISummary:       summarizeFloats(rssi),
+		SNRHistogram:      histogram(snr, -25, 15, 16),
+		RSSIHistogram:     histogram(rssi, -125, -30, 19),
+		Scatter:           scatter,
 	}
 }
 
+// rfScatterPoints caps the SNR-vs-RSSI scatter sample.
+const rfScatterPoints = 400
+
+// histogram bins vals into `buckets` equal-width bins over [lo, hi), clamping
+// out-of-range values into the first/last bin. Labels are each bin's lower
+// bound rounded to an integer — identical to the frontend's bucketize().
+func histogram(vals []float64, lo, hi float64, buckets int) []HistBucket {
+	size := (hi - lo) / float64(buckets)
+	out := make([]HistBucket, buckets)
+	for i := range out {
+		out[i].Label = strconv.FormatFloat(math.Round(lo+float64(i)*size), 'f', 0, 64)
+	}
+	for _, v := range vals {
+		i := int(math.Floor((v - lo) / size))
+		out[min(buckets-1, max(0, i))].Count++
+	}
+	return out
+}
+
 type GlobalRF struct {
-	RSSI              []float64    `json:"rssi"`
-	SNR               []float64    `json:"snr"`
+	RSSI              []float64    `json:"rssi,omitempty"`
+	SNR               []float64    `json:"snr,omitempty"`
 	TotalObservations int          `json:"totalObservations"`
 	SNRSummary        FloatSummary `json:"snrSummary"`
 	RSSISummary       FloatSummary `json:"rssiSummary"`
+	SNRHistogram      []HistBucket `json:"snrHistogram,omitempty"`
+	RSSIHistogram     []HistBucket `json:"rssiHistogram,omitempty"`
+	Scatter           []RFPoint    `json:"scatter,omitempty"`
+}
+
+type HistBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+// RFPoint is one observation's paired SNR/RSSI (both present).
+type RFPoint struct {
+	SNR  float64 `json:"snr"`
+	RSSI float64 `json:"rssi"`
 }
 
 type FloatSummary struct {

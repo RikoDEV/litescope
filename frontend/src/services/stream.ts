@@ -14,6 +14,10 @@ const WS_URL = (() => {
 // How long the page must be hidden before we treat the socket as potentially dead
 const BACKGROUND_STALE_MS = 5000
 
+// Default coalescing window for subscribeBatched: short enough to feel live,
+// long enough to fold a burst of relayed packets into one render.
+export const BATCH_INTERVAL_MS = 250
+
 class StreamService {
   private ws: WebSocket | null = null
   private handlers: Set<Handler> = new Set()
@@ -78,6 +82,34 @@ class StreamService {
   subscribe(handler: Handler) {
     this.handlers.add(handler)
     return () => { this.handlers.delete(handler) }
+  }
+
+  /**
+   * Like subscribe, but delivers messages in arrival-ordered batches at most
+   * once per `intervalMs`. A burst of packets then costs one state update and
+   * one React commit instead of one per message. Uses a timer rather than
+   * requestAnimationFrame: rAF stops in background tabs, which would let the
+   * buffer grow without bound.
+   */
+  subscribeBatched(handler: (msgs: WSMessage[]) => void, intervalMs = BATCH_INTERVAL_MS) {
+    let buf: WSMessage[] = []
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const flush = () => {
+      timer = null
+      if (buf.length === 0) return
+      const batch = buf
+      buf = []
+      handler(batch)
+    }
+    const unsub = this.subscribe(msg => {
+      buf.push(msg)
+      if (!timer) timer = setTimeout(flush, intervalMs)
+    })
+    return () => {
+      unsub()
+      if (timer) clearTimeout(timer)
+      buf = []
+    }
   }
 
   onStatus(handler: StatusHandler) {

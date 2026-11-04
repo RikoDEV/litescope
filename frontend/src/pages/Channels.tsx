@@ -44,21 +44,28 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import RegionFilter from '../components/RegionFilter'
 import { passesRegion } from '../utils/regions'
-import type { Channel, Packet, PacketDetail } from '../types'
-import { deduplicateObs } from '../utils/packets'
+import type { Channel, Packet, PacketDetail, WSMessage } from '../types'
+import { deduplicateObs, applyPacketUpdates } from '../utils/packets'
 import { hashColor } from '../utils/colors'
 import { MESSAGE_TOKEN_RE, parseMessageSegments, isContact, isLocation, type ContactShare, type LocationShare } from '../utils/contacts'
-import L from 'leaflet'
-import 'maplibre-gl/dist/maplibre-gl.css'
-import { addBaseTileLayer } from '../utils/mapTiles'
+import { useMiniMap } from '../hooks/useMiniMap'
 import { LS_KEYS, loadChannelKeys, saveChannelKeys, loadChannelHashNames, saveChannelHashNames, loadCombinedHashes, saveCombinedHashes, type ChannelKey } from '../utils/storage'
 import { formatDistanceToNow } from 'date-fns'
-import { IataFlag } from '../utils/flags'
+import { IataFlag } from '../utils/iataFlags'
 import { useDateLocale } from '../hooks/useDateLocale'
 
 // ── unread count storage ──────────────────────────────────────────────────────
 function loadSeen(): Record<string, number> { try { return JSON.parse(localStorage.getItem(LS_KEYS.channelSeen) ?? '{}') } catch { return {} } }
 function saveSeen(s: Record<string, number>) { localStorage.setItem(LS_KEYS.channelSeen, JSON.stringify(s)) }
+
+// Live messages kept per chat view. Once reached, each new live message drops
+// the oldest one, so a long-open tab can't grow its state (and render cost)
+// without bound. Older history stays reachable through "load older", which
+// pages by server offset from the newest message, so trimming stays consistent.
+const MAX_CHAT_MESSAGES = 1000
+function prependCapped(list: Packet[], msg: Packet): Packet[] {
+  return list.length >= MAX_CHAT_MESSAGES ? [msg, ...list.slice(0, list.length - 1)] : [msg, ...list]
+}
 
 // ── channel key storage (shared with the Decoder page via utils/storage) ───────
 type StoredKey = ChannelKey
@@ -647,34 +654,22 @@ export default function Channels() {
   }, [selected, regionFilter, regionLock, combinedActive, combinedHashes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const unsub = stream.subscribe(async msg => {
-      // Live count updates: a previously-seen message gained observers/hops as it
-      // propagated — patch the matching message in place.
-      if (msg.type === 'packetUpdate') {
-        const u = msg.data
-        const patch = (prev: Packet[]) => {
-          const idx = prev.findIndex(m => m.id === u.id)
-          if (idx < 0) return prev
-          const n = [...prev]
-          const existing = n[idx]
-          if (!existing) return prev
-          n[idx] = {
-            ...existing, obsCount: u.obsCount, maxHops: u.maxHops,
-            hopSize: u.hopSize ?? existing.hopSize,
-            bestScope: u.bestScope ?? existing.bestScope,
-            bestPath: u.bestPath ?? existing.bestPath,
-            bestObserver: u.bestObserver ?? existing.bestObserver,
-            regions: u.regions ?? existing.regions,
-          }
-          return n
-        }
-        setMessages(patch)
+    // Batched delivery: all messages of a burst are handled in one synchronous
+    // pass, so React folds their state updates into a single commit.
+    const unsub = stream.subscribeBatched(msgs => {
+      // Live count updates: previously-seen messages gained observers/hops as
+      // they propagated — patch them in place, once per batch.
+      const updates = msgs.flatMap(m => m.type === 'packetUpdate' ? [m.data] : [])
+      if (updates.length > 0) {
+        setMessages(prev => applyPacketUpdates(prev, updates))
         // The combined feed holds its own copy of these messages — patch it too,
         // otherwise obs/hops counters go stale there while the single-channel
         // view (and the popover's on-demand fetch) show the current value.
-        setCombinedMessages(patch)
-        return
+        setCombinedMessages(prev => applyPacketUpdates(prev, updates))
       }
+      for (const msg of msgs) handleLivePacket(msg)
+    })
+    function handleLivePacket(msg: WSMessage) {
       if (msg.type !== 'packet') return
       const d = msg.data.decoded
       if (!d || (d.decryptionStatus !== 'decrypted' && !needsClientDecrypt(d.decryptionStatus))) return
@@ -686,11 +681,11 @@ export default function Channels() {
       const inRegion = passesRegion(msg.data.regions, regionFilter, regionLock)
       const isOpenChannel = inRegion && selected && msg.data.channelHash === selected.hash
       if (isOpenChannel) {
-        setMessages(p => [msg.data, ...p])
+        setMessages(p => prependCapped(p, msg.data))
       }
       const isCombinedChannel = inRegion && combinedActive && !!msg.data.channelHash && combinedHashes.has(msg.data.channelHash)
       if (isCombinedChannel) {
-        setCombinedMessages(p => [msg.data, ...p])
+        setCombinedMessages(p => prependCapped(p, msg.data))
       }
       if (inRegion) {
         setChannels(prev => {
@@ -712,20 +707,24 @@ export default function Channels() {
       // surface as unread once the user navigates away.
       const seenHash = isOpenChannel && selected ? selected.hash : (isCombinedChannel ? msg.data.channelHash : undefined)
       if (seenHash) {
-        setSeenCounts(prev => {
-          const updated = { ...prev, [seenHash]: (prev[seenHash] ?? 0) + 1 }
-          saveSeen(updated)
-          return updated
-        })
+        // Persisted by the debounced effect below, not per message.
+        setSeenCounts(prev => ({ ...prev, [seenHash]: (prev[seenHash] ?? 0) + 1 }))
       }
       // Attempt client-side decryption for every incoming encrypted message —
       // not just the open channel — so a channel we hold a key for gets named
       // and promoted out of the collapsed "Encrypted" group as soon as a message
       // arrives. decryptBatch also renames the matching channel in the list.
       if (needsClientDecrypt(d.decryptionStatus)) decryptBatch([msg.data], storedKeys)
-    })
+    }
     return unsub
   }, [selected, storedKeys, regionFilter, regionLock, combinedActive, combinedHashes]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist "seen" counts at most once a second instead of a synchronous
+  // localStorage write (JSON of every channel) for each live message.
+  useEffect(() => {
+    const id = setTimeout(() => saveSeen(seenCounts), 1000)
+    return () => clearTimeout(id)
+  }, [seenCounts])
 
   // Re-attempt decryption of already-loaded messages whenever the key set
   // changes (e.g. the user just added a key in the Key Manager) so the channel
@@ -1088,18 +1087,7 @@ function LocationCard({ loc }: { loc: LocationShare }) {
   const divRef = useRef<HTMLDivElement>(null)
   const isDark = theme.palette.mode === 'dark'
 
-  useEffect(() => {
-    if (!divRef.current) return
-    const map = L.map(divRef.current, {
-      center: [loc.lat, loc.lon], zoom: 13,
-      zoomControl: false,
-      dragging: false, scrollWheelZoom: false,
-      doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
-    })
-    addBaseTileLayer(map, isDark)
-    L.circleMarker([loc.lat, loc.lon], { radius: 7, color: '#fff', fillColor: md3.primary, fillOpacity: 1, weight: 2.5, interactive: false }).addTo(map)
-    return () => { map.remove() }
-  }, [loc.lat, loc.lon, isDark, md3.primary])
+  useMiniMap(divRef, { lat: loc.lat, lon: loc.lon, color: md3.primary, isDark, radius: 7 })
 
   const osmUrl = `https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lon}#map=15/${loc.lat}/${loc.lon}`
 

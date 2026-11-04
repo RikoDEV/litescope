@@ -14,7 +14,7 @@ import { api } from '../services/api'
 import type { PacketDetail } from '../types'
 import { PAYLOAD_NAMES, ROUTE_NAMES, PAYLOAD_COLORS } from '../types'
 import { parseHops, deduplicateObs, relativeTime } from '../utils/packets'
-import { IataFlag } from '../utils/flags'
+import { IataFlag } from '../utils/iataFlags'
 import { SITE_NAME } from '../seo'
 
 // ── helpers ───────────────────────────────────────────────────────────────────

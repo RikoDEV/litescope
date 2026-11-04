@@ -21,9 +21,7 @@ import { formatDistanceToNow, format, subHours } from 'date-fns'
 import { SITE_NAME } from '../seo'
 import { useDateLocale } from '../hooks/useDateLocale'
 import { useRef } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import { addBaseTileLayer } from '../utils/mapTiles'
+import { useMiniMap } from '../hooks/useMiniMap'
 import { api } from '../services/api'
 import type { Node, NodeOverview, Packet, RFStats, RichPacket } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS } from '../types'
@@ -71,22 +69,7 @@ function NodeMiniMap({ lat, lon, color }: { lat: number; lon: number; color: str
   const divRef = useRef<HTMLDivElement>(null)
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
-  useEffect(() => {
-    if (!divRef.current) return
-    const map = L.map(divRef.current, {
-      center: [lat, lon], zoom: 13,
-      zoomControl: false,
-      dragging: false, scrollWheelZoom: false,
-      doubleClickZoom: false, boxZoom: false, keyboard: false,
-    })
-    addBaseTileLayer(map, isDark)
-    L.circleMarker([lat, lon], { radius: 9, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5, interactive: false }).addTo(map)
-    const frame = requestAnimationFrame(() => map.invalidateSize({ pan: false }))
-    return () => {
-      cancelAnimationFrame(frame)
-      map.remove()
-    }
-  }, [lat, lon, color, isDark])
+  useMiniMap(divRef, { lat, lon, color, isDark, radius: 9, invalidateOnMount: true })
   return (
     <Box
       ref={divRef}
@@ -153,24 +136,38 @@ export default function NodePage() {
     if (!pubkey) return
     const routePubKey = pubkey.toLowerCase()
     setLoading(true); setError(false)
-    api.nodes().then(async res => {
-      // An observer whose own advert was never heard has no node record and so
-      // isn't in the list; the single-node endpoint synthesizes one for it.
-      const n = (res.nodes ?? []).find(x => x.pubKey.toLowerCase() === routePubKey)
-        ?? await api.node(routePubKey).catch(() => null)
-      if (!n) { setError(true); setLoading(false); return }
-      setNode(n)
-      document.title = `${n.name || n.pubKey.slice(0, 16)} — ${SITE_NAME}`
-      Promise.all([
-        api.nodeOverview(n.pubKey),
-        api.nodeRF(n.pubKey),
-        api.nodePackets(n.pubKey, 50),
-      ]).then(([ov, rfData, pkts]) => {
+    // One request for this node (the single-node endpoint also synthesizes a
+    // node for an observer whose own advert was never heard) instead of
+    // downloading the whole node list to find it — and the detail requests run
+    // in parallel with it rather than waiting for that lookup first. Node keys
+    // are lowercase hex, so the lowercased route key addresses them directly.
+    let cancelled = false
+    const nodeReq = api.node(routePubKey)
+    const detailReq = Promise.all([
+      api.nodeOverview(routePubKey),
+      api.nodeRF(routePubKey),
+      api.nodePackets(routePubKey, 50),
+    ])
+    // Leave the loading state only once both have settled, so a fast detail
+    // response can't briefly render the "not found" state before the node.
+    void Promise.allSettled([nodeReq, detailReq]).then(([nodeRes, detailRes]) => {
+      if (cancelled) return
+      if (nodeRes.status === 'fulfilled') {
+        const n = nodeRes.value
+        setNode(n)
+        document.title = `${n.name || n.pubKey.slice(0, 16)} — ${SITE_NAME}`
+      } else {
+        setError(true)
+      }
+      if (detailRes.status === 'fulfilled') {
+        const [ov, rfData, pkts] = detailRes.value
         setOverview(ov)
         setRF(rfData)
         setPackets(pkts)
-      }).finally(() => setLoading(false))
-    }).catch(() => { setError(true); setLoading(false) })
+      }
+      setLoading(false)
+    })
+    return () => { cancelled = true }
   }, [pubkey])
 
   if (loading) {

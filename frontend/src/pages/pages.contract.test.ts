@@ -39,7 +39,7 @@ const pageContracts: Record<string, {
   },
   NodePage: {
     route: 'path="nodes/:pubkey" element={<NodePage />}',
-    snippets: ["import 'leaflet/dist/leaflet.css'", 'api.nodes()', 'pubkey.toLowerCase()', 'x.pubKey.toLowerCase() === routePubKey', 'api.nodeOverview(n.pubKey)', 'api.nodeRF(n.pubKey)', 'api.nodePackets(n.pubKey, 50)'],
+    snippets: ['useMiniMap(', 'api.node(routePubKey)', 'pubkey.toLowerCase()', 'api.nodeOverview(routePubKey)', 'api.nodeRF(routePubKey)', 'api.nodePackets(routePubKey, 50)'],
   },
   Channels: {
     route: 'path="channels/:hash" element={<Channels />}',
@@ -51,7 +51,7 @@ const pageContracts: Record<string, {
   },
   Analytics: {
     route: 'path="analytics/:tab" element={<Analytics />}',
-    snippets: ['useParams<{ tab?: string }>()', 'api.overview(params)', 'api.analyticsActivity(hours, params)', 'api.analyticsDistance(params)', 'api.analyticsScope(params)', 'navigate(`/nodes/${encodeURIComponent(n.pubKey)}`)', 'navigate(`/observers?id=${encodeURIComponent(o.id)}`)', 'navigate(`/observers?id=${encodeURIComponent(o.observerId)}`)', 'navigate(`/nodes/${encodeURIComponent(p.nodeAPubKey)}`)', 'navigate(`/nodes/${encodeURIComponent(p.nodeBPubKey)}`)'],
+    snippets: ['useParams<{ tab?: string }>()', 'api.overview(sp)', 'api.analyticsActivity(hours, sp)', 'api.analyticsDistance(sp)', 'api.analyticsScope(sp)', 'signal: ac.signal', 'navigate(`/nodes/${encodeURIComponent(n.pubKey)}`)', 'navigate(`/observers?id=${encodeURIComponent(o.id)}`)', 'navigate(`/observers?id=${encodeURIComponent(o.observerId)}`)', 'navigate(`/nodes/${encodeURIComponent(p.nodeAPubKey)}`)', 'navigate(`/nodes/${encodeURIComponent(p.nodeBPubKey)}`)'],
   },
   Decoder: {
     route: 'path="decode" element={<Decoder />}',

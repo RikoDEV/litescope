@@ -1,4 +1,5 @@
-import { iataCountry, isIataCode } from './flags'
+import { isIataCode } from './flags'
+import { iataCountry } from './iataFlags'
 
 export interface CountryGroup {
   cc: string       // ISO country code, or 'XX' for IATA codes with no known country

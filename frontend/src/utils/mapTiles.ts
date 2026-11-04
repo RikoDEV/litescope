@@ -22,6 +22,7 @@ setWorkerUrl(maplibreWorkerUrl)
 // See CLAUDE.md / commit history for why CARTO (which requires a key) was dropped earlier.
 const LIGHT_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron'
 const DARK_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
+// Their background colours are mirrored in utils/mapDefaults (MAP_BG_*) — keep in sync.
 
 /**
  * Adds the theme-appropriate base layer to `map` and returns it. Callers own the

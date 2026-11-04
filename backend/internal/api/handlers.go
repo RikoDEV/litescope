@@ -584,10 +584,18 @@ func (s *Server) getPacketsByType(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
 	s.writeCachedJSON(w, r, func() any {
 		rf := s.Store.GlobalRFStats(analyticsFilter(r))
-		// summary=1 drops the raw per-observation arrays — they grow with history
-		// (easily hundreds of KB) and dashboard callers only need the aggregates.
-		if v := r.URL.Query().Get("summary"); v == "1" || v == "true" {
-			rf.RSSI, rf.SNR = nil, nil // rf is a copy; the cached value keeps its arrays
+		q := r.URL.Query()
+		flag := func(k string) bool { v := q.Get(k); return v == "1" || v == "true" }
+		// The raw per-observation arrays grow with history (megabytes of JSON).
+		// summary=1 keeps only the aggregates; histogram=1 keeps the aggregates
+		// plus the pre-binned histograms and paired scatter sample the RF
+		// dashboard draws. rf is a copy; the cached value keeps everything.
+		switch {
+		case flag("summary"):
+			rf.RSSI, rf.SNR = nil, nil
+			rf.SNRHistogram, rf.RSSIHistogram, rf.Scatter = nil, nil, nil
+		case flag("histogram"):
+			rf.RSSI, rf.SNR = nil, nil
 		}
 		return rf
 	})

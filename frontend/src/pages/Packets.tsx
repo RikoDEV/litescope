@@ -28,15 +28,19 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import LockIcon from '@mui/icons-material/Lock'
 import { api, type PacketParams } from '../services/api'
 import { stream } from '../services/stream'
-import type { Packet, PacketDetail } from '../types'
+import type { Packet, PacketDetail, PacketUpdate } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, ROUTE_NAMES } from '../types'
 import PacketDetailPanel from '../components/PacketDetailPanel'
-import { parseHops, relativeTime, deduplicateObs } from '../utils/packets'
+import { parseHops, relativeTime, deduplicateObs, applyPacketUpdates } from '../utils/packets'
 import { FlagByCC } from '../utils/flags'
 import { groupCountries, passesRegion } from '../utils/regions'
 import RegionFilter from '../components/RegionFilter'
 
 const PAGE = 100
+// Live packets kept in memory (older ones stay reachable via "load more").
+const MAX_LIVE_PACKETS = 1000
+// Rows mounted at once; more are rendered as the user scrolls (sentinel).
+const RENDER_STEP = 100
 
 const TIME_WINDOWS: Array<{ label: string | null; ms: number }> = [
   { label: null, ms: 0 },
@@ -184,33 +188,28 @@ export default function Packets() {
     api.packet(hash).then(detail => setSelected(detail)).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Live feed, batched: a burst of packets (and the packetUpdates that follow
+  // as more observers report them) is applied in one state update — one
+  // filter/sort pass and one commit — instead of one per WebSocket message.
   useEffect(() => {
-    return stream.subscribe(msg => {
-      if (msg.type === 'packet') {
-        if (!packetMatchesCurrentFilters(msg.data)) return
-        if (zeroLoadSeq.current !== 0) liveDuringZeroLoad.current = [msg.data, ...liveDuringZeroLoad.current]
-        setPackets(prev => [msg.data, ...prev.slice(0, 999)])
-        setTotal(t => t + 1)
-      } else if (msg.type === 'packetUpdate') {
-        // Live obs/hop count climb as a packet propagates and more observers report.
-        const u = msg.data
-        setPackets(prev => {
-          const idx = prev.findIndex(p => p.id === u.id)
-          if (idx < 0) return prev
-          const n = [...prev]
-          const existing = n[idx]
-          if (!existing) return prev
-          n[idx] = {
-            ...existing, obsCount: u.obsCount, maxHops: u.maxHops,
-            hopSize: u.hopSize ?? existing.hopSize,
-            bestScope: u.bestScope ?? existing.bestScope,
-            bestPath: u.bestPath ?? existing.bestPath,
-            bestObserver: u.bestObserver ?? existing.bestObserver,
-            regions: u.regions ?? existing.regions,
-          }
-          return n
-        })
+    return stream.subscribeBatched(msgs => {
+      const fresh: Packet[] = []
+      const updates: PacketUpdate[] = []
+      for (const msg of msgs) {
+        if (msg.type === 'packet') {
+          if (packetMatchesCurrentFilters(msg.data)) fresh.push(msg.data)
+        } else if (msg.type === 'packetUpdate') {
+          // Live obs/hop count climb as a packet propagates and more observers report.
+          updates.push(msg.data)
+        }
       }
+      fresh.reverse() // arrival order → newest first
+      if (fresh.length > 0) {
+        if (zeroLoadSeq.current !== 0) liveDuringZeroLoad.current = [...fresh, ...liveDuringZeroLoad.current]
+        setTotal(t => t + fresh.length)
+      }
+      if (fresh.length === 0 && updates.length === 0) return
+      setPackets(prev => applyPacketUpdates(fresh.length > 0 ? [...fresh, ...prev].slice(0, MAX_LIVE_PACKETS) : prev, updates))
     })
   }, [packetMatchesCurrentFilters])
 
@@ -248,6 +247,31 @@ export default function Packets() {
     setSelectedObserverId(observerId)
     setSearchParams({ hash: p.hash }, { replace: true })
   }
+
+  // Stable row callbacks (memoized rows must not re-render because a handler
+  // identity changed); they always call the latest closures through a ref.
+  const handlers = useRef({ selectPacket, toggleExpand, selectObservation })
+  handlers.current = { selectPacket, toggleExpand, selectObservation }
+  const onRowSelect = useCallback((p: Packet) => { void handlers.current.selectPacket(p) }, [])
+  const onRowToggle = useCallback((e: React.MouseEvent, p: Packet) => { void handlers.current.toggleExpand(e, p) }, [])
+  const onRowObservation = useCallback((e: React.MouseEvent, p: Packet, id: string) => { void handlers.current.selectObservation(e, p, id) }, [])
+
+  const expandedObs = useMemo(() => deduplicateObs(expandedDetail?.observations ?? []), [expandedDetail])
+
+  // Mount rows in steps as the user scrolls instead of all (up to 1000) at once.
+  const [renderCount, setRenderCount] = useState(RENDER_STEP)
+  useEffect(() => { setRenderCount(RENDER_STEP) }, [packetQuery])
+  const visibleRows = filtered.length > renderCount ? filtered.slice(0, renderCount) : filtered
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) setRenderCount(c => c + RENDER_STEP)
+    }, { rootMargin: '400px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [filtered.length > renderCount])
 
   const activeFilters = (typeFilter.size > 0 ? 1 : 0) + (routeFilter !== null ? 1 : 0) + (regionFilter.size > 0 ? 1 : 0) + (minObs > 1 ? 1 : 0) + (search ? 1 : 0) + (windowMs > 0 ? 1 : 0)
   const clearFilters = () => { setSearch(''); setTypeFilter(new Set()); setRouteFilter(null); clearRegions(); setMinObs(1); setWindowMs(0) }
@@ -460,134 +484,19 @@ export default function Packets() {
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map(p => {
-                let label = "";
-                const dec   = p.decoded
-                const color = typeColor(p.payloadType)
-                const msgText = dec?.text as string | undefined
-                const isSelected = selected?.hash === p.hash
-                const isExpanded = expandedHash === p.hash
-                const subObs = isExpanded && expandedDetail?.hash === p.hash ? deduplicateObs(expandedDetail.observations ?? []) : []
-
-                if (dec) {
-                  label = dec.name ?? dec.sender ?? dec.channel ?? "";
-                  if (
-                    ["TXT_MSG", "RESPONSE", "PATH", "REQ"].includes(dec.type) &&
-                    typeof dec.srcHash === "string" &&
-                    typeof dec.destHash === "string"
-                  ) {
-                    label = `${dec.srcHash} → ${dec.destHash}`;
-                  } else if (
-                    dec.type === "TRACE" &&
-                    typeof dec.pathData === "string" &&
-                    typeof dec.traceFlags === "number"
-                  ) {
-                    const pathCharacters = ((dec.traceFlags & 0x03) + 1) * 2;
-                    const paths = [];
-                    for (let i = 0; i < dec.pathData.length; i += pathCharacters) {
-                      paths.push(dec.pathData.substring(i, i + pathCharacters));
-                    }
-                    label = paths.join(" → ");
-                  } else if (
-                    dec.type === "GRP_TXT" &&
-                    dec.decryptionStatus === "decryption_failed" &&
-                    typeof dec.channelHashHex === "string"
-                  ) {
-                    label = `#${dec.channelHashHex}`;
-                  }
-                }
-
-                return [
-                  <TableRow key={p.id} selected={isSelected} onClick={() => selectPacket(p)}>
-                    <TableCell sx={{ p: 0, width: 32 }} onClick={p.obsCount > 1 ? e => toggleExpand(e, p) : undefined}>
-                      {p.obsCount > 1 && (
-                        <IconButton size="small" sx={{ p: 0.25, color: isExpanded ? md3.tertiary : md3.onSurfaceVariant }}>
-                          {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
-                        </IconButton>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ color: md3.outline, fontSize: 11 }}>{p.id}</TableCell>
-                    <TableCell>
-                      <Box component="span" sx={{ fontFamily: 'monospace', color: md3.primary, fontSize: 12 }}>{p.hash}</Box>
-                      {label && <Box component="span" sx={{ ml: 1, color: md3.onSurfaceVariant, fontSize: 11 }}>· {label}</Box>}
-                      {msgText && (
-                        <Box sx={{ fontSize: 11, color: md3.onSurfaceVariant, mt: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
-                          {msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText}
-                        </Box>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ color: p.maxHops > 0 ? md3.onSurfaceVariant : md3.outline, fontSize: 11 }}>
-                      {p.maxHops > 0 ? p.maxHops : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
-                        sx={{ background: alpha(color, 0.15), color: md3.onSurface, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
-                    </TableCell>
-                    <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
-                      {ROUTE_NAMES[p.routeType] ?? p.routeType}
-                    </TableCell>
-                    <TableCell sx={{ color: p.obsCount > 1 ? md3.tertiary : md3.outline, fontWeight: p.obsCount > 1 ? 700 : 400 }}>
-                      {p.obsCount}
-                    </TableCell>
-                    <TableCell sx={{ color: md3.outline, fontSize: 11 }}>
-                      {new Date(p.firstSeen).toLocaleTimeString(dateLocale.code)}
-                    </TableCell>
-                  </TableRow>,
-                  <TableRow key={`${p.id}-sub`} sx={{ '& > td': { p: 0, border: 0 } }}>
-                    <TableCell colSpan={8}>
-                      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                        <Box sx={{ borderBottom: `1px solid ${md3.outlineVariant}` }}>
-                          {subObs.map(o => {
-                            const hops = parseHops(o.pathJson)
-                            const isObsSelected = isSelected && selectedObserverId === o.observerId
-                            return (
-                              <Box key={o.id} onClick={e => selectObservation(e, p, o.observerId)}
-                                sx={{
-                                  display: 'flex', alignItems: 'center', gap: 0, cursor: 'pointer',
-                                  borderTop: `1px solid ${alpha(md3.outlineVariant, 0.4)}`,
-                                  background: isObsSelected ? alpha(md3.tertiary, 0.1) : alpha(md3.surfaceContainerHighest, 0.6),
-                                  '&:hover': { background: alpha(md3.tertiary, 0.07) },
-                                  transition: 'background 0.15s',
-                                }}>
-                                {/* indent marker aligned under expand column */}
-                                <Box sx={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                                  <Box sx={{ width: 2, height: 28, background: isObsSelected ? md3.tertiary : alpha(md3.tertiary, 0.3), borderRadius: 1 }} />
-                                </Box>
-                                {/* observer name */}
-                                <Box sx={{ flex: '0 0 180px', pr: 1 }}>
-                                  <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', color: isObsSelected ? md3.tertiary : md3.onSurface, fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {o.observerName || o.observerId.slice(0, 12)}
-                                  </Typography>
-                                  {o.observerIata && <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>{o.observerIata}</Typography>}
-                                </Box>
-                                {/* hops */}
-                                <Box sx={{ flex: '0 0 70px', fontSize: 11, color: hops.length > 0 ? md3.primary : md3.outline }}>
-                                  {hops.length > 0 ? t('packets.hopsCount', { count: hops.length }) : '—'}
-                                </Box>
-                                {/* SNR */}
-                                <Box sx={{ flex: '0 0 80px', fontSize: 11, color: o.snr != null ? (o.snr >= 5 ? '#22c55e' : o.snr >= 0 ? '#f59e0b' : md3.error) : md3.outline }}>
-                                  {o.snr != null ? `${o.snr} dB` : '—'}
-                                </Box>
-                                {/* RSSI */}
-                                <Box sx={{ flex: '0 0 70px', fontSize: 11, color: o.rssi != null ? (o.rssi >= -70 ? '#22c55e' : o.rssi >= -90 ? '#f59e0b' : md3.error) : md3.outline }}>
-                                  {o.rssi != null ? `${o.rssi}` : '—'}
-                                </Box>
-                                {/* time */}
-                                <Box sx={{ flex: 1, fontSize: 10, color: md3.outline }}>
-                                  {relativeTime(o.timestamp)}
-                                </Box>
-                              </Box>
-                            )
-                          })}
-                        </Box>
-                      </Collapse>
-                    </TableCell>
-                  </TableRow>
-                ]
-              })}
+              {visibleRows.map(p => (
+                <PacketRow key={p.id} p={p}
+                  isSelected={selected?.hash === p.hash}
+                  isExpanded={expandedHash === p.hash}
+                  subObs={expandedHash === p.hash && expandedDetail?.hash === p.hash ? expandedObs : NO_OBS}
+                  selectedObserverId={selected?.hash === p.hash ? selectedObserverId : null}
+                  localeCode={dateLocale.code}
+                  onSelect={onRowSelect} onToggleExpand={onRowToggle} onSelectObservation={onRowObservation} />
+              ))}
             </TableBody>
           </Table>
-          {!loading && packets.length < total && (
+          {filtered.length > renderCount && <div ref={sentinelRef} style={{ height: 1 }} />}
+          {!loading && packets.length < total && filtered.length <= renderCount && (
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <Button variant="outlined" size="small" onClick={() => load(offsetRef.current)}>{t('packets.loadMore')}</Button>
             </Box>
@@ -607,3 +516,141 @@ export default function Packets() {
     </Box>
   )
 }
+
+const NO_OBS: PacketDetail['observations'] = []
+
+// Label shown after the hash: node/sender/channel name, or a routing summary.
+function packetLabel(dec: Packet['decoded']): string {
+  if (!dec) return ''
+  let label = dec.name ?? dec.sender ?? dec.channel ?? ''
+  if (['TXT_MSG', 'RESPONSE', 'PATH', 'REQ'].includes(dec.type) && typeof dec.srcHash === 'string' && typeof dec.destHash === 'string') {
+    label = `${dec.srcHash} → ${dec.destHash}`
+  } else if (dec.type === 'TRACE' && typeof dec.pathData === 'string' && typeof dec.traceFlags === 'number') {
+    const pathCharacters = ((dec.traceFlags & 0x03) + 1) * 2
+    const paths = []
+    for (let i = 0; i < dec.pathData.length; i += pathCharacters) paths.push(dec.pathData.substring(i, i + pathCharacters))
+    label = paths.join(' → ')
+  } else if (dec.type === 'GRP_TXT' && dec.decryptionStatus === 'decryption_failed' && typeof dec.channelHashHex === 'string') {
+    label = `#${dec.channelHashHex}`
+  }
+  return label
+}
+
+interface PacketRowProps {
+  p: Packet
+  isSelected: boolean
+  isExpanded: boolean
+  subObs: PacketDetail['observations']
+  selectedObserverId: string | null
+  localeCode: string | undefined
+  onSelect: (p: Packet) => void
+  onToggleExpand: (e: React.MouseEvent, p: Packet) => void
+  onSelectObservation: (e: React.MouseEvent, p: Packet, observerId: string) => void
+}
+
+// Memoized: a live batch prepends a few packets, and only those rows (plus any
+// whose packet object was patched by a packetUpdate, or whose selection /
+// expansion changed) re-render — not every mounted row with its MUI cells.
+const PacketRow = React.memo(function PacketRow({ p, isSelected, isExpanded, subObs, selectedObserverId, localeCode, onSelect, onToggleExpand, onSelectObservation }: PacketRowProps) {
+  const theme = useTheme()
+  const md3 = theme.palette.md3
+  const { t } = useTranslation()
+  const dec = p.decoded
+  const color = PAYLOAD_COLORS[p.payloadType] ?? md3.outline
+  const msgText = dec?.text as string | undefined
+  const label = packetLabel(dec)
+
+  return (
+    <>
+      <TableRow selected={isSelected} onClick={() => onSelect(p)}>
+        <TableCell sx={{ p: 0, width: 32 }} onClick={p.obsCount > 1 ? e => onToggleExpand(e, p) : undefined}>
+          {p.obsCount > 1 && (
+            <IconButton size="small" sx={{ p: 0.25, color: isExpanded ? md3.tertiary : md3.onSurfaceVariant }}>
+              {isExpanded ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
+          )}
+        </TableCell>
+        <TableCell sx={{ color: md3.outline, fontSize: 11 }}>{p.id}</TableCell>
+        <TableCell>
+          <Box component="span" sx={{ fontFamily: 'monospace', color: md3.primary, fontSize: 12 }}>{p.hash}</Box>
+          {label && <Box component="span" sx={{ ml: 1, color: md3.onSurfaceVariant, fontSize: 11 }}>· {label}</Box>}
+          {msgText && (
+            <Box sx={{ fontSize: 11, color: md3.onSurfaceVariant, mt: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>
+              {msgText.length > 80 ? msgText.slice(0, 80) + '…' : msgText}
+            </Box>
+          )}
+        </TableCell>
+        <TableCell sx={{ color: p.maxHops > 0 ? md3.onSurfaceVariant : md3.outline, fontSize: 11 }}>
+          {p.maxHops > 0 ? p.maxHops : '—'}
+        </TableCell>
+        <TableCell>
+          <Chip label={PAYLOAD_NAMES[p.payloadType] ?? p.payloadType} size="small"
+            sx={{ background: alpha(color, 0.15), color: md3.onSurface, border: `1px solid ${alpha(color, 0.3)}`, fontSize: 11, height: 22 }} />
+        </TableCell>
+        <TableCell sx={{ color: md3.onSurfaceVariant, fontSize: 11 }}>
+          {ROUTE_NAMES[p.routeType] ?? p.routeType}
+        </TableCell>
+        <TableCell sx={{ color: p.obsCount > 1 ? md3.tertiary : md3.outline, fontWeight: p.obsCount > 1 ? 700 : 400 }}>
+          {p.obsCount}
+        </TableCell>
+        <TableCell sx={{ color: md3.outline, fontSize: 11 }}>
+          {new Date(p.firstSeen).toLocaleTimeString(localeCode)}
+        </TableCell>
+      </TableRow>
+      {/* Observation breakdown: mounted only for the expanded packet (it used to
+          be a hidden second row under every packet, doubling the table). */}
+      {isExpanded && (
+        <TableRow sx={{ '& > td': { p: 0, border: 0 } }}>
+          <TableCell colSpan={8}>
+            <Collapse in appear timeout="auto">
+              <Box sx={{ borderBottom: `1px solid ${md3.outlineVariant}` }}>
+                {subObs.map(o => {
+                  const hops = parseHops(o.pathJson)
+                  const isObsSelected = isSelected && selectedObserverId === o.observerId
+                  return (
+                    <Box key={o.id} onClick={e => onSelectObservation(e, p, o.observerId)}
+                      sx={{
+                        display: 'flex', alignItems: 'center', gap: 0, cursor: 'pointer',
+                        borderTop: `1px solid ${alpha(md3.outlineVariant, 0.4)}`,
+                        background: isObsSelected ? alpha(md3.tertiary, 0.1) : alpha(md3.surfaceContainerHighest, 0.6),
+                        '&:hover': { background: alpha(md3.tertiary, 0.07) },
+                        transition: 'background 0.15s',
+                      }}>
+                      {/* indent marker aligned under expand column */}
+                      <Box sx={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                        <Box sx={{ width: 2, height: 28, background: isObsSelected ? md3.tertiary : alpha(md3.tertiary, 0.3), borderRadius: 1 }} />
+                      </Box>
+                      {/* observer name */}
+                      <Box sx={{ flex: '0 0 180px', pr: 1 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', color: isObsSelected ? md3.tertiary : md3.onSurface, fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {o.observerName || o.observerId.slice(0, 12)}
+                        </Typography>
+                        {o.observerIata && <Typography variant="caption" sx={{ color: md3.tertiary, fontSize: 10 }}>{o.observerIata}</Typography>}
+                      </Box>
+                      {/* hops */}
+                      <Box sx={{ flex: '0 0 70px', fontSize: 11, color: hops.length > 0 ? md3.primary : md3.outline }}>
+                        {hops.length > 0 ? t('packets.hopsCount', { count: hops.length }) : '—'}
+                      </Box>
+                      {/* SNR */}
+                      <Box sx={{ flex: '0 0 80px', fontSize: 11, color: o.snr != null ? (o.snr >= 5 ? '#22c55e' : o.snr >= 0 ? '#f59e0b' : md3.error) : md3.outline }}>
+                        {o.snr != null ? `${o.snr} dB` : '—'}
+                      </Box>
+                      {/* RSSI */}
+                      <Box sx={{ flex: '0 0 70px', fontSize: 11, color: o.rssi != null ? (o.rssi >= -70 ? '#22c55e' : o.rssi >= -90 ? '#f59e0b' : md3.error) : md3.outline }}>
+                        {o.rssi != null ? `${o.rssi}` : '—'}
+                      </Box>
+                      {/* time */}
+                      <Box sx={{ flex: 1, fontSize: 10, color: md3.outline }}>
+                        {relativeTime(o.timestamp)}
+                      </Box>
+                    </Box>
+                  )
+                })}
+              </Box>
+            </Collapse>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  )
+})

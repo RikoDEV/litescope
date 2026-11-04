@@ -93,5 +93,11 @@ docker compose -f docker-compose.full.yml up -d   # prebuilt images
 
 - **Go formatting is intentionally not gofmt-clean** — the codebase uses manual column alignment and one-line `if`/struct bodies. Match the surrounding style; do **not** run `gofmt -w` across files.
 - Frontend reads runtime config via `getEnv()` (`src/env.ts`): `window.__ENV__` (injected by `docker-entrypoint.sh` from env at container start) with fallback to Vite's `import.meta.env`. `VITE_API_URL` empty ⇒ same-origin relative URLs; the WS URL is derived (`http→ws`). Don't read `import.meta.env` directly in app code.
+- **Frontend bundle/runtime rules** (`pnpm run build` fails if the entry chunk exceeds 500 KB — `scripts/check-bundle-size.mjs`; `pnpm run build:analyze` attributes chunk bytes to packages/files):
+  - Translations live in `src/locales/<code>.ts`; only `en` is bundled, the rest load via the lazy backend in `src/i18n.ts` (`main.tsx` awaits `i18nReady` before first render). A new language needs an entry in both `LOADERS` and `LANGUAGES`.
+  - Flags are SVG URLs (`FlagByCC`, `IataFlag` from `utils/iataFlags`); never import `country-flag-icons/react` (it bundles every flag). Keep the IATA table out of the shell — import `iataFlags`, not `iataData`, from shared code.
+  - Only the map pages (MapView, LiveMap) may import Leaflet/`utils/mapTiles` directly; small static maps use `useMiniMap` (lazy `utils/miniMap`).
+  - Live WebSocket consumers use `stream.subscribeBatched` (one commit per burst) and `applyPacketUpdates` for `packetUpdate`s; cap any list that live messages grow.
+  - `api.nodes()` (unfiltered) is a shared 30 s cache — treat the result as read-only. Analytics effects pass `signal` (AbortController) and handle rejections with `ignoreAbort`.
 - Config (`config.json`, see `config.example.json` / README) is loaded by `internal/config`; the `Public` channel key and SHA-256-derived `hashChannels` keys are defaulted in `config.Load`.
 - New analytics endpoints should go through `cachedAnalytics` (cached, no-arg form) only when the filter is inactive (`f.Active()`), and accept the shared `analyticsFilter(r)` otherwise — follow the existing `XxxStats`/`computeXxxStats` split. Scan with `s.txsSince(f.sinceMs)`, and serve the handler through `s.writeCachedJSON` when its output derives only from cached store values.

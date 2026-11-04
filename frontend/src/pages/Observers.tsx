@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { getEnv } from '../env'
-import { IataFlag } from '../utils/flags'
+import { IataFlag } from '../utils/iataFlags'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Card from '@mui/material/Card'

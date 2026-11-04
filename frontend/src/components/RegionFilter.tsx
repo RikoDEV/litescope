@@ -9,7 +9,8 @@ import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
-import { IataFlag, FlagByCC } from '../utils/flags'
+import { FlagByCC } from '../utils/flags'
+import { IataFlag } from '../utils/iataFlags'
 import { groupCountries } from '../utils/regions'
 
 interface Props {

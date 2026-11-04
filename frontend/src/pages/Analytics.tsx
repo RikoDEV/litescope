@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentProps } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
@@ -22,14 +22,16 @@ import MuiTooltip from '@mui/material/Tooltip'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
-import { api } from '../services/api'
+import { api, ignoreAbort, type RFHistogramStats } from '../services/api'
 import type { AnalyticsParams } from '../services/api'
 import type { Node, Observer, OverviewStats } from '../types'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, ScatterChart, Scatter, CartesianGrid,
   AreaChart, Area, ReferenceLine, LineChart, Line,
 } from 'recharts'
+// Transition-aware stand-in for recharts' ResponsiveContainer (see component docs).
+import ResponsiveContainer from '../components/ChartContainer'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
@@ -50,10 +52,9 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import Link from '@mui/material/Link'
 import type { SvgIconComponent } from '@mui/icons-material'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, type Locale } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
-import { IataFlag } from '../utils/flags'
-import { bucketize } from '../utils/stats'
+import { IataFlag } from '../utils/iataFlags'
 import HashMatrix from '../components/HashMatrix'
 import RegionFilter from '../components/RegionFilter'
 import { selectedCountries } from '../utils/regions'
@@ -67,6 +68,26 @@ const WINDOWS: { h: number; l: string }[] = [
 ]
 
 type TabId = 'overview' | 'activity' | 'rf' | 'nodes' | 'observers' | 'channels' | 'hashes' | 'clock-health' | 'scope' | 'distance'
+
+/**
+ * Wraps a fetch-result handler so the state update — and the heavy chart
+ * render it triggers — runs as a transition: React renders it interruptibly
+ * and yields to the browser between components, so tab switches, the tab
+ * indicator animation and other input stay responsive while a large tab
+ * (hash matrix, activity, distance…) paints its data.
+ */
+function inTransition<T>(fn: (v: T) => void): (v: T) => void {
+  return v => startTransition(() => fn(v))
+}
+
+// Each tab, memoized (props are the stable { params, filterKey }). Function
+// declarations below are hoisted, so they can be wrapped here.
+const TAB_VIEWS: Record<TabId, React.ComponentType<TabProps>> = {
+  overview: memo(OverviewTab), activity: memo(ActivityTab), rf: memo(RFTab),
+  nodes: memo(NodesTab), observers: memo(ObserversTab), channels: memo(ChannelsTab),
+  hashes: memo(HashesTab), 'clock-health': memo(ClockHealthTab), scope: memo(ScopeTab),
+  distance: memo(DistanceTab),
+}
 
 const TABS: { id: TabId; Icon: SvgIconComponent; tk: string }[] = [
   { id: 'overview',     Icon: AssessmentIcon,       tk: 'analytics.overview' },
@@ -92,6 +113,19 @@ export default function Analytics() {
   const navigate = useNavigate()
   const tab = (TABS.some(t => t.id === tabParam) ? tabParam : 'overview') as TabId
 
+  // Tab switching stays responsive while a heavy tab renders:
+  // - the Tabs indicator follows `selectedTab`, set synchronously on click, so
+  //   it starts sliding immediately (router navigation updates are transitions
+  //   and would otherwise wait for the whole new tab to render);
+  // - the content follows a deferred copy of the route's tab, so the previous
+  //   tab stays on screen while the next one renders in the background, and
+  //   React yields to the browser between components instead of blocking the
+  //   indicator animation with one long unmount + mount.
+  const [selectedTab, setSelectedTab] = useState<TabId>(tab)
+  useEffect(() => { setSelectedTab(tab) }, [tab]) // back/forward and deep links
+  const contentTab = useDeferredValue(tab)
+  const switching = contentTab !== tab
+
   useEffect(() => {
     if (tabParam === 'overview') navigate('/analytics', { replace: true })
   }, [tabParam]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -114,7 +148,11 @@ export default function Analytics() {
     }
   }, [windowHours, regionFilter, regionLock])
   const filterKey = `${windowHours}|${[...regionFilter].sort().join(',')}|${regionLock ? 1 : 0}`
-  const tabProps: TabProps = { params, filterKey }
+  // Stable props + memoized tab components (TAB_VIEWS): parent renders — the
+  // urgent one on every tab click, the deferred switch, filter-bar state —
+  // must not re-render the visible tab (e.g. thousands of clock-health rows).
+  const tabProps: TabProps = useMemo(() => ({ params, filterKey }), [params, filterKey])
+  const TabView = TAB_VIEWS[contentTab]
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', background: md3.background }}>
@@ -136,23 +174,14 @@ export default function Analytics() {
         </Box>
       </Box>
 
-      <Tabs value={tab} onChange={(_, v) => navigate(v === 'overview' ? '/analytics' : `/analytics/${v}`, { replace: true })} variant="scrollable" scrollButtons="auto"
+      <Tabs value={selectedTab} onChange={(_, v: TabId) => { setSelectedTab(v); navigate(v === 'overview' ? '/analytics' : `/analytics/${v}`, { replace: true }) }} variant="scrollable" scrollButtons="auto"
         sx={{ px: 2, background: md3.surfaceContainerLow, flexShrink: 0 }}>
         {TABS.map(({ id, Icon, tk }) => (
           <Tab key={id} value={id} iconPosition="start" icon={<Icon sx={{ fontSize: 18 }} />} label={t(tk as Parameters<typeof t>[0])} sx={{ minHeight: 48 }} />
         ))}
       </Tabs>
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        {tab === 'overview'  && <OverviewTab {...tabProps} />}
-        {tab === 'activity'  && <ActivityTab {...tabProps} />}
-        {tab === 'rf'        && <RFTab {...tabProps} />}
-        {tab === 'nodes'     && <NodesTab {...tabProps} />}
-        {tab === 'observers' && <ObserversTab {...tabProps} />}
-        {tab === 'channels'  && <ChannelsTab {...tabProps} />}
-        {tab === 'hashes'    && <HashesTab {...tabProps} />}
-        {tab === 'clock-health' && <ClockHealthTab {...tabProps} />}
-        {tab === 'scope'     && <ScopeTab {...tabProps} />}
-        {tab === 'distance'  && <DistanceTab {...tabProps} />}
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2, opacity: switching ? 0.6 : 1, transition: 'opacity 120ms' }}>
+        <TabView {...tabProps} />
       </Box>
     </Box>
   )
@@ -167,9 +196,12 @@ function OverviewTab({ params, filterKey }: TabProps) {
   const [rf, setRF] = useState<{ snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number }; totalObservations: number } | null>(null)
 
   useEffect(() => {
-    api.overview(params).then(setStats)
-    api.packetsByType(params).then(d => setByType(d ?? {}))
-    api.analyticsRFSummary(params).then(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))
+    const ac = new AbortController()
+    const sp = { ...params, signal: ac.signal }
+    api.overview(sp).then(inTransition(setStats)).catch(ignoreAbort)
+    api.packetsByType(sp).then(inTransition(d => setByType(d ?? {}))).catch(ignoreAbort)
+    api.analyticsRFSummary(sp).then(inTransition(d => setRF({ snrSummary: d.snrSummary, rssiSummary: d.rssiSummary, totalObservations: d.totalObservations }))).catch(ignoreAbort)
+    return () => ac.abort()
   }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!stats) return <TabLoading />
@@ -210,7 +242,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
                 <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
                 <YAxis type="category" dataKey="name" width={90} interval={0} tick={{ fontSize: 11, fill: md3.onSurface }} />
                 <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-                <Bar dataKey="value" fill={md3.primary} radius={[0, 4, 4, 0]} />
+                <Bar isAnimationActive={false} dataKey="value" fill={md3.primary} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -221,7 +253,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
                 <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                   formatter={(v) => [`${v}%`, t('analytics.share')]} />
-                <Bar dataKey="pct" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => Number(v) > 0 ? `${v}%` : '' }}>
+                <Bar isAnimationActive={false} dataKey="pct" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => Number(v) > 0 ? `${v}%` : '' }}>
                   {typeShareData.map((_, i) => <Cell key={i} fill={paletteColor(i)} />)}
                 </Bar>
               </BarChart>
@@ -241,7 +273,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
   const [data, setData]   = useState<{ buckets: Array<{ hour: string; label: string; count: number; activeNodes: number; avgFanout: number; payloads: Record<string, number> }>; payloadTypes: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { setLoading(true); api.analyticsActivity(hours, params).then(d => setData(d ?? { buckets: [], payloadTypes: [] })).finally(() => setLoading(false)) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; setLoading(true); api.analyticsActivity(hours, sp).then(inTransition(d => setData(d ?? { buckets: [], payloadTypes: [] }))).catch(ignoreAbort).finally(() => { if (!ac.signal.aborted) startTransition(() => setLoading(false)) }); return () => ac.abort() }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const buckets = data?.buckets ?? []
   const payloadTypes = data?.payloadTypes ?? []
@@ -282,7 +314,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
             <YAxis tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
             <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
             <ReferenceLine y={avg} stroke={alpha('#f59e0b', 0.6)} strokeDasharray="4 4" />
-            <Area type="monotone" dataKey="count" stroke={md3.primary} fill="url(#actGrad)" strokeWidth={2} dot={false} />
+            <Area isAnimationActive={false} type="monotone" dataKey="count" stroke={md3.primary} fill="url(#actGrad)" strokeWidth={2} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -297,8 +329,8 @@ function ActivityTab({ params, filterKey }: TabProps) {
               <YAxis yAxisId="fanout" orientation="right" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line yAxisId="nodes" type="monotone" dataKey="activeNodes" name={t('analytics.uniqueActiveNodes')} stroke="#14b8a6" strokeWidth={2} dot={false} />
-              <Line yAxisId="fanout" type="monotone" dataKey="avgFanout" name={t('analytics.avgObservationFanout')} stroke="#ec4899" strokeWidth={2} dot={false} />
+              <Line isAnimationActive={false} yAxisId="nodes" type="monotone" dataKey="activeNodes" name={t('analytics.uniqueActiveNodes')} stroke="#14b8a6" strokeWidth={2} dot={false} />
+              <Line isAnimationActive={false} yAxisId="fanout" type="monotone" dataKey="avgFanout" name={t('analytics.avgObservationFanout')} stroke="#ec4899" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -312,7 +344,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {payloadTypes.map((pt, i) => (
-                <Bar key={pt} dataKey={pt} stackId="payloads" fill={paletteColor(i)} />
+                <Bar isAnimationActive={false} key={pt} dataKey={pt} stackId="payloads" fill={paletteColor(i)} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -326,23 +358,25 @@ function ActivityTab({ params, filterKey }: TabProps) {
 function RFTab({ params, filterKey }: TabProps) {
   const theme = useTheme(); const md3 = theme.palette.md3
   const { t } = useTranslation()
-  const [rf, setRF] = useState<{ rssi: number[]; snr: number[]; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number }; totalObservations: number } | null>(null)
+  const [rf, setRF] = useState<RFHistogramStats | null>(null)
   const [snrByType, setSnrByType] = useState<Record<string, { avg: number; count: number }>>({})
 
   useEffect(() => {
-    api.analyticsRF(params).then(setRF)
-    api.analyticsSnrByType(params).then(d => setSnrByType(d ?? {}))
+    const ac = new AbortController()
+    const sp = { ...params, signal: ac.signal }
+    api.analyticsRF(sp).then(inTransition(setRF)).catch(ignoreAbort)
+    api.analyticsSnrByType(sp).then(inTransition(d => setSnrByType(d ?? {}))).catch(ignoreAbort)
+    return () => ac.abort()
   }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!rf) return <TabLoading />
-  const snr  = rf.snr  ?? []
-  const rssi = rf.rssi ?? []
-  if (rf.totalObservations === 0 || (snr.length === 0 && rssi.length === 0)) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noRf')}</Typography>
-
-  const snrB  = bucketize(snr,  -25, 15, 16)
-  const rssiB = bucketize(rssi, -125, -30, 19)
-  const step  = Math.max(1, Math.floor(snr.length / 400))
-  const scatter = snr.filter((_, i) => i % step === 0).map((s, i) => ({ snr: s, rssi: rssi[i * step] ?? 0 }))
+  // Histograms and the (correctly paired) scatter sample are computed by the
+  // backend, so the browser never receives or re-bins the raw arrays.
+  const snrB    = rf.snrHistogram  ?? []
+  const rssiB   = rf.rssiHistogram ?? []
+  const scatter = rf.scatter ?? []
+  const hasData = snrB.some(b => b.count > 0) || rssiB.some(b => b.count > 0)
+  if (rf.totalObservations === 0 || !hasData) return <Typography sx={{ color: md3.onSurfaceVariant, p: 4 }}>{t('analytics.noRf')}</Typography>
 
   const snrTypeData = Object.entries(snrByType)
     .sort((a, b) => b[1].count - a[1].count)
@@ -373,7 +407,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[2, 2, 0, 0]}>
                 {snrB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
               </Bar>
             </BarChart>
@@ -386,7 +420,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[2, 2, 0, 0]}>
                 {rssiB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > -80 ? '#22c55e' : parseFloat(b.label) > -100 ? '#f59e0b' : md3.error} />)}
               </Bar>
             </BarChart>
@@ -407,7 +441,7 @@ function RFTab({ params, filterKey }: TabProps) {
                 contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v: unknown, _: unknown, entry: { payload?: { count: number } }) => [`${(v as number).toFixed(2)} dB (${entry.payload?.count ?? 0} obs)`, 'Avg SNR']}
               />
-              <Bar dataKey="avg" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="avg" radius={[0, 4, 4, 0]}>
                 {snrTypeData.map((d, i) => <Cell key={i} fill={d.avg > 6 ? '#22c55e' : d.avg > 0 ? '#f59e0b' : md3.error} />)}
               </Bar>
             </BarChart>
@@ -430,7 +464,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <ReferenceLine y={0} stroke={alpha(md3.error, 0.4)} strokeDasharray="4 4" />
               <ReferenceLine y={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Scatter data={scatter} shape={({ cx, cy, payload }: { cx?: number | undefined; cy?: number | undefined; payload?: { snr: number } | undefined }) => {
+              <Scatter isAnimationActive={false} data={scatter} shape={({ cx, cy, payload }: { cx?: number | undefined; cy?: number | undefined; payload?: { snr: number } | undefined }) => {
                 const color = (payload?.snr ?? 0) > 6 ? '#22c55e' : (payload?.snr ?? 0) > 0 ? '#f59e0b' : md3.error
                 return <circle cx={cx} cy={cy} r={3} fill={color} fillOpacity={0.65} />
               }} />
@@ -449,7 +483,7 @@ function NodesTab({ params, filterKey }: TabProps) {
   const navigate = useNavigate()
   const [nodes, setNodes] = useState<Node[] | null>(null)
   const [topSort, setTopSort] = useState<'adverts' | 'retransmits'>('adverts')
-  useEffect(() => { api.analyticsNodesTop(25, topSort, params).then(d => setNodes(d ?? [])) }, [filterKey, topSort]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; api.analyticsNodesTop(25, topSort, sp).then(inTransition(d => setNodes(d ?? []))).catch(ignoreAbort); return () => ac.abort() }, [filterKey, topSort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!nodes) return <TabLoading />
 
@@ -475,7 +509,7 @@ function NodesTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: md3.onSurface }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[0, 4, 4, 0]}>
                 {nodes.map((n, i) => <Cell key={i} fill={roleColor(n.role)} />)}
               </Bar>
             </BarChart>
@@ -487,7 +521,7 @@ function NodesTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} />
               <YAxis type="category" dataKey="name" width={80} interval={0} tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="value" radius={[0, 4, 4, 0]}>
                 {rolePie.map((e, i) => <Cell key={i} fill={roleColor(e.name)} />)}
               </Bar>
             </BarChart>
@@ -533,7 +567,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [observers, setObservers] = useState<Observer[] | null>(null)
-  useEffect(() => { api.analyticsObserversTop(20, params).then(d => setObservers(d ?? [])) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; api.analyticsObserversTop(20, sp).then(inTransition(d => setObservers(d ?? []))).catch(ignoreAbort); return () => ac.abort() }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!observers) return <TabLoading />
 
@@ -546,7 +580,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
             <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
             <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
             <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-            <Bar dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
+            <Bar isAnimationActive={false} dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -601,8 +635,11 @@ function ChannelsTab({ params, filterKey }: TabProps) {
     topSenders: Array<{ sender: string; messageCount: number; channels: number }>
   } | null>(null)
   useEffect(() => {
-    api.channelsFiltered(params).then(d => setChannels([...(d ?? [])].sort((a, b) => b.messageCount - a.messageCount)))
-    api.analyticsChannels(params).then(setAnalytics)
+    const ac = new AbortController()
+    const sp = { ...params, signal: ac.signal }
+    api.channelsFiltered(sp).then(inTransition(d => setChannels([...(d ?? [])].sort((a, b) => b.messageCount - a.messageCount)))).catch(ignoreAbort)
+    api.analyticsChannels(sp).then(inTransition(setAnalytics)).catch(ignoreAbort)
+    return () => ac.abort()
   }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!channels) return <TabLoading />
@@ -652,7 +689,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[0, 4, 4, 0]}>
                 {visible.map((c, i) => <Cell key={i} fill={isUnknown(c) ? md3.outline : paletteColor(i)} />)}
               </Bar>
             </BarChart>
@@ -690,7 +727,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
                     labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   {analytics.activityChannels.map((ch, i) => (
-                    <Area key={ch} type="monotone" dataKey={ch} stackId="1" stroke={chColor(ch, i)} fill={chColor(ch, i)} fillOpacity={0.35} strokeWidth={1.5} />
+                    <Area isAnimationActive={false} key={ch} type="monotone" dataKey={ch} stackId="1" stroke={chColor(ch, i)} fill={chColor(ch, i)} fillOpacity={0.35} strokeWidth={1.5} />
                   ))}
                 </AreaChart>
               </ResponsiveContainer>
@@ -706,7 +743,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
                   <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
                   <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                     formatter={(v: unknown, _: unknown, e: { payload?: { channels?: number } }) => [`${Number(v).toLocaleString()} (${e.payload?.channels ?? 0} ch)`, t('analytics.totalMessages')]} />
-                  <Bar dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
+                  <Bar isAnimationActive={false} dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -762,7 +799,7 @@ function HashesTab({ params, filterKey }: TabProps) {
   }
 
   const [data, setData] = useState<HashStats | null>(null)
-  useEffect(() => { api.analyticsHashes(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; api.analyticsHashes(sp).then(inTransition(setData)).catch(ignoreAbort); return () => ac.abort() }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <TabLoading />
 
@@ -818,7 +855,7 @@ function HashesTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[4, 4, 0, 0]}>
                 {sizeDistMerged.map((d, i) => (
                   <Cell key={i} fill={HASH_COLORS[d.label.replace(' ', '')] ?? md3.primary} />
                 ))}
@@ -835,10 +872,10 @@ function HashesTab({ params, filterKey }: TabProps) {
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="1 B"  stackId="a" fill="#22c55e" />
-              <Bar dataKey="2 B"  stackId="a" fill="#f59e0b" />
-              <Bar dataKey="3 B"  stackId="a" fill="#ec4899" />
-              <Bar dataKey="4+ B" stackId="a" fill={md3.primary} radius={[2, 2, 0, 0]} />
+              <Bar isAnimationActive={false} dataKey="1 B"  stackId="a" fill="#22c55e" />
+              <Bar isAnimationActive={false} dataKey="2 B"  stackId="a" fill="#f59e0b" />
+              <Bar isAnimationActive={false} dataKey="3 B"  stackId="a" fill="#ec4899" />
+              <Bar isAnimationActive={false} dataKey="4+ B" stackId="a" fill={md3.primary} radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -852,10 +889,10 @@ function HashesTab({ params, filterKey }: TabProps) {
             <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
             <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line type="monotone" dataKey="size1" name="1 B"  stroke="#22c55e" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="size2" name="2 B"  stroke="#f59e0b" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="size3" name="3 B"  stroke="#ec4899" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="sizeN" name="4+ B" stroke={md3.primary} strokeWidth={2} dot={false} />
+            <Line isAnimationActive={false} type="monotone" dataKey="size1" name="1 B"  stroke="#22c55e" strokeWidth={2} dot={false} />
+            <Line isAnimationActive={false} type="monotone" dataKey="size2" name="2 B"  stroke="#f59e0b" strokeWidth={2} dot={false} />
+            <Line isAnimationActive={false} type="monotone" dataKey="size3" name="3 B"  stroke="#ec4899" strokeWidth={2} dot={false} />
+            <Line isAnimationActive={false} type="monotone" dataKey="sizeN" name="4+ B" stroke={md3.primary} strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -987,35 +1024,65 @@ function ClockHealthTab({ params, filterKey }: TabProps) {
   const dateLocale = useDateLocale()
 
   const [data, setData] = useState<ClockHealthEntry[] | null>(null)
-  useEffect(() => { api.analyticsClockHealth(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; api.analyticsClockHealth(sp).then(inTransition(setData)).catch(ignoreAbort); return () => ac.abort() }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [severityFilter, setSeverityFilter] = useState<ClockSeverity | 'all'>('all')
   const [sortCol, setSortCol] = useState<ClockSortCol>('skew')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [renderCount, setRenderCount] = useState(CLOCK_RENDER_STEP)
+
+  // This tab lists every node with adverts — thousands of records on a real
+  // network. Counting, filtering and sorting are memoized (they used to rerun,
+  // with Date parsing and localeCompare inside the comparator, on every render
+  // of the tab), and rows mount in steps as the user scrolls instead of all at
+  // once, so opening or re-sorting the tab no longer blocks the main thread.
+  const counts = useMemo(() => {
+    const c: Record<ClockSeverity, number> = { ok: 0, warning: 0, critical: 0, absurd: 0 }
+    for (const e of data ?? []) c[e.severity]++
+    return c
+  }, [data])
+
+  const sorted = useMemo(() => {
+    const list = data ?? []
+    const filtered = severityFilter === 'all' ? list : list.filter(e => e.severity === severityFilter)
+    // Precompute each row's sort key once instead of per comparison.
+    const keyed = filtered.map(e => ({
+      e,
+      k: sortCol === 'skew' ? Math.abs(e.skewSeconds)
+        : sortCol === 'drift' ? Math.abs(e.driftPerDay)
+        : sortCol === 'severity' ? SEVERITY_RANK[e.severity]
+        : sortCol === 'lastAdvert' ? new Date(e.lastAdvert).getTime()
+        : 0,
+    }))
+    const dir = sortDir === 'asc' ? 1 : -1
+    keyed.sort((a, b) => dir * (sortCol === 'name' ? NAME_COLLATOR.compare(a.e.name, b.e.name) : a.k - b.k))
+    return keyed.map(x => x.e)
+  }, [data, severityFilter, sortCol, sortDir])
+
+  // Back to the first page whenever the list changes shape.
+  useEffect(() => { setRenderCount(CLOCK_RENDER_STEP) }, [data, severityFilter, sortCol, sortDir])
+  const sentinelRef = useRef<HTMLTableRowElement>(null)
+  const hasMore = sorted.length > renderCount
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(en => en.isIntersecting)) startTransition(() => setRenderCount(c => c + CLOCK_RENDER_STEP))
+    }, { rootMargin: '600px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasMore, renderCount])
+
+  const onOpenNode = useCallback((pubKey: string) => navigate(`/nodes/${encodeURIComponent(pubKey)}`), [navigate])
+  const severityLabel = useCallback((sev: ClockSeverity) => t(`analytics.severity${sev.charAt(0).toUpperCase()}${sev.slice(1)}` as Parameters<typeof t>[0]), [t])
 
   if (!data) return <TabLoading />
-
-  const counts: Record<ClockSeverity, number> = { ok: 0, warning: 0, critical: 0, absurd: 0 }
-  for (const e of data) counts[e.severity]++
 
   const toggleSort = (col: ClockSortCol) => {
     if (sortCol === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return }
     setSortCol(col)
     setSortDir(col === 'name' ? 'asc' : 'desc')
   }
-
-  const filtered = severityFilter === 'all' ? data : data.filter(e => e.severity === severityFilter)
-  const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0
-    switch (sortCol) {
-      case 'name':       cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); break
-      case 'skew':       cmp = Math.abs(a.skewSeconds) - Math.abs(b.skewSeconds); break
-      case 'severity':   cmp = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]; break
-      case 'drift':      cmp = Math.abs(a.driftPerDay) - Math.abs(b.driftPerDay); break
-      case 'lastAdvert': cmp = new Date(a.lastAdvert).getTime() - new Date(b.lastAdvert).getTime(); break
-    }
-    return sortDir === 'asc' ? cmp : -cmp
-  })
 
   const headers: { col: ClockSortCol; label: string }[] = [
     { col: 'name', label: t('common.name') },
@@ -1024,26 +1091,28 @@ function ClockHealthTab({ params, filterKey }: TabProps) {
     { col: 'drift', label: t('analytics.drift') },
     { col: 'lastAdvert', label: t('analytics.lastAdvert') },
   ]
+  const visible = hasMore ? sorted.slice(0, renderCount) : sorted
+  const now = Date.now()
 
   return (
     <Box>
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
         {SEVERITY_ORDER.map(sev => (
           <Box key={sev} sx={{ px: 1.5, py: 0.5, borderRadius: 2, background: alpha(SEVERITY_COLOR[sev], 0.1), border: `1px solid ${alpha(SEVERITY_COLOR[sev], 0.25)}` }}>
-            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{t(`analytics.severity${sev.charAt(0).toUpperCase()}${sev.slice(1)}` as Parameters<typeof t>[0])}{'  '}</Typography>
+            <Typography variant="caption" sx={{ color: md3.onSurfaceVariant }}>{severityLabel(sev)}{'  '}</Typography>
             <Typography variant="body2" sx={{ color: SEVERITY_COLOR[sev], fontWeight: 700, display: 'inline' }}>{counts[sev]}</Typography>
           </Box>
         ))}
       </Box>
 
       <Box sx={{ mb: 2 }}>
-        <ToggleButtonGroup exclusive size="small" value={severityFilter} onChange={(_, v) => v !== null && setSeverityFilter(v)}>
+        <ToggleButtonGroup exclusive size="small" value={severityFilter} onChange={(_, v) => v !== null && startTransition(() => setSeverityFilter(v))}>
           <ToggleButton value="all" sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(md3.primary, 0.15), color: md3.primary } }}>
             {t('analytics.severityAll')}
           </ToggleButton>
           {SEVERITY_ORDER.map(sev => (
             <ToggleButton key={sev} value={sev} sx={{ fontSize: 11, px: 1.25, py: 0.4, color: md3.onSurfaceVariant, borderColor: md3.outlineVariant, '&.Mui-selected': { background: alpha(SEVERITY_COLOR[sev], 0.18), color: SEVERITY_COLOR[sev] } }}>
-              {t(`analytics.severity${sev.charAt(0).toUpperCase()}${sev.slice(1)}` as Parameters<typeof t>[0])} ({counts[sev]})
+              {severityLabel(sev)} ({counts[sev]})
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -1059,7 +1128,7 @@ function ClockHealthTab({ params, filterKey }: TabProps) {
                 <TableRow>
                   {headers.map(h => (
                     <TableCell key={h.col}>
-                      <TableSortLabel active={sortCol === h.col} direction={sortCol === h.col ? sortDir : 'desc'} onClick={() => toggleSort(h.col)}>
+                      <TableSortLabel active={sortCol === h.col} direction={sortCol === h.col ? sortDir : 'desc'} onClick={() => startTransition(() => toggleSort(h.col))}>
                         {h.label}
                       </TableSortLabel>
                     </TableCell>
@@ -1067,23 +1136,16 @@ function ClockHealthTab({ params, filterKey }: TabProps) {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {sorted.map(e => (
-                  <TableRow key={e.pubKey} sx={{ background: alpha(SEVERITY_COLOR[e.severity], 0.08) }}>
-                    <TableCell>
-                      <Box component="span" onClick={() => navigate(`/nodes/${encodeURIComponent(e.pubKey)}`)}
-                        sx={{ cursor: 'pointer', color: md3.primary, '&:hover': { textDecoration: 'underline' } }}>
-                        {e.name || e.pubKey}
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: md3.onSurface }}>{formatSkew(e.skewSeconds)}</TableCell>
-                    <TableCell>
-                      <Chip label={t(`analytics.severity${e.severity.charAt(0).toUpperCase()}${e.severity.slice(1)}` as Parameters<typeof t>[0])} size="small"
-                        sx={{ fontSize: 10, height: 20, background: alpha(SEVERITY_COLOR[e.severity], 0.15), color: SEVERITY_COLOR[e.severity], fontWeight: 700 }} />
-                    </TableCell>
-                    <TableCell sx={{ color: md3.onSurfaceVariant }}>{formatDrift(e.driftPerDay)}</TableCell>
-                    <TableCell sx={{ color: md3.onSurfaceVariant }}>{formatDistanceToNow(new Date(e.lastAdvert), { addSuffix: true, locale: dateLocale })}</TableCell>
-                  </TableRow>
+                {visible.map(e => (
+                  <ClockRow key={e.pubKey} e={e} label={severityLabel(e.severity)} locale={dateLocale} now={now} onOpen={onOpenNode} />
                 ))}
+                {hasMore && (
+                  <TableRow ref={sentinelRef}>
+                    <TableCell colSpan={5} sx={{ textAlign: 'center', color: md3.outline, fontSize: 11, py: 1 }}>
+                      {visible.length.toLocaleString()} / {sorted.length.toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </Box>
@@ -1092,6 +1154,35 @@ function ClockHealthTab({ params, filterKey }: TabProps) {
     </Box>
   )
 }
+
+const CLOCK_RENDER_STEP = 100
+const NAME_COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' })
+
+// One clock-health row. Memoized so re-sorting/filtering or growing the
+// rendered window only mounts the rows that are new, not all of them again.
+const ClockRow = memo(function ClockRow({ e, label, locale, now, onOpen }: {
+  e: ClockHealthEntry; label: string; locale: Locale; now: number; onOpen: (pubKey: string) => void
+}) {
+  const theme = useTheme(); const md3 = theme.palette.md3
+  const color = SEVERITY_COLOR[e.severity]
+  return (
+    <TableRow sx={{ background: alpha(color, 0.08) }}>
+      <TableCell>
+        <Box component="span" onClick={() => onOpen(e.pubKey)}
+          sx={{ cursor: 'pointer', color: md3.primary, '&:hover': { textDecoration: 'underline' } }}>
+          {e.name || e.pubKey}
+        </Box>
+      </TableCell>
+      <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: md3.onSurface }}>{formatSkew(e.skewSeconds)}</TableCell>
+      <TableCell>
+        <Chip label={label} size="small"
+          sx={{ fontSize: 10, height: 20, background: alpha(color, 0.15), color, fontWeight: 700 }} />
+      </TableCell>
+      <TableCell sx={{ color: md3.onSurfaceVariant }}>{formatDrift(e.driftPerDay)}</TableCell>
+      <TableCell sx={{ color: md3.onSurfaceVariant }}>{formatDistanceToNow(new Date(e.lastAdvert), { addSuffix: true, locale })}</TableCell>
+    </TableRow>
+  )
+}, (a, b) => a.e === b.e && a.label === b.label && a.locale === b.locale && a.onOpen === b.onOpen && Math.floor(a.now / 60_000) === Math.floor(b.now / 60_000))
 
 // ── Distance / Hop Analytics ──────────────────────────────────────────────────
 function DistanceTab({ params, filterKey }: TabProps) {
@@ -1120,7 +1211,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
 
   const navigate = useNavigate()
   const [data, setData] = useState<DistData | null>(null)
-  useEffect(() => { api.analyticsDistance(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; api.analyticsDistance(sp).then(inTransition(setData)).catch(ignoreAbort); return () => ac.abort() }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <TabLoading />
   if (data.pathsAnalyzed === 0 && data.byLinkType.direct === 0)
@@ -1167,7 +1258,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: md3.onSurface }} width={90} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v) => [`${Number(v).toLocaleString()} (${totalObs > 0 ? ((Number(v) / totalObs) * 100).toFixed(1) : 0}%)`, '']} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => totalObs > 0 ? `${((Number(v) / totalObs) * 100).toFixed(0)}%` : '' }}>
+              <Bar isAnimationActive={false} dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => totalObs > 0 ? `${((Number(v) / totalObs) * 100).toFixed(0)}%` : '' }}>
                 {linkTypeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
               </Bar>
             </BarChart>
@@ -1183,7 +1274,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 labelFormatter={v => `${v} ${t('analytics.hopsLabel')}`} />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" radius={[4, 4, 0, 0]}>
                 {data.hopDistribution.map((d, i) => (
                   <Cell key={i} fill={d.hops === 0 ? '#22c55e' : d.hops === 1 ? '#f59e0b' : alpha(md3.primary, Math.min(1, 0.5 + d.hops * 0.15))} />
                 ))}
@@ -1203,7 +1294,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
             <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
               formatter={(v) => [Number(v).toFixed(2) + ' ' + t('analytics.hopsLabel'), t('analytics.avgHopDist')]} />
             <ReferenceLine y={data.avgHopDist} stroke={alpha(md3.primary, 0.4)} strokeDasharray="4 4" />
-            <Line type="monotone" dataKey="avgHops" stroke={md3.primary} strokeWidth={2} dot={false} connectNulls />
+            <Line isAnimationActive={false} type="monotone" dataKey="avgHops" stroke={md3.primary} strokeWidth={2} dot={false} connectNulls />
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -1317,7 +1408,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
                   <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
                   <YAxis type="category" dataKey="label" tick={{ fontSize: 11, fill: md3.onSurface }} width={80} />
                   <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  <Bar isAnimationActive={false} dataKey="count" radius={[0, 4, 4, 0]}>
                     {(data.geo?.distribution ?? []).map((_, i) => (
                       <Cell key={i} fill={alpha(md3.primary, 0.4 + (i / (data.geo?.distribution?.length || 1)) * 0.6)} />
                     ))}
@@ -1385,7 +1476,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
   }
 
   const [data, setData] = useState<ScopeData | null>(null)
-  useEffect(() => { api.analyticsScope(params).then(setData) }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const ac = new AbortController(); const sp = { ...params, signal: ac.signal }; api.analyticsScope(sp).then(inTransition(setData)).catch(ignoreAbort); return () => ac.abort() }, [filterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <TabLoading />
 
@@ -1443,7 +1534,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
               <YAxis type="category" dataKey="scope" tick={{ fontSize: 11, fill: md3.onSurface }} width={72} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v, name) => [Number(v).toLocaleString(), name === 'pktCount' ? t('common.packets') : t('home.observations')]} />
-              <Bar dataKey="pktCount" name="pktCount" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="pktCount" name="pktCount" radius={[0, 4, 4, 0]}>
                 {data.distribution.map((d, i) => <Cell key={d.scope} fill={scopeColor(d.scope, i)} />)}
               </Bar>
             </BarChart>
@@ -1460,8 +1551,8 @@ function ScopeTab({ params, filterKey }: TabProps) {
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 formatter={(v, name) => [`${Number(v).toFixed(1)}${name === 'avgSnr' ? ' dB' : ' dBm'}`, name === 'avgSnr' ? t('home.avgSnr') : t('home.avgRssi')]} />
               <Legend wrapperStyle={{ fontSize: 11 }} formatter={n => n === 'avgSnr' ? t('home.avgSnr') : t('home.avgRssi')} />
-              <Bar dataKey="avgSnr"  name="avgSnr"  fill="#14b8a6" radius={[0, 4, 4, 0]} />
-              <Bar dataKey="avgRssi" name="avgRssi" fill="#ec4899" radius={[0, 4, 4, 0]} />
+              <Bar isAnimationActive={false} dataKey="avgSnr"  name="avgSnr"  fill="#14b8a6" radius={[0, 4, 4, 0]} />
+              <Bar isAnimationActive={false} dataKey="avgRssi" name="avgRssi" fill="#ec4899" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1478,7 +1569,7 @@ function ScopeTab({ params, filterKey }: TabProps) {
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {data.activityScopes.map((sc, i) => (
-                <Area key={sc} type="monotone" dataKey={sc} stackId="1"
+                <Area isAnimationActive={false} key={sc} type="monotone" dataKey={sc} stackId="1"
                   stroke={scopeColor(sc, i)} fill={alpha(scopeColor(sc, i), 0.5)} strokeWidth={1.5} dot={false} />
               ))}
             </AreaChart>
@@ -1555,10 +1646,24 @@ function TabLoading() {
   )
 }
 
+// Charts render with recharts animation disabled (isAnimationActive={false}):
+// recharts animates by re-rendering the React chart every frame, which with
+// hundreds/thousands of bars or scatter points (activity, RF) made every tab
+// open stutter. A one-off CSS fade/slide on the card keeps the polish — the
+// browser runs it on the compositor without any React work.
+const CHART_CARD_ENTER = {
+  '@keyframes chartCardIn': {
+    from: { opacity: 0, transform: 'translateY(4px)' },
+    to: { opacity: 1, transform: 'none' },
+  },
+  animation: 'chartCardIn 220ms ease-out both',
+  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+} as const
+
 function ChartCard({ title, tooltip, Icon, children, sx }: { title: string; tooltip?: string; Icon?: SvgIconComponent; children: React.ReactNode; sx?: object }) {
   const theme = useTheme(); const md3 = theme.palette.md3
   return (
-    <Card sx={sx}>
+    <Card sx={{ ...CHART_CARD_ENTER, ...sx }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
           {Icon && (

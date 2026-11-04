@@ -426,3 +426,47 @@ func TestDistanceTopPathsMatchesReference(t *testing.T) {
 		t.Fatalf("top paths %v, want %v", got, all)
 	}
 }
+
+// TestRFHistogramMatchesFrontendBucketize: the server-side histogram must bin
+// exactly like the frontend's bucketize() (lower-bound labels, clamped ends).
+func TestRFHistogramMatchesFrontendBucketize(t *testing.T) {
+	got := histogram([]float64{-30, -25, -22.6, -22.5, 0, 14.9, 15, 99}, -25, 15, 16)
+	if len(got) != 16 || got[0].Label != "-25" || got[1].Label != "-23" || got[10].Label != "0" || got[15].Label != "13" {
+		t.Fatalf("labels: %+v", got)
+	}
+	want := map[int]int{0: 3, 1: 1, 10: 1, 15: 3} // -30,-25,-22.6 → 0; -22.5 → 1; 0 → 10; 14.9,15,99 → 15
+	for i, b := range got {
+		if b.Count != want[i] {
+			t.Fatalf("bucket %d = %d, want %d (%+v)", i, b.Count, want[i], got)
+		}
+	}
+}
+
+// TestRFScatterIsPairedAndBounded: scatter points come from observations that
+// carry both values (the old client-side pairing mixed up two independently
+// built arrays), and never exceed rfScatterPoints.
+func TestRFScatterIsPairedAndBounded(t *testing.T) {
+	var txs []*db.TxRow
+	var obss []*db.ObsRow
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 1; i <= 1000; i++ {
+		txs = append(txs, &db.TxRow{ID: int64(i), Hash: fmt.Sprintf("t%d", i), FirstSeen: now})
+		snr, rssi := float64(i), float64(-i)
+		o := &db.ObsRow{ID: int64(i), TxID: int64(i), ObserverID: "o", Timestamp: now, SNR: &snr}
+		if i%3 != 0 { // every third observation has no RSSI
+			o.RSSI = &rssi
+		}
+		obss = append(obss, o)
+	}
+	s := New()
+	s.Load(txs, obss, nil, nil)
+	rf := s.computeGlobalRFStats(AnalyticsFilter{})
+	if len(rf.Scatter) == 0 || len(rf.Scatter) > rfScatterPoints {
+		t.Fatalf("scatter size %d", len(rf.Scatter))
+	}
+	for _, p := range rf.Scatter {
+		if p.RSSI != -p.SNR || int(p.SNR)%3 == 0 {
+			t.Fatalf("unpaired scatter point %+v", p)
+		}
+	}
+}

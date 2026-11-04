@@ -14,8 +14,20 @@ describe('node detail map regressions', () => {
   const nodeDetailPanel = () => src('../components/NodeDetailPanel.tsx')
 
   it('loads Leaflet CSS in every lazy-loaded module that creates a Leaflet map', () => {
-    expect(nodePage()).toContain("import 'leaflet/dist/leaflet.css'")
-    expect(nodeDetailPanel()).toContain("import 'leaflet/dist/leaflet.css'")
+    // The node mini maps are created by utils/miniMap (reached only via import()),
+    // so that module — not the pages — must carry the map stylesheets.
+    const miniMap = src('../utils/miniMap.ts')
+    expect(miniMap).toContain("import 'leaflet/dist/leaflet.css'")
+    expect(miniMap).toContain("import 'maplibre-gl/dist/maplibre-gl.css'")
+    expect(nodePage()).toContain('useMiniMap(')
+    expect(nodeDetailPanel()).toContain('useMiniMap(')
+  })
+
+  it('keeps Leaflet/maplibre out of the node page and detail panel chunks', () => {
+    for (const source of [nodePage(), nodeDetailPanel()]) {
+      expect(source).not.toContain("from 'leaflet'")
+      expect(source).not.toContain('utils/mapTiles')
+    }
   })
 
   it('keeps the node detail mini map at a bounded responsive height', () => {
