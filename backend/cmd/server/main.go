@@ -51,9 +51,24 @@ func main() {
 	pruneDatabaseRetention(database, cfg.RetentionDays, "startup")
 	pruneDeadEntities(database, cfg.NodeRetentionDays, "startup")
 
-	// Load everything into memory
+	// Load the in-memory window (or everything, with memoryWindowDays: 0).
+	// Older packets stay in SQLite and are served from there on demand.
+	memWindow := cfg.MemoryWindow()
 	loadStart := time.Now()
-	txs, obss, nodes, observers, err := database.LoadAll()
+	var (
+		txs       []*db.TxRow
+		obss      []*db.ObsRow
+		nodes     []*db.NodeRow
+		observers []*db.ObserverRow
+	)
+	if memWindow > 0 {
+		cutoff := time.Now().UTC().Add(-memWindow).Format(time.RFC3339)
+		txs, obss, nodes, observers, _, err = database.LoadWindow(cutoff)
+		log.Printf("memory window: %s (older packets read from SQLite on demand)", memWindow)
+	} else {
+		txs, obss, nodes, observers, err = database.LoadAll()
+		log.Printf("memory window: unlimited (entire history in memory)")
+	}
 	if err != nil {
 		log.Fatalf("load: %v", err)
 	}
@@ -62,6 +77,13 @@ func main() {
 	st := store.New()
 	st.SetLocationRepairEnabled(!cfg.DisableLocationRepair)
 	st.Load(txs, obss, nodes, observers)
+	// Polling resumes from the database's current maximum ids even when the
+	// window holds no rows (otherwise the first poll would read everything).
+	if maxTx, maxObs, err := database.MaxIDs(); err != nil {
+		log.Fatalf("load: max ids: %v", err)
+	} else {
+		st.RaiseWatermarks(maxTx, maxObs)
+	}
 	indexDur := time.Since(indexStart)
 	lastTxID, lastObsID := st.LastIDs()
 	log.Printf("loaded %d packets, %d observations, %d nodes, %d observers (db=%s, index=%s)",
@@ -83,6 +105,17 @@ func main() {
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
 	srv.WardriveEnabled = cfg.Wardrive.Enabled
 	srv.ObsRawHex = database.ObservationRawHex
+	if memWindow > 0 {
+		// A separate handle (own connection) for archive reads: SQLite in WAL
+		// mode allows concurrent readers, so a slow history query (e.g. a
+		// filtered count) can never stall the 1 s packet poll on the main one.
+		archiveDB, err := db.Open(cfg.DBPath)
+		if err != nil {
+			log.Fatalf("archive db: %v", err)
+		}
+		defer archiveDB.Close()
+		srv.Archive = api.NewArchive(archiveDB, memWindow)
+	}
 	if cfg.Wardrive.Enabled {
 		if p, err := wardriveProxy(cfg.Wardrive.IngestorURL); err != nil {
 			log.Printf("wardrive proxy disabled: %v", err)
@@ -123,15 +156,28 @@ func main() {
 		}
 	}()
 
-	// Bound in-memory growth: drop packets older than the retention window.
-	if cfg.RetentionDays > 0 {
+	// Bound in-memory growth: drop packets older than the memory window (they
+	// remain in SQLite) or, without one, older than the retention window.
+	// Wardrive samples follow retention only.
+	if memWindow > 0 || cfg.RetentionDays > 0 {
 		prune := func() {
-			cutoff := time.Now().UTC().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).UnixMilli()
-			if n := st.Prune(cutoff); n > 0 {
-				log.Printf("pruned %d packets older than %d day(s) from memory", n, cfg.RetentionDays)
+			now := time.Now().UTC()
+			if memWindow > 0 {
+				cutoff := now.Add(-memWindow).UnixMilli()
+				if n := st.Prune(cutoff); n > 0 {
+					log.Printf("moved %d packets older than %s out of memory (still in SQLite)", n, memWindow)
+				}
+			} else {
+				cutoff := now.Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).UnixMilli()
+				if n := st.Prune(cutoff); n > 0 {
+					log.Printf("pruned %d packets older than %d day(s) from memory", n, cfg.RetentionDays)
+				}
 			}
-			if n := st.PruneCoverage(cutoff); n > 0 {
-				log.Printf("pruned %d wardrive sample(s) older than %d day(s) from memory", n, cfg.RetentionDays)
+			if cfg.RetentionDays > 0 {
+				cutoff := now.Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour).UnixMilli()
+				if n := st.PruneCoverage(cutoff); n > 0 {
+					log.Printf("pruned %d wardrive sample(s) older than %d day(s) from memory", n, cfg.RetentionDays)
+				}
 			}
 		}
 		prune() // once at startup so a large reloaded history is trimmed immediately

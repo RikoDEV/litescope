@@ -131,6 +131,15 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   // networks. Nodes/observers and their lifetime counters are kept.
   "retentionDays": 0,
 
+  // Recent history the server keeps in RAM (default 7, minimum 7 — the longest
+  // analytics window). Older packets stay in SQLite (subject to retentionDays) and
+  // are read from there on demand: opening an old packet, paging the packet list
+  // or a channel's history back past the window. All-time totals (home page, RF
+  // summary, channel list, node regions, 30-day observer charts) come from rollup
+  // tables the ingestor maintains. Memory stays flat however long the history.
+  // 0 keeps the entire history in RAM (memory then grows without bound).
+  "memoryWindowDays": 7,
+
   // Dead node/observer retention in days. 0 (default) keeps every node/observer
   // ever seen. When > 0, nodes/observers whose last_seen is older than this are
   // purged hourly from the SQLite registry (ingestor) and the in-memory store

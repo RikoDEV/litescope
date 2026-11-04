@@ -296,7 +296,7 @@ export const api = {
     }>>(`/api/analytics/clock-health${aq(p)}`, p?.signal),
 
   observerAnalytics: (id: string, days = 7) =>
-    get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),
+    get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; snrHistogram?: Array<{ label: string; count: number }> | undefined; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),
 
   decodePacket: (hex: string, channelKeys?: Record<string, string>) =>
     fetch(`${BASE}/api/decode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hex, channelKeys }) }).then(r => r.json()),

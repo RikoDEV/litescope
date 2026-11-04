@@ -15,14 +15,16 @@ MQTT broker(s) ──▶ ingestor (cmd/ingestor) ──writes──▶ SQLite �
 ```
 
 - **`cmd/ingestor`** subscribes to MQTT, decodes each MeshCore packet (`internal/decoder`), and writes a transmission + per-observer observation row. It is the **only writer**. Topic shape is `meshcore/<region>/<observerID>/...`; a `raw` hex field carries the packet, a `.../status` topic carries observer metadata.
-- **`cmd/server`** loads the whole DB into an in-memory `internal/store.Store` at startup, then **polls SQLite every second** (`LoadSince`) for rows with `id` greater than its high-water marks (`lastTxID`/`lastObsID`), merges them, and pushes new/updated packets to browsers over WebSocket. It serves all REST under `/api/*` and the socket at `/ws`. It never writes packet data.
+- **`cmd/server`** loads a recent **memory window** (`memoryWindowDays`, default 7; `0` = the whole DB) into an in-memory `internal/store.Store` at startup, then **polls SQLite every second** (`LoadSince`) for rows with `id` greater than its high-water marks (`lastTxID`/`lastObsID`), merges them, and pushes new/updated packets to browsers over WebSocket. It serves all REST under `/api/*` and the socket at `/ws`. It never writes packet data.
+- **Memory window / archive** (`internal/api/archive.go`, `internal/db/archive.go`): the store holds a contiguous *id suffix* of transmissions (`db.LoadWindow`, polling appends, `Prune` drops a prefix), so "older than memory" is exactly `id < Store.WindowStartTxID()`. Reads past it go to SQLite through a separate read handle: packet detail by hash, the newest-first packet list (paging + total) and channel history. Other packet sorts, node pages, maps and the ≤7-day analytics use the window only. Startup raises the poll watermarks to the DB max ids (`RaiseWatermarks`) — never let them fall back to 0.
+- **Rollups** (migration `00005_rollups`, `internal/db/rollups.go`): `rollup_tx_hourly`, `rollup_obs_hourly` (per observer/type, SNR/RSSI aggregates + 10-bin SNR histogram), `rollup_channels`, `rollup_node_regions` — updated by `WriteBatch` in the same transaction as the rows (and backfilled by the migration with the *same* bin/hour definitions; `TestRollupIncrementalMatchesBackfill` enforces it). They serve all-time / long-window answers (home totals, RF summary, channel list, node regions, observer analytics beyond the window) and survive retention pruning. Rollup-backed responses use `Archive`'s own 30 s cache, not `writeCachedJSON` (whose key tracks only the store).
 - **`frontend`** is a React 19 + Vite + MUI v9 SPA served as static files (Caddy/nginx in Docker, or Cloudflare Pages). `services/api.ts` wraps REST; `services/stream.ts` is a singleton WebSocket client with auto-reconnect.
 
 Because there are two processes, **`internal/db` and `internal/store` are duplicated dependencies** of both binaries, and `db.Open` runs the schema migration on every start (guarded — see below).
 
 ### The in-memory Store is the heart of the read path
 
-`internal/store/store.go` holds everything in RAM behind a single `sync.RWMutex` and maintains several indexes that must stay consistent on every mutation (`Load`, `AddTxBatch`, `Prune`):
+`internal/store/store.go` holds the memory window in RAM behind a single `sync.RWMutex` and maintains several indexes that must stay consistent on every mutation (`Load`, `AddTxBatch`, `Prune`):
 
 - `packets` (append-order ≈ first-seen), `byHash`, `byTxID`, `byObsID`
 - `byObserver` (per-observer obs), `byNode` (per-pubkey adverts), `byRelayHop` (hex hash-prefix → packets that relayed through it) + `relayHopLengths`

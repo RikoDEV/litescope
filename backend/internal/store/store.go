@@ -1120,6 +1120,44 @@ func (s *Store) UpdateObservers(rows []*db.ObserverRow) {
 	}
 }
 
+// RaiseWatermarks lifts the polling high-water marks to at least txID/obsID.
+// With a memory window, Load only sees the window's rows; without this, a
+// window with no rows would leave the marks at 0 and the next poll would
+// re-read the whole database. Rows at or below the marks that aren't in memory
+// (older than the window) are, by design, never loaded.
+func (s *Store) RaiseWatermarks(txID, obsID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastTxID = max(s.lastTxID, txID)
+	s.lastObsID = max(s.lastObsID, obsID)
+}
+
+// WindowStartTxID is the first transmission id held in memory: everything
+// below it lives only in SQLite. The in-memory packets are a contiguous id
+// suffix (Load takes an id range, polling appends in id order and Prune drops
+// a prefix), so `id < WindowStartTxID()` is exactly "older than memory".
+func (s *Store) WindowStartTxID() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.packets) == 0 {
+		return s.lastTxID + 1
+	}
+	return s.packets[0].ID
+}
+
+// BuildTx builds a standalone *Tx (with its observations and cached summary)
+// from DB rows, for packets read from SQLite outside the in-memory window. It
+// is not added to the store.
+func BuildTx(r *db.TxRow, obs []*db.ObsRow) *Tx {
+	tmp := &Store{intern: make(map[string]string), hopKeyOf: make(map[string]string)}
+	t := txFromRow(r)
+	for _, or := range obs {
+		t.Observations = append(t.Observations, tmp.obsFromRow(or))
+	}
+	t.refreshBest()
+	return t
+}
+
 // LastIDs returns the highest known tx and obs IDs for polling.
 func (s *Store) LastIDs() (int64, int64) {
 	s.mu.RLock()
@@ -2264,9 +2302,18 @@ type ChannelSummary struct {
 // Manager). The client decides what to display. The filter (regions/lock/hours)
 // is applied before pagination, so offset counts filtered messages.
 func (s *Store) ChannelMessages(chHash string, limit, offset int, f AnalyticsFilter) []*Tx {
+	out, _, _ := s.ChannelMessagesPage(chHash, limit, offset, f)
+	return out
+}
+
+// ChannelMessagesPage is ChannelMessages plus what a caller needs to continue
+// the page from SQLite once memory runs out: exhausted reports that the
+// in-memory window held fewer than offset+limit matches, and then memMatches
+// is the exact number of in-memory matches (so the archive offset is
+// offset - memMatches).
+func (s *Store) ChannelMessagesPage(chHash string, limit, offset int, f AnalyticsFilter) (out []*Tx, exhausted bool, memMatches int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var out []*Tx
 	skipped := 0
 	for i := len(s.packets) - 1; i >= 0 && len(out) < limit; i-- {
 		tx := s.packets[i]
@@ -2286,7 +2333,10 @@ func (s *Store) ChannelMessages(chHash string, limit, offset int, f AnalyticsFil
 		}
 		out = append(out, tx)
 	}
-	return out
+	if len(out) < limit {
+		return out, true, skipped + len(out)
+	}
+	return out, false, 0
 }
 
 // ChannelAnalytics returns per-channel hourly message activity (last 24 h) and
@@ -3311,18 +3361,55 @@ func (s *Store) ObserverAnalytics(id string, days int) ObserverAnalyticsData {
 	}
 
 	return ObserverAnalyticsData{
-		Timeline:    timeline,
-		SNR:         snrVals,
-		SNRSummary:  summarizeFloats(snrVals),
-		PacketTypes: typeCounts,
+		Timeline:     timeline,
+		SNR:          snrVals,
+		SNRSummary:   summarizeFloats(snrVals),
+		SNRHistogram: histogram(snrVals, -25, 15, db.SNRHistBins),
+		PacketTypes:  typeCounts,
 	}
 }
 
 type ObserverAnalyticsData struct {
-	Timeline    []ActivityBucket `json:"timeline"`
-	SNR         []float64        `json:"snr"`
-	SNRSummary  FloatSummary     `json:"snrSummary"`
-	PacketTypes map[string]int   `json:"packetTypes"`
+	Timeline   []ActivityBucket `json:"timeline"`
+	SNR        []float64        `json:"snr"`
+	SNRSummary FloatSummary     `json:"snrSummary"`
+	// SNRHistogram is the SNR distribution in the observer chart's 4 dB bins
+	// over [-25, 15). Always set; when the data comes from rollups (a window
+	// longer than memory holds) SNR is empty and only this is available.
+	SNRHistogram []HistBucket   `json:"snrHistogram"`
+	PacketTypes  map[string]int `json:"packetTypes"`
+}
+
+// ObserverAnalyticsFromRollup builds the same response as ObserverAnalytics
+// from the per-observer hourly rollup, for windows longer than the in-memory
+// packet history.
+func ObserverAnalyticsFromRollup(days int, r *db.ObserverRollup) ObserverAnalyticsData {
+	windowHours := days * 24
+	start := time.Now().UTC().Add(-time.Duration(windowHours) * time.Hour).Truncate(time.Hour)
+	var timeline []ActivityBucket
+	for _, h := range hourlyBuckets(start, windowHours) {
+		timeline = append(timeline, ActivityBucket{
+			Hour:  h.Format(time.RFC3339),
+			Label: h.Format("01/02 15h"),
+			Count: int(r.Hourly[h.Unix()]),
+		})
+	}
+	types := make(map[string]int, len(r.ByType))
+	for pt, n := range r.ByType {
+		types[decoder.PayloadName(pt)] += int(n)
+	}
+	hist := histogram(nil, -25, 15, db.SNRHistBins)
+	for i := range hist {
+		hist[i].Count = int(r.SNRHist[i])
+	}
+	summary := FloatSummary{}
+	if r.SNR.N > 0 {
+		summary = FloatSummary{Avg: r.SNR.Sum / float64(r.SNR.N), Min: r.SNR.Min, Max: r.SNR.Max}
+	}
+	return ObserverAnalyticsData{
+		Timeline: timeline, SNR: []float64{}, SNRSummary: summary,
+		SNRHistogram: hist, PacketTypes: types,
+	}
 }
 
 // PacketsByType returns counts per payload type.

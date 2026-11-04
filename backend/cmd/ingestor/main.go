@@ -468,6 +468,10 @@ func redecodeExisting(database *db.DB, channelKeys map[string]string) {
 			log.Printf("redecode: update %d: %v", row.ID, err)
 			continue
 		}
+		// Keep the all-time channel rollup (server's channel list) in step.
+		if err := database.MarkChannelDecrypted(row.ChannelHash, dec.Payload.Channel); err != nil {
+			log.Printf("redecode: channel rollup %d: %v", row.ID, err)
+		}
 		updated++
 	}
 	if updated > 0 {

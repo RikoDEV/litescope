@@ -18,6 +18,7 @@
   "scopeList": [],
   "allowedOrigins": ["*"],
   "retentionDays": 0,
+  "memoryWindowDays": 7,
   "nodeRetentionDays": 0,
   "disableLocationRepair": false,
   "analyticsCacheTTLSeconds": 30,

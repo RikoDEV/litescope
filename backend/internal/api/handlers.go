@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"maps"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/litescope/backend/internal/db"
 	"github.com/litescope/backend/internal/decoder"
 	"github.com/litescope/backend/internal/store"
 )
@@ -37,6 +39,10 @@ type Server struct {
 	// (it is the bulk of observation memory); the packet-detail endpoint fetches
 	// it on demand. nil omits rawHex from observation details.
 	ObsRawHex func(txID int64) (map[int64]string, error)
+
+	// Archive, when its window is set, serves reads past the in-memory window
+	// from SQLite and all-time statistics from rollups. nil = all in memory.
+	Archive *Archive
 
 	resp *responseCache
 }
@@ -279,7 +285,29 @@ func (s *Server) listPackets(w http.ResponseWriter, r *http.Request) {
 	if limit > maxPageLimit {
 		limit = maxPageLimit
 	}
-	txs, total := s.Store.PacketsFiltered(packetQuery(r, limit, offset))
+	pq := packetQuery(r, limit, offset)
+	txs, total := s.Store.PacketsFiltered(pq)
+	// With a memory window, the newest-first list continues into SQLite once
+	// the in-memory matches run out, and the total includes older matches.
+	// (Other sort orders only cover the in-memory window.)
+	if s.Archive.enabled() && (pq.SortCol == "" || pq.SortCol == "firstSeen") && pq.SortDesc {
+		aq := archivePacketQuery(r, pq)
+		boundary := s.Store.WindowStartTxID()
+		older, err := archiveCached(s.Archive, "count|"+boundaryBucket(boundary)+"|"+archiveKey(aq), func() (int, error) {
+			return s.Archive.DB.CountOlderPackets(aq, boundary)
+		})
+		if err != nil {
+			log.Printf("archive packet count: %v", err)
+		}
+		if len(txs) < limit && older > 0 {
+			rows, obs, err := s.Archive.DB.OlderPackets(aq, boundary, limit-len(txs), max(0, offset-total))
+			if err != nil {
+				log.Printf("archive packets: %v", err)
+			}
+			txs = append(txs, buildTxs(rows, obs)...)
+		}
+		total += older
+	}
 	type response struct {
 		Total   int             `json:"total"`
 		Packets []packetSummary `json:"packets"`
@@ -294,6 +322,16 @@ func (s *Server) listPackets(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getPacket(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	tx := s.Store.PacketByHash(hash)
+	if tx == nil && s.Archive.enabled() {
+		// Older than the in-memory window: read it from SQLite.
+		row, obs, err := s.Archive.DB.PacketByHash(hash)
+		if err != nil {
+			log.Printf("archive packet %s: %v", hash, err)
+		}
+		if row != nil {
+			tx = store.BuildTx(row, obs)
+		}
+	}
 	if tx == nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -327,6 +365,10 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 		Nodes  []nodeSummary  `json:"nodes"`
 	}
 	regionsByNode := s.Store.NodeRegionsAll()
+	if s.Archive.enabled() {
+		// Regions of adverts older than the memory window come from the rollup.
+		regionsByNode = s.Archive.nodeRegions(regionsByNode)
+	}
 	observerNodes := s.Store.ObserverNodePubKeys()
 	out := response{Total: len(nodes), Counts: s.Store.RoleCounts(), Nodes: make([]nodeSummary, 0, len(nodes))}
 	for _, n := range nodes {
@@ -555,6 +597,17 @@ func (s *Server) getObserver(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
+	// Unfiltered (all-time) list from the rollup when memory holds only a
+	// window — otherwise channels quiet for longer than the window would
+	// vanish. Filtered (region/hours) lists come from the in-memory window.
+	if f := analyticsFilter(r); s.Archive.enabled() && !f.Active() {
+		if chans, err := s.Archive.channels(); err == nil {
+			writeJSON(w, chans)
+			return
+		} else {
+			log.Printf("archive channels: %v", err)
+		}
+	}
 	s.writeCachedJSON(w, r, func() any { return s.Store.Channels(analyticsFilter(r)) })
 }
 
@@ -566,7 +619,17 @@ func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	limit := min(queryInt(r, "limit", 100), maxPageLimit)
 	offset := queryInt(r, "offset", 0)
-	msgs := s.Store.ChannelMessages(hash, limit, offset, analyticsFilter(r))
+	msgs, exhausted, memMatches := s.Store.ChannelMessagesPage(hash, limit, offset, analyticsFilter(r))
+	if exhausted && s.Archive.enabled() && !s.Archive.covers(queryInt(r, "hours", 0)) {
+		// Older chat history than the in-memory window: continue from SQLite.
+		regions, lock := regionFilterParam(r.URL.Query())
+		aq := db.ArchiveQuery{ChannelHash: hash, Regions: regions, Lock: lock, SinceISO: sinceISO(queryInt(r, "hours", 0))}
+		rows, obs, err := s.Archive.DB.OlderPackets(aq, s.Store.WindowStartTxID(), limit-len(msgs), max(0, offset-memMatches))
+		if err != nil {
+			log.Printf("archive channel messages: %v", err)
+		}
+		msgs = append(msgs, buildTxs(rows, obs)...)
+	}
 	out := make([]packetSummary, 0, len(msgs))
 	for _, tx := range msgs {
 		out = append(out, summarizeTx(tx))
@@ -575,14 +638,41 @@ func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getOverview(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.Overview(analyticsFilter(r)))
+	f := analyticsFilter(r)
+	stats := s.Store.Overview(f)
+	if s.Archive.enabled() && !f.Active() {
+		// All-time packet total from the rollup (memory holds only a window).
+		if n, err := s.Archive.totalPackets(); err != nil {
+			log.Printf("archive total packets: %v", err)
+		} else {
+			stats.TotalPackets = max(stats.TotalPackets, n)
+		}
+	}
+	writeJSON(w, stats)
 }
 
 func (s *Server) getPacketsByType(w http.ResponseWriter, r *http.Request) {
+	if f := analyticsFilter(r); s.Archive.enabled() && !f.Active() {
+		if byType, err := s.Archive.packetsByType(); err == nil {
+			writeJSON(w, byType)
+			return
+		} else {
+			log.Printf("archive packets by type: %v", err)
+		}
+	}
 	s.writeCachedJSON(w, r, func() any { return s.Store.PacketsByType(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
+	if v := r.URL.Query().Get("summary"); (v == "1" || v == "true") && s.Archive.enabled() && !analyticsFilter(r).Active() {
+		// All-time RF aggregates from the rollup (memory holds only a window).
+		if rf, err := s.Archive.rfSummary(); err == nil {
+			writeJSON(w, rf)
+			return
+		} else {
+			log.Printf("archive rf summary: %v", err)
+		}
+	}
 	s.writeCachedJSON(w, r, func() any {
 		rf := s.Store.GlobalRFStats(analyticsFilter(r))
 		q := r.URL.Query()
@@ -693,7 +783,68 @@ func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request
 func (s *Server) getObserverAnalytics(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	days := min(queryInt(r, "days", 7), 30)
+	if s.Archive.enabled() && !s.Archive.covers(days*24) {
+		// Longer than the in-memory window: from the per-observer rollup.
+		if data, err := s.Archive.observerAnalytics(id, days); err == nil {
+			writeJSON(w, data)
+			return
+		} else {
+			log.Printf("archive observer analytics: %v", err)
+		}
+	}
 	writeJSON(w, s.Store.ObserverAnalytics(id, days))
+}
+
+// archivePacketQuery maps a packet-list request onto the archive filter.
+func archivePacketQuery(r *http.Request, pq store.PacketQuery) db.ArchiveQuery {
+	q := r.URL.Query()
+	regions, lock := regionFilterParam(q)
+	aq := db.ArchiveQuery{
+		Search: strings.ToLower(strings.TrimSpace(pq.Search)),
+		RouteType: pq.RouteType, MinObs: pq.MinObs, Regions: regions, Lock: lock,
+	}
+	for pt := range pq.PayloadTypes {
+		aq.PayloadTypes = append(aq.PayloadTypes, pt)
+	}
+	sort.Ints(aq.PayloadTypes)
+	if pq.SinceMs > 0 {
+		aq.SinceISO = time.UnixMilli(pq.SinceMs).UTC().Format(time.RFC3339)
+	}
+	return aq
+}
+
+// archiveKey is a cache key for an archive filter.
+func archiveKey(aq db.ArchiveQuery) string {
+	route := ""
+	if aq.RouteType != nil {
+		route = strconv.Itoa(*aq.RouteType)
+	}
+	pts := make([]string, len(aq.PayloadTypes))
+	for i, pt := range aq.PayloadTypes {
+		pts[i] = strconv.Itoa(pt)
+	}
+	regions := slices.Clone(aq.Regions)
+	sort.Strings(regions)
+	// SinceISO is minute-truncated so a rolling "last N minutes" filter can share entries.
+	since := aq.SinceISO
+	if len(since) >= 16 {
+		since = since[:16]
+	}
+	return fmt.Sprintf("s=%s|t=%s|r=%s|m=%d|since=%s|reg=%s|lock=%t|ch=%s",
+		aq.Search, strings.Join(pts, ","), route, aq.MinObs, since, strings.Join(regions, ","), aq.Lock, aq.ChannelHash)
+}
+
+// boundaryBucket groups window boundaries for count caching: the boundary
+// only moves when the hourly prune drops packets out of memory.
+func boundaryBucket(id int64) string { return strconv.FormatInt(id, 10) }
+
+// sinceISO converts an "hours" request parameter to an RFC3339 lower bound
+// ("" for all time).
+func sinceISO(hours int) string {
+	if hours <= 0 {
+		return ""
+	}
+	return time.Now().UTC().Add(-time.Duration(hours) * time.Hour).Format(time.RFC3339)
 }
 
 func (s *Server) decodePacket(w http.ResponseWriter, r *http.Request) {

@@ -425,6 +425,7 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 	// Statements prepared once per batch (closed by the deferred loop below);
 	// modernc then parses each SQL string once per flush instead of once per row.
 	var insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upNodeScope, upObsv, upObsvMeta *sql.Stmt
+	var rollups *rollupWriter
 	defer func() {
 		for _, s := range []*sql.Stmt{insTx, selTx, insObs, cntObs, bumpCnt, upNode, telNode, upNodeScope, upObsv, upObsvMeta} {
 			if s != nil {
@@ -449,6 +450,12 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 		if bumpCnt, err = dbtx.Prepare(`UPDATE transmissions SET observation_count = observation_count + 1 WHERE id = ?`); err != nil {
 			return fmt.Errorf("prepare bump: %w", err)
 		}
+		// Rollups are updated in the same transaction as the rows they
+		// summarize, so they never drift from what was committed.
+		if rollups, err = prepareRollups(dbtx); err != nil {
+			return fmt.Errorf("prepare rollups: %w", err)
+		}
+		defer rollups.close()
 	}
 	if needNode {
 		if upNode, err = dbtx.Prepare(`INSERT INTO nodes (pub_key, name, role, lat, lon, last_seen, first_seen, advert_count) VALUES (?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(pub_key) DO UPDATE SET name = excluded.name, role = excluded.role, lat = COALESCE(excluded.lat, lat), lon = COALESCE(excluded.lon, lon), last_seen = excluded.last_seen, advert_count = advert_count + 1`); err != nil {
@@ -493,6 +500,15 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 			}
 			if _, err := insObs.Exec(txID, obs.ObserverID, obs.ObserverName, obs.ObserverIATA, obs.RSSI, obs.SNR, obs.Score, obs.Direction, obs.PathJSON, nilIfEmpty(obs.FloodScope), obs.Timestamp, nilIfEmpty(obs.RawHex)); err != nil {
 				return fmt.Errorf("insert obs: %w", err)
+			}
+			dec := decodeForRollup(tx)
+			if isNew {
+				if err := rollups.newTransmission(tx, dec); err != nil {
+					return err
+				}
+			}
+			if err := rollups.observation(tx, obs, dec); err != nil {
+				return err
 			}
 			// observation_count tracks unique observers; bump only when this is the
 			// first observation of an existing transmission from this observer.

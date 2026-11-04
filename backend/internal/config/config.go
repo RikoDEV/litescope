@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -24,6 +25,13 @@ type Config struct {
 	// keeps everything — unbounded, fine for short-lived or low-volume setups, but
 	// memory and per-request analytics cost grow with history on a busy network.
 	RetentionDays int `json:"retentionDays"`
+	// MemoryWindowDays is how much recent packet history the server keeps in
+	// RAM (default 7; at least 7, the longest analytics window). Older packets
+	// stay in SQLite (subject to RetentionDays) and are read from there on
+	// demand; all-time totals come from rollup tables. 0 keeps the entire
+	// history in memory (the old behaviour — RAM then grows without bound
+	// unless RetentionDays is set). Absent = default.
+	MemoryWindowDays *int `json:"memoryWindowDays"`
 	// NodeRetentionDays purges nodes/observers whose last_seen is older than this
 	// many days from the SQLite registry (and the in-memory store, on the next
 	// periodic metadata refresh). 0 (default) keeps every node/observer ever
@@ -141,4 +149,29 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	return &cfg, nil
+}
+
+// DefaultMemoryWindowDays and MinMemoryWindowDays bound MemoryWindowDays; the
+// minimum matches the longest analytics window (7 days), which must be served
+// entirely from memory.
+const (
+	DefaultMemoryWindowDays = 7
+	MinMemoryWindowDays     = 7
+)
+
+// MemoryWindow resolves MemoryWindowDays to the in-memory history duration:
+// 0 means unlimited. It never exceeds RetentionDays (nothing older exists).
+func (c *Config) MemoryWindow() time.Duration {
+	days := DefaultMemoryWindowDays
+	if c.MemoryWindowDays != nil {
+		days = *c.MemoryWindowDays
+	}
+	if days <= 0 {
+		return 0
+	}
+	days = max(days, MinMemoryWindowDays)
+	if c.RetentionDays > 0 && c.RetentionDays <= days {
+		return 0 // the whole retained history fits the window: keep it all
+	}
+	return time.Duration(days) * 24 * time.Hour
 }

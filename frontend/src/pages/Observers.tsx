@@ -43,6 +43,7 @@ interface Analytics {
   timeline: Array<{ hour: string; label: string; count: number }>
   snr: number[]
   snrSummary: { avg: number; min: number; max: number }
+  snrHistogram?: Array<{ label: string; count: number }> | undefined
   packetTypes: Record<string, number>
 }
 
@@ -121,7 +122,11 @@ export default function Observers() {
   const changeDays = (d: number) => { setDays(d); if (selected) loadA(selected.id, d) }
   const isActive = (o: Observer) => Date.now() - new Date(o.lastSeen).getTime() < 5 * 60e3
 
-  const snrBuckets  = analytics?.snr?.length ? bucketize(analytics.snr, -25, 15, 10) : []
+  // Server-side histogram (same 4 dB bins); long windows are served from
+  // rollups that carry only the histogram, not the raw values.
+  const snrBuckets  = analytics?.snrHistogram?.some(b => b.count > 0)
+    ? analytics.snrHistogram
+    : analytics?.snr?.length ? bucketize(analytics.snr, -25, 15, 10) : []
   const typePie     = analytics?.packetTypes ? Object.entries(analytics.packetTypes).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value })) : []
   const labelStep   = days <= 1 ? 4 : days <= 3 ? 12 : 24
   const chartLine   = analytics?.timeline ?? []

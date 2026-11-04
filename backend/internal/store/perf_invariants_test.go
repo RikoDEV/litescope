@@ -470,3 +470,64 @@ func TestRFScatterIsPairedAndBounded(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowWatermarksAndBoundary: with a memory window the store starts from
+// the DB's max ids (not the window's), polls only newer rows, drops
+// observations of transmissions older than the window, and reports a window
+// boundary that stays a contiguous id suffix through Prune.
+func TestWindowWatermarksAndBoundary(t *testing.T) {
+	now := time.Now().UTC()
+	s := New()
+	s.Load([]*db.TxRow{
+		{ID: 50, Hash: "w50", FirstSeen: ts(now, -120)},
+		{ID: 51, Hash: "w51", FirstSeen: ts(now, -60)},
+	}, []*db.ObsRow{{ID: 500, TxID: 50, ObserverID: "o", Timestamp: ts(now, -120)}}, nil, nil)
+	if got := s.WindowStartTxID(); got != 50 {
+		t.Fatalf("window start = %d, want 50", got)
+	}
+	s.RaiseWatermarks(60, 700) // DB holds newer ids than the window rows
+	if tx, obs := s.LastIDs(); tx != 60 || obs != 700 {
+		t.Fatalf("watermarks = %d/%d", tx, obs)
+	}
+	// An observation of an old transmission (id 10, below the window) is
+	// dropped without blocking later ones; a new tx/obs pair is linked.
+	s.AddTxBatch([]*db.TxRow{{ID: 61, Hash: "w61", FirstSeen: ts(now, 0)}},
+		[]*db.ObsRow{{ID: 701, TxID: 10, ObserverID: "o", Timestamp: ts(now, 0)}, {ID: 702, TxID: 61, ObserverID: "o", Timestamp: ts(now, 0)}})
+	if tx, obs := s.LastIDs(); tx != 61 || obs != 702 {
+		t.Fatalf("after poll watermarks = %d/%d", tx, obs)
+	}
+	if p := s.PacketByHash("w61"); p == nil || len(p.Observations) != 1 {
+		t.Fatalf("new packet not linked")
+	}
+	s.Prune(now.Add(-90 * time.Minute).UnixMilli())
+	if got := s.WindowStartTxID(); got != 51 {
+		t.Fatalf("window start after prune = %d, want 51", got)
+	}
+	empty := New()
+	empty.RaiseWatermarks(99, 5)
+	if got := empty.WindowStartTxID(); got != 100 {
+		t.Fatalf("empty store window start = %d, want 100", got)
+	}
+}
+
+func TestChannelMessagesPageReportsExhaustion(t *testing.T) {
+	now := time.Now().UTC()
+	var txs []*db.TxRow
+	for i := 1; i <= 5; i++ {
+		txs = append(txs, &db.TxRow{ID: int64(i), Hash: fmt.Sprintf("c%d", i), FirstSeen: ts(now, i), PayloadType: 5, ChannelHash: "ab", DecodedJSON: `{"type":"GRP_TXT"}`})
+	}
+	s := New()
+	s.Load(txs, nil, nil, nil)
+	out, exhausted, n := s.ChannelMessagesPage("ab", 3, 0, AnalyticsFilter{})
+	if len(out) != 3 || exhausted {
+		t.Fatalf("first page: %d exhausted=%v", len(out), exhausted)
+	}
+	out, exhausted, n = s.ChannelMessagesPage("ab", 3, 3, AnalyticsFilter{})
+	if len(out) != 2 || !exhausted || n != 5 {
+		t.Fatalf("second page: %d exhausted=%v matches=%d", len(out), exhausted, n)
+	}
+	_, exhausted, n = s.ChannelMessagesPage("ab", 3, 9, AnalyticsFilter{})
+	if !exhausted || n != 5 {
+		t.Fatalf("past the end: exhausted=%v matches=%d (archive offset = 9-%d)", exhausted, n, n)
+	}
+}
