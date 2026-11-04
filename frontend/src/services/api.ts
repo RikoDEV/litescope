@@ -39,6 +39,28 @@ function cachedNodes(): Promise<NodesResponse> {
   return promise
 }
 
+/** Optional, config-gated backend features (GET /api/features). */
+export interface Features {
+  /** Wardrive coverage map layer (config wardrive.enabled). */
+  coverage: boolean
+}
+
+// Feature flags only change on a server restart: fetch once per page load.
+// A failed request (e.g. an older backend without the endpoint) resolves to
+// everything disabled and isn't cached, so the next caller retries.
+let featuresCache: Promise<Features> | null = null
+
+function cachedFeatures(): Promise<Features> {
+  if (featuresCache) return featuresCache
+  const promise = get<Partial<Features>>('/api/features')
+    .then(f => ({ coverage: f.coverage === true }))
+  featuresCache = promise
+  return promise.catch(() => {
+    if (featuresCache === promise) featuresCache = null
+    return { coverage: false }
+  })
+}
+
 /** Shared analytics filter: time window (hours, 0/undefined = all time) + region. */
 export interface AnalyticsParams {
   hours?: number | undefined
@@ -97,6 +119,8 @@ function packetQuery(limit: number, offset: number, p?: PacketParams): string {
 export const api = {
   packets: (limit = 50, offset = 0, params?: PacketParams) =>
     get<{ total: number; packets: Packet[] }>(`/api/packets?${packetQuery(limit, offset, params)}`),
+
+  features: () => cachedFeatures(),
 
   packet: (hash: string) =>
     get<PacketDetail>(`/api/packets/${encodeURIComponent(hash)}`),

@@ -34,6 +34,7 @@ import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { CoverageCell, CoverageResult, DirectLink, MapHeatPoint, Node, NodeOverview, Packet, RFStats, ScopeRegion } from '../types'
 import NodeDetailPanel from '../components/NodeDetailPanel'
+import { useFeatures } from '../hooks/useFeatures'
 import CoverageSetupDialog, { hasSeenCoverageGuide, markCoverageGuideSeen } from '../components/CoverageSetupDialog'
 import RegionFilter from '../components/RegionFilter'
 import { hasValidLocation } from '../utils/geo'
@@ -173,7 +174,12 @@ export default function MapView() {
   const [byteSizeFilter, setByteSizeFilter] = useState<'all' | '1' | '2' | '3'>('all')
   const [showScopeRegions, setShowScopeRegions] = useState(false)
   const [showHeatMap, setShowHeatMap] = useState(false)
-  const [showCoverage, setShowCoverage] = useState(() => searchParams.get('coverage') != null)
+  // The coverage layer exists only when the backend runs the wardrive feature;
+  // while off (or until /api/features answers) a deep link or saved toggle is
+  // remembered but nothing is fetched or shown.
+  const { coverage: coverageEnabled } = useFeatures()
+  const [coverageWanted, setCoverageWanted] = useState(() => searchParams.get('coverage') != null)
+  const showCoverage = coverageWanted && coverageEnabled
   const [coverage, setCoverage] = useState<CoverageResult | null>(null)
   const [coverageRepeater, setCoverageRepeater] = useState(() => searchParams.get('coverage') ?? '')
   const [coverageUnverified, setCoverageUnverified] = useState(false)
@@ -411,7 +417,7 @@ export default function MapView() {
   useEffect(() => {
     const cov = searchParams.get('coverage')
     if (cov == null) return
-    setShowCoverage(true)
+    setCoverageWanted(true)
     setCoverageRepeater(cov)
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('coverage'); return next }, { replace: true })
   }, [searchParams, setSearchParams])
@@ -1165,11 +1171,12 @@ export default function MapView() {
                   <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{heatPoints.length}</Typography>
                 )}
               </Box>
+              {coverageEnabled && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.4 }}>
                 <Checkbox
                   size="small"
                   checked={showCoverage}
-                  onChange={e => setShowCoverage(e.target.checked)}
+                  onChange={e => setCoverageWanted(e.target.checked)}
                   sx={{ p: 0.25, color: '#22c55e', '&.Mui-checked': { color: '#22c55e' } }}
                 />
                 <LayersIcon sx={{ fontSize: 14, color: '#22c55e' }} />
@@ -1184,6 +1191,7 @@ export default function MapView() {
                   <Typography variant="caption" sx={{ color: md3.outline, fontSize: 10 }}>{coverage.cells.length}</Typography>
                 )}
               </Box>
+              )}
               {showCoverage && (
                 <Box sx={{ pl: 3, pr: 1, mb: 0.6, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   {coverage && coverage.samples === 0 && (

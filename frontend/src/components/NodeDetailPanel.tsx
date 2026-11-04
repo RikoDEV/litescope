@@ -23,6 +23,7 @@ import { isNodeActive as isActive } from '../utils/nodes'
 import { roleColor as roleColorFn } from '../utils/roles'
 import { api } from '../services/api'
 import { useMiniMap } from '../hooks/useMiniMap'
+import { useFeatures } from '../hooks/useFeatures'
 
 const CLOCK_SEVERITY_COLOR: Record<ClockHealthEntry['severity'], string> = {
   ok: '#22c55e', warning: '#f59e0b', critical: '#f97316', absurd: '#dc2626',
@@ -80,6 +81,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
   const { t } = useTranslation()
   const dateLocale = useDateLocale()
   const navigate = useNavigate()
+  const features = useFeatures()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   const roleColor = (role: string) => roleColorFn(role, md3)
@@ -189,7 +191,7 @@ export default function NodeDetailPanel({ selected, overview, rf, onClose, paper
           <NodeMiniMap lat={selected.lat} lon={selected.lon} color={roleColor(selected.role)}
             onClick={() => navigate(`/map?node=${encodeURIComponent(selected.pubKey)}`)} />
         )}
-        {(selected.role === 'repeater' || selected.role === 'room') && (
+        {features.coverage && (selected.role === 'repeater' || selected.role === 'room') && (
           <Box sx={{ mb: 2, mt: -1 }}>
             <Typography variant="caption" component="button" type="button"
               onClick={() => navigate(`/map?coverage=${encodeURIComponent(selected.pubKey)}`)}

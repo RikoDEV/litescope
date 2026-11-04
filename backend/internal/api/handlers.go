@@ -84,6 +84,7 @@ func (s *Server) Router() *mux.Router {
 	api.HandleFunc("/analytics/clock-health", s.getAnalyticsClockHealth).Methods("GET", "OPTIONS")
 	api.HandleFunc("/observers/{id}/analytics", s.getObserverAnalytics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/decode", s.decodePacket).Methods("POST", "OPTIONS")
+	api.HandleFunc("/features", s.getFeatures).Methods("GET", "OPTIONS")
 	if s.WardriveProxy != nil {
 		api.Handle("/wardrive", s.WardriveProxy).Methods("POST", "OPTIONS")
 	}
@@ -657,6 +658,12 @@ func (s *Server) getAnalyticsCoverage(w http.ResponseWriter, r *http.Request) {
 		res.Enabled = s.WardriveEnabled
 		return res
 	})
+}
+
+// getFeatures reports which optional, config-gated features are enabled, so the
+// UI can hide controls for features this instance doesn't run.
+func (s *Server) getFeatures(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]bool{"coverage": s.WardriveEnabled})
 }
 
 func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request) {
