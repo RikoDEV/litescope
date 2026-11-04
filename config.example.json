@@ -20,6 +20,8 @@
   "retentionDays": 0,
   "nodeRetentionDays": 0,
   "disableLocationRepair": false,
+  "analyticsCacheTTLSeconds": 30,
+  "debugListen": "",
   "wardrive": {
     "enabled": false,
     "sharedKey": "",

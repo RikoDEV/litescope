@@ -1,14 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThemeModeProvider } from './ThemeModeProvider'
-import './i18n'
-import i18n from './i18n'
+import i18n, { i18nReady } from './i18n'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { getEnv, waitForEnv } from './env'
 
 // Keep <html lang> in sync with the active i18n language
-const syncLang = (lng: string) => { document.documentElement.lang = lng.split('-')[0] ?? 'en' }
+const syncLang = (lng: string | undefined) => { document.documentElement.lang = lng?.split('-')[0] || 'en' }
 syncLang(i18n.language)
 i18n.on('languageChanged', syncLang)
 
@@ -27,7 +26,10 @@ const loadUmami = () => {
 
 void waitForEnv(() => Boolean(getEnv('VITE_UMAMI_URL') && getEnv('VITE_UMAMI_WEBSITE_ID'))).then(loadUmami)
 
-createRoot(document.getElementById('root')!).render(
+// Render once the active language is loaded (English is bundled, so this only
+// waits on a network fetch for other languages). A failed locale fetch still
+// renders — in the English fallback — rather than leaving a blank page.
+const render = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary level="app">
       <ThemeModeProvider>
@@ -36,3 +38,4 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+i18nReady.then(render, render)

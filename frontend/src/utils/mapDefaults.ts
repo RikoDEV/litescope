@@ -15,3 +15,9 @@ export const MAP_POSITION_CONFIGURED = getEnv('VITE_MAP_LAT') !== '' || getEnv('
 export const DEFAULT_MAP_LAT  = envFloat('VITE_MAP_LAT', 20)
 export const DEFAULT_MAP_LON  = envFloat('VITE_MAP_LON', 0)
 export const DEFAULT_MAP_ZOOM = envFloat('VITE_MAP_ZOOM', 2)
+
+// Background colours of the OpenFreeMap base styles (their `background` layer:
+// styles/dark and styles/positron, see utils/mapTiles). Map containers use them
+// before the vector style paints, so loading doesn't flash Leaflet's #ddd.
+export const MAP_BG_DARK  = 'rgb(12, 12, 12)'
+export const MAP_BG_LIGHT = 'rgb(242, 243, 240)'

@@ -544,13 +544,38 @@ func (d *DB) WriteBatch(items []*WriteItem) error {
 	return nil
 }
 
-// LoadAll loads all rows for server startup.
+// ObservationRawHex returns the per-observation raw packet hex of one
+// transmission, keyed by observation id. LoadAll/LoadSince deliberately don't
+// load this column (ObsRow.RawHex is left empty): it is the bulk of observation
+// memory and only the packet-detail view needs it.
+func (d *DB) ObservationRawHex(txID int64) (map[int64]string, error) {
+	rows, err := d.db.Query(`SELECT id, COALESCE(raw_hex,'') FROM observations WHERE tx_id = ?`, txID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[int64]string)
+	for rows.Next() {
+		var id int64
+		var hex string
+		if err := rows.Scan(&id, &hex); err != nil {
+			return nil, err
+		}
+		if hex != "" {
+			out[id] = hex
+		}
+	}
+	return out, rows.Err()
+}
+
+// LoadAll loads all rows for server startup. Observation raw_hex is not loaded
+// (see ObservationRawHex).
 func (d *DB) LoadAll() ([]*TxRow, []*ObsRow, []*NodeRow, []*ObserverRow, error) {
 	txs, err := d.loadTxs(`SELECT id, raw_hex, hash, first_seen, route_type, payload_type, decoded_json, observation_count, COALESCE(channel_hash,'') FROM transmissions ORDER BY id ASC`)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	obss, err := d.loadObs(`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, COALESCE(raw_hex,'') FROM observations ORDER BY id ASC`)
+	obss, err := d.loadObs(`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, '' FROM observations ORDER BY id ASC`)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -575,7 +600,7 @@ func (d *DB) LoadSince(afterTxID, afterObsID int64) ([]*TxRow, []*ObsRow, error)
 		return nil, nil, err
 	}
 	obss, err := d.loadObs(
-		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, COALESCE(raw_hex,'') FROM observations WHERE id > ? ORDER BY id ASC`,
+		`SELECT id, tx_id, observer_id, COALESCE(observer_name,''), COALESCE(observer_iata,''), rssi, snr, score, COALESCE(direction,''), COALESCE(path_json,'[]'), COALESCE(flood_scope,''), timestamp, '' FROM observations WHERE id > ? ORDER BY id ASC`,
 		afterObsID,
 	)
 	if err != nil {
@@ -716,20 +741,39 @@ func (d *DB) UpdateDecodedJSON(id int64, decodedJSON string) error {
 // PruneOlderThan deletes transmissions (and their observations) first seen
 // strictly before cutoff (RFC3339). Returns the number of transmissions removed.
 // Nodes/observers are kept — their counters are lifetime cumulative totals.
+//
+// It deletes in batches of pruneBatchSize transmissions, each in its own short
+// transaction: SQLite has a single writer, so one huge DELETE (e.g. the first
+// prune after enabling retention on a large history) would block every ingest
+// write for its whole duration. Between batches the ingestor's writes proceed.
 func (d *DB) PruneOlderThan(cutoff string) (int64, error) {
+	var total int64
+	for {
+		n, err := d.pruneBatch(cutoff, pruneBatchSize)
+		total += n
+		if err != nil || n < int64(pruneBatchSize) {
+			return total, err
+		}
+	}
+}
+
+// pruneBatchSize is a var so tests can exercise multi-batch pruning.
+var pruneBatchSize = 5000
+
+func (d *DB) pruneBatch(cutoff string, limit int) (int64, error) {
 	dbtx, err := d.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
 	defer dbtx.Rollback() //nolint:errcheck
 
-	if _, err := dbtx.Exec(
-		`DELETE FROM observations WHERE tx_id IN (SELECT id FROM transmissions WHERE first_seen < ?)`,
-		cutoff,
-	); err != nil {
+	// Both statements select the same id-ordered batch: the first only touches
+	// observations, so the transmissions subquery is unchanged for the second.
+	const batch = `SELECT id FROM transmissions WHERE first_seen < ? ORDER BY id LIMIT ?`
+	if _, err := dbtx.Exec(`DELETE FROM observations WHERE tx_id IN (`+batch+`)`, cutoff, limit); err != nil {
 		return 0, fmt.Errorf("prune obs: %w", err)
 	}
-	res, err := dbtx.Exec(`DELETE FROM transmissions WHERE first_seen < ?`, cutoff)
+	res, err := dbtx.Exec(`DELETE FROM transmissions WHERE id IN (`+batch+`)`, cutoff, limit)
 	if err != nil {
 		return 0, fmt.Errorf("prune tx: %w", err)
 	}

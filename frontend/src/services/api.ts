@@ -3,10 +3,40 @@ import { getEnv } from '../env'
 
 const BASE = getEnv('VITE_API_URL')
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = signal ? await fetch(`${BASE}${path}`, { signal }) : await fetch(`${BASE}${path}`)
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json() as Promise<T>
+}
+
+type NodesResponse = { total: number; counts: Record<string, number>; nodes: Node[] }
+
+type RFSummary = { avg: number; min: number; max: number }
+export interface RFHistogramStats {
+  totalObservations: number
+  snrSummary: RFSummary
+  rssiSummary: RFSummary
+  snrHistogram?: Array<{ label: string; count: number }> | undefined
+  rssiHistogram?: Array<{ label: string; count: number }> | undefined
+  scatter?: Array<{ snr: number; rssi: number }> | undefined
+}
+
+// The unfiltered node list is wanted by many views at once (map, live map,
+// channels, node page, spotlight search, packet detail — which remounts on
+// every selection). Share one response for NODES_TTL_MS (the backend refreshes
+// node metadata every 30 s) and dedupe concurrent requests, instead of
+// downloading the full list again on each mount. Callers must treat it as
+// read-only.
+const NODES_TTL_MS = 30_000
+let nodesCache: { at: number; promise: Promise<NodesResponse> } | null = null
+
+function cachedNodes(): Promise<NodesResponse> {
+  const now = Date.now()
+  if (nodesCache && now - nodesCache.at < NODES_TTL_MS) return nodesCache.promise
+  const promise = get<NodesResponse>('/api/nodes')
+  nodesCache = { at: now, promise }
+  promise.catch(() => { if (nodesCache?.promise === promise) nodesCache = null }) // don't cache failures
+  return promise
 }
 
 /** Shared analytics filter: time window (hours, 0/undefined = all time) + region. */
@@ -15,6 +45,14 @@ export interface AnalyticsParams {
   regions?: string[] | undefined   // observer IATA codes (packet/observation filtering)
   countries?: string[] | undefined // ISO-A2 codes (geographic node filtering)
   lock?: boolean | undefined
+  /** Aborts the request (e.g. when filters change before it completes). */
+  signal?: AbortSignal | undefined
+}
+
+/** Rejection handler for aborted requests: ignore aborts, surface real errors. */
+export function ignoreAbort(err: unknown): void {
+  if ((err as { name?: string } | null)?.name === 'AbortError') return
+  console.error(err)
 }
 
 export interface PacketParams {
@@ -68,13 +106,14 @@ export const api = {
     if (opts?.status)    p.set('status',    opts.status)
     if (opts?.lastHeard) p.set('lastHeard', opts.lastHeard)
     const q = p.toString()
-    return get<{ total: number; counts: Record<string, number>; nodes: Node[] }>(`/api/nodes${q ? '?' + q : ''}`)
+    if (!q) return cachedNodes()
+    return get<NodesResponse>(`/api/nodes?${q}`)
   },
 
   iatas: () => get<string[]>('/api/iatas'),
 
   channelsFiltered: (p?: AnalyticsParams) =>
-    get<Channel[]>(`/api/channels${aq(p)}`),
+    get<Channel[]>(`/api/channels${aq(p)}`, p?.signal),
 
   node: (pubKey: string) =>
     get<Node>(`/api/nodes/${encodeURIComponent(pubKey)}`),
@@ -101,36 +140,39 @@ export const api = {
     get<Channel[]>('/api/channels'),
 
   channelMessages: (hash: string, limit = 100, offset = 0, p?: AnalyticsParams) =>
-    get<Packet[]>(`/api/channels/${encodeURIComponent(hash)}/messages${aq(p, { limit, offset })}`),
+    get<Packet[]>(`/api/channels/${encodeURIComponent(hash)}/messages${aq(p, { limit, offset })}`, p?.signal),
 
   overview: (p?: AnalyticsParams) =>
-    get<OverviewStats>(`/api/analytics/overview${aq(p)}`),
+    get<OverviewStats>(`/api/analytics/overview${aq(p)}`, p?.signal),
 
   packetsByType: (p?: AnalyticsParams) =>
-    get<Record<string, number>>(`/api/analytics/packets-by-type${aq(p)}`),
+    get<Record<string, number>>(`/api/analytics/packets-by-type${aq(p)}`, p?.signal),
 
+  // Aggregates + server-side SNR/RSSI histograms and a paired, sampled scatter
+  // (histogram=1) — not the raw per-observation arrays, which grow to
+  // megabytes of JSON with history.
   analyticsRF: (p?: AnalyticsParams) =>
-    get<{ rssi: number[]; snr: number[]; totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p)}`),
+    get<RFHistogramStats>(`/api/analytics/rf${aq(p, { histogram: 1 })}`, p?.signal),
 
   // Aggregates only — the raw rssi/snr arrays grow with history (hundreds of
   // KB); use this wherever the histograms aren't rendered.
   analyticsRFSummary: (p?: AnalyticsParams) =>
-    get<{ totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p, { summary: 1 })}`),
+    get<{ totalObservations: number; snrSummary: { avg: number; min: number; max: number }; rssiSummary: { avg: number; min: number; max: number } }>(`/api/analytics/rf${aq(p, { summary: 1 })}`, p?.signal),
 
   analyticsActivity: (hours = 24, p?: AnalyticsParams) =>
     get<{
       buckets: Array<{ hour: string; label: string; count: number; activeNodes: number; avgFanout: number; payloads: Record<string, number> }>
       payloadTypes: string[]
-    }>(`/api/analytics/activity${aq(p, { hours })}`),
+    }>(`/api/analytics/activity${aq(p, { hours })}`, p?.signal),
 
   analyticsNodesTop: (limit = 20, sort: 'adverts' | 'retransmits' = 'adverts', p?: AnalyticsParams) =>
-    get<import('../types').Node[]>(`/api/analytics/nodes-top${aq(p, { limit, sort })}`),
+    get<import('../types').Node[]>(`/api/analytics/nodes-top${aq(p, { limit, sort })}`, p?.signal),
 
   analyticsObserversTop: (limit = 20, p?: AnalyticsParams) =>
-    get<import('../types').Observer[]>(`/api/analytics/observers-top${aq(p, { limit })}`),
+    get<import('../types').Observer[]>(`/api/analytics/observers-top${aq(p, { limit })}`, p?.signal),
 
   analyticsSnrByType: (p?: AnalyticsParams) =>
-    get<Record<string, { avg: number; count: number }>>(`/api/analytics/snr-by-type${aq(p)}`),
+    get<Record<string, { avg: number; count: number }>>(`/api/analytics/snr-by-type${aq(p)}`, p?.signal),
 
   analyticsDistance: (p?: AnalyticsParams) =>
     get<{
@@ -151,7 +193,7 @@ export const api = {
         distribution: Array<{ label: string; count: number }>
         topPairs: Array<{ nodeAName: string; nodeAPubKey: string; nodeBName: string; nodeBPubKey: string; distKm: number }>
       }
-    }>(`/api/analytics/distance${aq(p)}`),
+    }>(`/api/analytics/distance${aq(p)}`, p?.signal),
 
   analyticsScope: (p?: AnalyticsParams) =>
     get<{
@@ -160,24 +202,24 @@ export const api = {
       topObservers: Array<{ scope: string; observerId: string; observerName: string; observerIata: string; count: number }>
       activityScopes: string[]
       activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
-    }>(`/api/analytics/scope${aq(p)}`),
+    }>(`/api/analytics/scope${aq(p)}`, p?.signal),
 
   analyticsScopeRegions: (p?: AnalyticsParams) =>
-    get<ScopeRegion[]>(`/api/analytics/scope-regions${aq(p)}`),
+    get<ScopeRegion[]>(`/api/analytics/scope-regions${aq(p)}`, p?.signal),
 
   analyticsMapHeat: (p?: AnalyticsParams) =>
-    get<MapHeatPoint[]>(`/api/analytics/map-heat${aq(p)}`),
+    get<MapHeatPoint[]>(`/api/analytics/map-heat${aq(p)}`, p?.signal),
 
   analyticsCoverage: (p?: CoverageParams) => {
     const extra: Record<string, string> = {}
     if (p?.precision) extra.precision = p.precision
     if (p?.repeater) extra.repeater = p.repeater
     if (p?.unverified) extra.unverified = '1'
-    return get<CoverageResult>(`/api/analytics/coverage${aq(p, extra)}`)
+    return get<CoverageResult>(`/api/analytics/coverage${aq(p, extra)}`, p?.signal)
   },
 
   analyticsDirectLinks: (p?: AnalyticsParams) =>
-    get<DirectLink[]>(`/api/analytics/direct-links${aq(p)}`),
+    get<DirectLink[]>(`/api/analytics/direct-links${aq(p)}`, p?.signal),
 
   analyticsHashes: (p?: AnalyticsParams) =>
     get<{
@@ -210,14 +252,14 @@ export const api = {
           }>
         }>
       }>
-    }>(`/api/analytics/hashes${aq(p)}`),
+    }>(`/api/analytics/hashes${aq(p)}`, p?.signal),
 
   analyticsChannels: (p?: AnalyticsParams) =>
     get<{
       activityChannels: string[]
       activity: Array<{ hour: string; label: string; counts: Record<string, number> }>
       topSenders: Array<{ sender: string; messageCount: number; channels: number }>
-    }>(`/api/analytics/channels${aq(p)}`),
+    }>(`/api/analytics/channels${aq(p)}`, p?.signal),
 
   analyticsClockHealth: (p?: AnalyticsParams) =>
     get<Array<{
@@ -227,7 +269,7 @@ export const api = {
       driftPerDay: number
       lastAdvert: string
       samples: number
-    }>>(`/api/analytics/clock-health${aq(p)}`),
+    }>>(`/api/analytics/clock-health${aq(p)}`, p?.signal),
 
   observerAnalytics: (id: string, days = 7) =>
     get<{ timeline: Array<{ hour: string; label: string; count: number }>; snr: number[]; snrSummary: { avg: number; min: number; max: number }; packetTypes: Record<string, number> }>(`/api/observers/${encodeURIComponent(id)}/analytics?days=${days}`),

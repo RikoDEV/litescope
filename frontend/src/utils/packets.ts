@@ -1,5 +1,6 @@
 // Shared packet/observation helpers. Previously defined inside
 // components/PacketDetailPanel and duplicated in LiveMap.
+import type { Packet, PacketUpdate } from '../types'
 
 /** Parses a path_json string into a hops array, tolerating malformed input. */
 export function parseHops(pathJson: string): string[] {
@@ -33,4 +34,32 @@ export function relativeTime(ts: string): string {
   if (diff < 60) return `${Math.round(diff)}s ago`
   if (diff < 3600) return `${Math.round(diff / 60)}m ago`
   return `${Math.round(diff / 3600)}h ago`
+}
+
+/**
+ * Applies a batch of live `packetUpdate`s (obs/hop counts climbing as a packet
+ * propagates) to a packet list. Returns the same array when nothing matched,
+ * so React can bail out of the re-render. One id → index map per batch instead
+ * of a findIndex + full array copy per update.
+ */
+export function applyPacketUpdates<T extends Packet>(list: T[], updates: PacketUpdate[]): T[] {
+  if (updates.length === 0 || list.length === 0) return list
+  const index = new Map<number, number>()
+  list.forEach((p, i) => index.set(p.id, i))
+  let out: T[] | null = null
+  for (const u of updates) {
+    const i = index.get(u.id)
+    if (i === undefined) continue
+    out ??= [...list]
+    const existing = out[i]!
+    out[i] = {
+      ...existing, obsCount: u.obsCount, maxHops: u.maxHops,
+      hopSize: u.hopSize ?? existing.hopSize,
+      bestScope: u.bestScope ?? existing.bestScope,
+      bestPath: u.bestPath ?? existing.bestPath,
+      bestObserver: u.bestObserver ?? existing.bestObserver,
+      regions: u.regions ?? existing.regions,
+    }
+  }
+  return out ?? list
 }

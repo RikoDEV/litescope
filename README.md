@@ -145,6 +145,16 @@ All runtime settings live in `config.json` (mounted read-only into the backend c
   // always trust advertised coordinates as-is, even when absent.
   "disableLocationRepair": false,
 
+  // How long (seconds) a computed analytics result counts as fresh while new
+  // packets keep arriving. 0/absent = 30. After that the previous result is
+  // still served instantly while a single background recompute runs.
+  "analyticsCacheTTLSeconds": 30,
+
+  // Optional pprof listener for CPU/heap profiling of the server process, e.g.
+  // "127.0.0.1:6060" → go tool pprof http://127.0.0.1:6060/debug/pprof/profile
+  // Unauthenticated: bind to loopback only. "" (default) disables it.
+  "debugListen": "",
+
   // Wardrive coverage layer (MeshMapper "Custom API"). See "Wardrive coverage" below.
   "wardrive": {
     "enabled": false,             // register POST /api/wardrive

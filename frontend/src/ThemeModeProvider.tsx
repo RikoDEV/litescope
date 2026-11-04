@@ -4,6 +4,7 @@ import CssBaseline from '@mui/material/CssBaseline'
 import GlobalStyles from '@mui/material/GlobalStyles'
 import { makeTheme, ACCENTS, DEFAULT_ACCENT, type ThemeMode, type AccentKey } from './theme'
 import { LS_KEYS } from './utils/storage'
+import { MAP_BG_DARK, MAP_BG_LIGHT } from './utils/mapDefaults'
 
 interface ThemeModeCtx {
   mode: ThemeMode
@@ -65,7 +66,19 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
         <CssBaseline />
         <GlobalStyles
           styles={{
-            '.leaflet-container .leaflet-control-attribution': {
+            // Leaflet paints its container #ddd until the base layer renders,
+            // which flashed light grey on every map in dark mode while the
+            // vector style and tiles loaded. Use the base style's own
+            // background colour (OpenFreeMap dark / positron), so the swap to
+            // loaded tiles is seamless. `html` raises specificity above
+            // leaflet.css, which is injected later with the lazy map chunks.
+            'html .leaflet-container': {
+              background: mode === 'dark' ? MAP_BG_DARK : MAP_BG_LIGHT,
+            },
+            // `html` prefix: same reason as above — leaflet.css sets a white
+            // attribution background with equal specificity and loads later,
+            // which left white-on-white text in dark mode.
+            'html .leaflet-container .leaflet-control-attribution': {
               fontSize: '9px',
               lineHeight: 1.4,
               padding: '0 4px',
@@ -80,7 +93,7 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
                     color: 'rgba(0, 0, 0, 0.55)',
                   }),
             },
-            '.leaflet-container .leaflet-control-attribution a': {
+            'html .leaflet-container .leaflet-control-attribution a': {
               color: mode === 'dark' ? 'rgba(255, 255, 255, 0.65)' : 'rgba(0, 0, 0, 0.7)',
             },
           }}

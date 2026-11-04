@@ -28,8 +28,12 @@ Because there are two processes, **`internal/db` and `internal/store` are duplic
 - `byObserver` (per-observer obs), `byNode` (per-pubkey adverts), `byRelayHop` (hex hash-prefix → packets that relayed through it) + `relayHopLengths`
 
 Concurrency invariants — **respect these when adding fields or indexes**:
-- A `Tx`'s decoded payload (`DecodedPayload`) and each `Obs.Path` (parsed hop list) are computed **once under the write lock** in `txFromRow`/`obsFromRow`, so read-lock holders treat them as immutable. Never `json.Unmarshal` a path or decoded blob in a read path — read the pre-parsed field.
-- Analytics are memoized by `cachedAnalytics`, keyed on an `atomic.Uint64` `version` bumped on every mutation, **plus** a staleness TTL (`analyticsCacheTTL`, default 10s) so heavy full-history/O(N²) scans don't recompute on every request of a busy network. `compute()` runs outside the cache lock.
+- Everything a read path needs per row is computed **once under the write lock** in `txFromRow`/`obsFromRow`/`AddTxBatch`, so read-lock holders treat it as immutable: `DecodedPayload`, `Tx.FirstSeenMs`/`Obs.TimestampMs` (parsed times — never `time.Parse` a row timestamp in a scan), `Obs.Path` plus `Obs.hopKeys` (aligned lowercase interned hex hop keys, `""` for non-hex hops — never `ToLower`/`isHexHop` per hop in a scan), and the cached `Tx.BestObservation()` (`Tx.best`, an atomically swapped immutable value refreshed whenever observations are appended). Never `json.Unmarshal` a path or decoded blob in a read path.
+- `Obs` is deliberately compact (the whole history is in RAM; pointers = GC work): RSSI/SNR/Score are values with `Has*` flags, repeated strings are interned (`Store.internStr`), and per-observation `raw_hex`/`path_json` are **not** held in memory — `LoadAll`/`LoadSince` skip `raw_hex`, the packet-detail endpoint fetches it via `db.ObservationRawHex`, and `Obs.PathJSON()` re-encodes `Path`.
+- Time-windowed scans start at `s.txsSince(sinceMs)` (binary search on `firstSeenPrefixMax`, the running max of `FirstSeenMs`) — exact even though `packets` is only approximately first-seen ordered. Keep `appendPacket`/`rebuildFirstSeenPrefixMax` in sync when changing `packets`.
+- Some per-request lookups are maintained incrementally instead of scanned: `obsIATACount` (IATAs) and `nodeRegionCount` (NodeRegions/NodeRegionsAll) are updated in `Load`/`AddTxBatch` and decremented in `Prune`. `indexByNode`/`indexSrcHash` run exactly once per transmission (when it's added), not per observation.
+- Analytics are memoized by `cachedAnalytics`/`cachedAnalyticsForFilter`, keyed on an `atomic.Uint64` `version` bumped on every mutation, **plus** a freshness TTL (`analyticsCacheTTL`, default 30s, config `analyticsCacheTTLSeconds`). Past the TTL the stale value is served immediately while **one** background refresh runs (stale-while-revalidate); only a cold miss blocks. Computations hold a `computeSem` slot (≈ GOMAXPROCS/2) — a cached lookup made *inside* another computation must use `cachedByVersionNested` or it can deadlock. `compute()` runs outside the cache lock. `nodeVersion` (node-geometry caches: geo distances, coverage repeater index) bumps only on node add/remove or name/role/position changes, not `LastSeen` churn.
+- Nodes are never mutated in place after publication: updates and location repair swap in a new `*Node` (repair is computed under the read lock, applied under the write lock). The API's encoded-response cache (`api/respcache.go`, keyed on `Store.CacheGeneration()`) relies on this.
 - Relayed-packet / retransmit / self-hash logic matches a node by **hex hash-prefix** (a routing hop is a short prefix of a pubkey), so a hop can collide with several nodes — this is inherent, not a bug.
 
 ### Polling invariant (data-integrity critical)
@@ -54,6 +58,7 @@ go build ./...                 # build both binaries
 go vet ./...                   # CI gate
 go test ./...                  # unit tests (store + geo)
 go test ./internal/store/ -run TestPrune -v   # single test
+go test ./internal/store/ -run '^$' -bench . -benchmem -benchtime=3x   # analytics benchmarks (synthetic 200k tx / 1M obs)
 
 # Run locally (point both at the same config; they share the DB)
 go run ./cmd/ingestor -config ../config.json &
@@ -65,7 +70,8 @@ CGO_ENABLED=1 go test -race ./internal/store/
 
 **Modernization:** the backend is kept clean against the Go `modernize` analyzer. After backend changes, run and fix:
 ```bash
-go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix ./...
+go run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -fix ./...
+# note: -fix gofmt-reformats every file it touches; revert whitespace-only changes to keep the manual alignment
 ```
 CI builds with `CGO_ENABLED=0 go build -ldflags="-s -w"`.
 
@@ -88,5 +94,11 @@ docker compose -f docker-compose.full.yml up -d   # prebuilt images
 
 - **Go formatting is intentionally not gofmt-clean** — the codebase uses manual column alignment and one-line `if`/struct bodies. Match the surrounding style; do **not** run `gofmt -w` across files.
 - Frontend reads runtime config via `getEnv()` (`src/env.ts`): `window.__ENV__` (injected by `docker-entrypoint.sh` from env at container start) with fallback to Vite's `import.meta.env`. `VITE_API_URL` empty ⇒ same-origin relative URLs; the WS URL is derived (`http→ws`). Don't read `import.meta.env` directly in app code.
+- **Frontend bundle/runtime rules** (`pnpm run build` fails if the entry chunk exceeds 500 KB — `scripts/check-bundle-size.mjs`; `pnpm run build:analyze` attributes chunk bytes to packages/files):
+  - Translations live in `src/locales/<code>.ts`; only `en` is bundled, the rest load via the lazy backend in `src/i18n.ts` (`main.tsx` awaits `i18nReady` before first render). A new language needs an entry in both `LOADERS` and `LANGUAGES`.
+  - Flags are SVG URLs (`FlagByCC`, `IataFlag` from `utils/iataFlags`); never import `country-flag-icons/react` (it bundles every flag). Keep the IATA table out of the shell — import `iataFlags`, not `iataData`, from shared code.
+  - Only the map pages (MapView, LiveMap) may import Leaflet/`utils/mapTiles` directly; small static maps use `useMiniMap` (lazy `utils/miniMap`).
+  - Live WebSocket consumers use `stream.subscribeBatched` (one commit per burst) and `applyPacketUpdates` for `packetUpdate`s; cap any list that live messages grow.
+  - `api.nodes()` (unfiltered) is a shared 30 s cache — treat the result as read-only. Analytics effects pass `signal` (AbortController) and handle rejections with `ignoreAbort`.
 - Config (`config.json`, see `config.example.json` / README) is loaded by `internal/config`; the `Public` channel key and SHA-256-derived `hashChannels` keys are defaulted in `config.Load`.
-- New analytics endpoints should go through `cachedAnalytics` (cached, no-arg form) only when the filter is inactive (`f.Active()`), and accept the shared `analyticsFilter(r)` otherwise — follow the existing `XxxStats`/`computeXxxStats` split.
+- New analytics endpoints should go through `cachedAnalytics` (cached, no-arg form) only when the filter is inactive (`f.Active()`), and accept the shared `analyticsFilter(r)` otherwise — follow the existing `XxxStats`/`computeXxxStats` split. Scan with `s.txsSince(f.sinceMs)`, and serve the handler through `s.writeCachedJSON` when its output derives only from cached store values.

@@ -21,14 +21,14 @@ import ShowChartIcon from '@mui/icons-material/ShowChart'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import HistoryIcon from '@mui/icons-material/History'
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
-import { AreaChart, Area, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
+import Sparkline from '../components/Sparkline'
 import { api } from '../services/api'
 import { stream } from '../services/stream'
 import type { Node, Observer, OverviewStats, Packet } from '../types'
 import { PAYLOAD_NAMES, PAYLOAD_COLORS, PAYLOAD_ICONS } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { useDateLocale } from '../hooks/useDateLocale'
-import { IataFlag } from '../utils/flags'
+import { IataFlag } from '../utils/iataFlags'
 import { ROLE_GLYPH, roleColor } from '../utils/roles'
 
 const OBSERVER_REFRESH_MS = 30_000
@@ -133,11 +133,14 @@ export default function Home() {
 
   // live packet stream
   useEffect(() => {
-    return stream.subscribe(msg => {
-      if (msg.type !== 'packet') return
-      rateWindow.current.push(Date.now())
-      setRecent(prev => [msg.data, ...prev.slice(0, 5)])
-      setStats(s => s ? { ...s, totalPackets: s.totalPackets + 1 } : s)
+    return stream.subscribeBatched(msgs => {
+      const fresh = msgs.flatMap(m => m.type === 'packet' ? [m.data] : [])
+      if (fresh.length === 0) return
+      const now = Date.now()
+      for (let i = 0; i < fresh.length; i++) rateWindow.current.push(now)
+      fresh.reverse() // arrival order → newest first
+      setRecent(prev => [...fresh, ...prev].slice(0, 6))
+      setStats(s => s ? { ...s, totalPackets: s.totalPackets + fresh.length } : s)
     })
   }, [])
 
@@ -237,22 +240,13 @@ export default function Home() {
                   </Typography>
                 </Box>
               </Box>
-              <Box sx={{ flex: 1, minHeight: 80 }}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={80}>
-                <AreaChart data={activity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="homeActGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={md3.primary} stopOpacity={0.45} />
-                      <stop offset="95%" stopColor={md3.primary} stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <RTooltip
-                    contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, borderRadius: 8, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
-                    labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''}
-                  />
-                  <Area type="monotone" dataKey="count" stroke={md3.primary} strokeWidth={2} fill="url(#homeActGrad)" dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+              {/* Bleed edge-to-edge: cancel CardContent's side padding (16px) and
+                  last-child bottom padding (24px); the Card's overflow:hidden
+                  clips the fill to its rounded corners. */}
+              <Box sx={{ flex: 1, minHeight: 80, position: 'relative', mx: -2, mb: -3 }}>
+              <Sparkline data={activity} color={md3.primary}
+                tooltipBg={md3.surfaceContainerHigh} tooltipBorder={md3.outlineVariant}
+                tooltipText={md3.onSurface} tooltipLabel={md3.onSurfaceVariant} />
               </Box>
             </CardContent>
           </Card>

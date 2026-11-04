@@ -13,7 +13,7 @@
   Cache-Control: public, max-age=86400
 /og-image.svg
   Cache-Control: public, max-age=86400
-/og-image.png
+/og-image.jpg
   Cache-Control: public, max-age=86400
 
 # No caching for the HTML shell (must revalidate so updates deploy instantly)

@@ -22,9 +22,7 @@ import { bucketize } from '../utils/stats'
 import { isNodeActive as isActive } from '../utils/nodes'
 import { roleColor as roleColorFn } from '../utils/roles'
 import { api } from '../services/api'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import { addBaseTileLayer } from '../utils/mapTiles'
+import { useMiniMap } from '../hooks/useMiniMap'
 
 const CLOCK_SEVERITY_COLOR: Record<ClockHealthEntry['severity'], string> = {
   ok: '#22c55e', warning: '#f59e0b', critical: '#f97316', absurd: '#dc2626',
@@ -50,21 +48,7 @@ function NodeMiniMap({ lat, lon, color, onClick }: { lat: number; lon: number; c
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
 
-  useEffect(() => {
-    if (!divRef.current) return
-    const map = L.map(divRef.current, {
-      center: [lat, lon], zoom: 13,
-      zoomControl: false,
-      dragging: false, scrollWheelZoom: false,
-      doubleClickZoom: false, boxZoom: false, keyboard: false,
-    })
-    addBaseTileLayer(map, isDark)
-    // interactive: false — a clickable marker stops propagation on click, which
-    // would swallow it before it reaches this container's own onClick (navigate
-    // to the full map) since the marker sits at the visual center of the card.
-    L.circleMarker([lat, lon], { radius: 7, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2.5, interactive: false }).addTo(map)
-    return () => { map.remove() }
-  }, [lat, lon, color, isDark])
+  useMiniMap(divRef, { lat, lon, color, isDark, radius: 7 })
 
   return (
     <div style={{ position: 'relative', height: 140, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>

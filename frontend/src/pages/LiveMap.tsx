@@ -66,6 +66,59 @@ function matchHop(hopHex: string, nodes: Node[]): Node | undefined {
   return nodes.find(n => hasValidLocation(n.lat, n.lon) && n.pubKey.toUpperCase().startsWith(h))
 }
 
+// Parsed firstSeen per packet, so the timeline (re-binned whenever a packet
+// arrives) doesn't re-parse ~2000 date strings each time.
+const packetTimes = new WeakMap<Packet, number>()
+function packetTime(p: Packet): number {
+  let t = packetTimes.get(p)
+  if (t === undefined) { t = new Date(p.firstSeen).getTime(); packetTimes.set(p, t) }
+  return t
+}
+
+// Prefix lengths (hex chars) indexed for O(1) lookups: routing hops are 1–4
+// bytes; other lengths (and full pubkeys) fall back to a scan / exact map.
+const INDEXED_PREFIX_LENS = [2, 4, 6, 8]
+
+/**
+ * Node lookups for trace building, rebuilt only when the node list changes.
+ * Every live packet resolves its sender, observer and each hop; doing that by
+ * scanning all nodes (with an upper-casing allocation per node per lookup, and
+ * matchHop twice per hop) cost O(nodes) per hop per packet. Results are
+ * identical to the scans: the first matching node in list order.
+ */
+function buildNodeIndex(nodes: Node[]) {
+  const anyByPrefix = new Map<string, Node>()
+  const locatedByPrefix = new Map<string, Node>()
+  const byFullKey = new Map<string, Node>()
+  for (const n of nodes) {
+    const up = n.pubKey.toUpperCase()
+    if (!byFullKey.has(up)) byFullKey.set(up, n)
+    const located = hasValidLocation(n.lat, n.lon)
+    for (const l of INDEXED_PREFIX_LENS) {
+      if (up.length < l) continue
+      const p = up.slice(0, l)
+      if (!anyByPrefix.has(p)) anyByPrefix.set(p, n)
+      if (located && !locatedByPrefix.has(p)) locatedByPrefix.set(p, n)
+    }
+  }
+  const indexed = (len: number) => INDEXED_PREFIX_LENS.includes(len)
+  return {
+    /** Case-insensitive node lookup by full pubKey or prefix. */
+    find(id: string): Node | undefined {
+      const up = id.toUpperCase()
+      if (indexed(up.length)) return anyByPrefix.get(up)
+      return byFullKey.get(up) ?? nodes.find(n => n.pubKey.toUpperCase().startsWith(up))
+    },
+    /** matchHop over the indexed list. */
+    hop(hopHex: string): Node | undefined {
+      const h = hopHex.toUpperCase()
+      if (h.length < 2) return undefined
+      if (indexed(h.length)) return locatedByPrefix.get(h)
+      return matchHop(h, nodes)
+    },
+  }
+}
+
 /** Append an 8-bit alpha suffix to a #rrggbb hex color string. */
 function hexAlpha(hex: string, a: number): string {
   return hex + Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0')
@@ -132,6 +185,11 @@ export default function LiveMap() {
   const rafId      = useRef<number>(0)
   const traces     = useRef<ActiveTrace[]>([])
   const nodesRef   = useRef<Node[]>([])  // always-current copy for rAF closure
+  const nodeIndexRef = useRef(buildNodeIndex([]))  // prefix index over nodesRef
+  // Restarts the trace animation loop (which stops itself while no traces are alive).
+  const kickAnimation = useRef<() => void>(() => {})
+  // Coalesces timeline redraws (one per frame, however many packets arrived).
+  const timelinePending = useRef(false)
 
   // VCR refs
   const vcrBuffer      = useRef<Packet[]>([])
@@ -155,7 +213,7 @@ export default function LiveMap() {
   const [showLegend, setShowLegend] = useState(() => localStorage.getItem('livemap-legend') !== 'false')
 
   // Keep nodesRef in sync
-  useEffect(() => { nodesRef.current = nodes }, [nodes])
+  useEffect(() => { nodesRef.current = nodes; nodeIndexRef.current = buildNodeIndex(nodes) }, [nodes])
 
   // ── Map init ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -192,16 +250,32 @@ export default function LiveMap() {
   }, [theme.palette.mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Node markers ────────────────────────────────────────────────────────────
+  // Markers are diffed by pubKey: each located advert updates one node, and
+  // rebuilding every marker (tooltip, divIcon, listeners) for it — as a
+  // clearLayers() + full redraw did — stalled the map on busy networks. A
+  // marker is rebuilt only when what it renders (position, role, name,
+  // activity, observer badge, theme) changes.
+  const markerByKey = useRef<{ layer: L.LayerGroup | null; markers: Map<string, { marker: L.Layer; sig: string }> }>({ layer: null, markers: new Map() })
   useEffect(() => {
     const layer = nodesLayer.current; const map = mapRef.current; if (!layer) return
-    layer.clearLayers()
+    const cache = markerByKey.current
+    if (cache.layer !== layer) { cache.layer = layer; cache.markers = new Map(); layer.clearLayers() }
+    const markers = cache.markers
+    const now = Date.now()
+    const stroke = theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff'
+    const seen = new Set<string>()
     const latlngs: L.LatLngExpression[] = []
     nodes.forEach(n => {
       if (!hasValidLocation(n.lat, n.lon)) return
+      seen.add(n.pubKey)
+      latlngs.push([n.lat!, n.lon!])
+      const active = now - new Date(n.lastSeen).getTime() < 24 * 3600e3
+      const sig = `${n.lat},${n.lon}|${n.role}|${n.name}|${active ? 1 : 0}|${n.isObserver ? 1 : 0}|${stroke}`
+      const existing = markers.get(n.pubKey)
+      if (existing?.sig === sig) return
+      if (existing) layer.removeLayer(existing.marker)
       const color = roleColor(n.role, md3)
-      const active = Date.now() - new Date(n.lastSeen).getTime() < 24 * 3600e3
       const tooltipLabel = escapeHtml(n.name || n.pubKey.slice(0, 12)) + (n.isObserver ? ` (${escapeHtml(t('map.observerBadge'))})` : '')
-      const stroke = theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff'
       const marker: L.Layer = n.isObserver
         ? L.marker([n.lat!, n.lon!], {
             icon: L.divIcon({
@@ -215,8 +289,11 @@ export default function LiveMap() {
           }).bindTooltip(tooltipLabel, { permanent: false, direction: 'top', offset: [0, -8] })
       marker.on('click', () => navigate(`/nodes/${encodeURIComponent(n.pubKey)}`))
       layer.addLayer(marker)
-      latlngs.push([n.lat!, n.lon!])
+      markers.set(n.pubKey, { marker, sig })
     })
+    for (const [key, { marker }] of markers) {
+      if (!seen.has(key)) { layer.removeLayer(marker); markers.delete(key) }
+    }
     if (!MAP_POSITION_CONFIGURED && map && latlngs.length > 0 && map.getZoom() === DEFAULT_MAP_ZOOM) {
       map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 12 })
     }
@@ -228,13 +305,9 @@ export default function LiveMap() {
 
     const validLoc = validLatLon
 
-    // Case-insensitive node lookup by full pubKey or prefix
-    const findNode = (id: string) => {
-      const up = id.toUpperCase()
-      return nodesRef.current.find(n =>
-        n.pubKey.toUpperCase() === up || n.pubKey.toUpperCase().startsWith(up)
-      )
-    }
+    // Case-insensitive node lookup by full pubKey or prefix (indexed)
+    const index = nodeIndexRef.current
+    const findNode = (id: string) => index.find(id)
 
     const obsNode = pkt.bestObserver ? findNode(pkt.bestObserver) : undefined
     const obsLoc  = validLoc(obsNode?.lat, obsNode?.lon)
@@ -259,7 +332,8 @@ export default function LiveMap() {
 
     if (!origin) {
       for (const hop of (pkt.bestPath ?? [])) {
-        const loc = validLoc(matchHop(hop, nodesRef.current)?.lat, matchHop(hop, nodesRef.current)?.lon)
+        const n = index.hop(hop)
+        const loc = validLoc(n?.lat, n?.lon)
         if (loc) { origin = loc; break }
       }
     }
@@ -274,7 +348,7 @@ export default function LiveMap() {
     // addPoint deduplication handles the case where origin IS one of the hops
     const points: TracePoint[] = [{ lat: origin[0], lon: origin[1] }]
     ;(pkt.bestPath ?? []).forEach(hop => {
-      const matched = matchHop(hop, nodesRef.current)
+      const matched = index.hop(hop)
       addPoint(matched?.lat, matched?.lon, points)
     })
     addPoint(obsLoc?.[0], obsLoc?.[1], points)
@@ -285,6 +359,7 @@ export default function LiveMap() {
       { id: `${pkt.id}-${Date.now()}`, points, hopCount, color, payloadType: pkt.payloadType, birthTime: Date.now(), lifetime },
       ...traces.current,
     ].slice(0, 80)
+    kickAnimation.current()
     setTotalTraces(c => c + 1)
   }, [])
 
@@ -323,14 +398,21 @@ export default function LiveMap() {
 
   // ── WebSocket ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const unsub = stream.subscribe(msg => {
-      if (msg.type !== 'packet') return
-      vcrBuffer.current.push(msg.data)
-      if (vcrBuffer.current.length > 2000) vcrBuffer.current.shift()
-      drawTimeline()
-      if (vcrMode.current === 'PAUSED') { setMissed(m => m + 1); return }
-      if (vcrMode.current !== 'LIVE') return
-      processPacket(msg.data)
+    // Batched: a burst of packets is processed in one synchronous pass (React
+    // folds the feed/node/trace-count updates into one commit) and the
+    // timeline is redrawn once for the whole batch.
+    const unsub = stream.subscribeBatched(msgs => {
+      let missedNow = 0
+      for (const msg of msgs) {
+        if (msg.type !== 'packet') continue
+        vcrBuffer.current.push(msg.data)
+        if (vcrBuffer.current.length > 2000) vcrBuffer.current.shift()
+        if (vcrMode.current === 'PAUSED') { missedNow++; continue }
+        if (vcrMode.current !== 'LIVE') continue
+        processPacket(msg.data)
+      }
+      if (missedNow > 0) setMissed(m => m + missedNow)
+      scheduleTimeline()
     })
     return unsub
   }, [processPacket]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -504,12 +586,12 @@ export default function LiveMap() {
     ctx.clearRect(0, 0, W, H)
     ctx.fillStyle = md3.surfaceContainerHighest; ctx.fillRect(0, 0, W, H)
     const buf = vcrBuffer.current; if (!buf.length) return
-    const minTs = new Date(buf[0]?.firstSeen ?? 0).getTime()
-    const maxTs = new Date(buf[buf.length - 1]?.firstSeen ?? 0).getTime()
+    const minTs = buf[0] ? packetTime(buf[0]) : 0
+    const maxTs = buf[buf.length - 1] ? packetTime(buf[buf.length - 1]!) : 0
     const range = maxTs - minTs || 1; const BUCKETS = 80
     const counts = new Array(BUCKETS).fill(0)
     for (const p of buf) {
-      const i = Math.min(BUCKETS - 1, Math.floor((new Date(p.firstSeen).getTime() - minTs) / range * BUCKETS))
+      const i = Math.min(BUCKETS - 1, Math.floor((packetTime(p) - minTs) / range * BUCKETS))
       counts[i]++
     }
     const maxC = Math.max(...counts, 1); const bw = W / BUCKETS
@@ -523,6 +605,13 @@ export default function LiveMap() {
     ctx.beginPath(); ctx.moveTo(ph, 0); ctx.lineTo(ph, H); ctx.stroke()
     if (vcrMode.current === 'LIVE') { ctx.fillStyle = '#22c55e'; ctx.fillRect(W - 4, 0, 4, H) }
   }, [md3.primary, md3.surfaceContainerHighest])
+
+  // At most one timeline redraw per frame, however many packets arrived.
+  const scheduleTimeline = useCallback(() => {
+    if (timelinePending.current) return
+    timelinePending.current = true
+    requestAnimationFrame(() => { timelinePending.current = false; drawTimeline() })
+  }, [drawTimeline])
 
   const onTimelineClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = tlCanvas.current; if (!canvas) return
@@ -677,9 +766,18 @@ export default function LiveMap() {
       }
 
       traces.current = alive
+      // Nothing left to animate: this frame cleared the canvas, so stop the
+      // loop instead of repainting an empty canvas 60× a second while the feed
+      // is quiet. createTrace restarts it via kickAnimation.
+      if (alive.length === 0) { cancelAnimationFrame(rafId.current); rafId.current = 0 }
     }
+    kickAnimation.current = () => { if (!rafId.current) rafId.current = requestAnimationFrame(tick) }
     tick()
-    return () => cancelAnimationFrame(rafId.current)
+    return () => {
+      cancelAnimationFrame(rafId.current)
+      rafId.current = 0
+      kickAnimation.current = () => {}
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────────────────────────────────────────────────────────────────────

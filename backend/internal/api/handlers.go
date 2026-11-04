@@ -32,10 +32,17 @@ type Server struct {
 	// WardriveProxy, when set, forwards POST /api/wardrive to the ingestor
 	// (the only DB writer). nil leaves the route unregistered.
 	WardriveProxy http.Handler
+	// ObsRawHex, when set, loads the per-observation raw packet hex (keyed by
+	// observation id) for one transmission. The in-memory store doesn't keep it
+	// (it is the bulk of observation memory); the packet-detail endpoint fetches
+	// it on demand. nil omits rawHex from observation details.
+	ObsRawHex func(txID int64) (map[int64]string, error)
+
+	resp *responseCache
 }
 
 func NewServer(st *store.Store, hub *Hub, channelKeys map[string]string, allowedOrigins []string) *Server {
-	return &Server{Store: st, Hub: hub, ChannelKeys: channelKeys, AllowedOrigins: allowedOrigins}
+	return &Server{Store: st, Hub: hub, ChannelKeys: channelKeys, AllowedOrigins: allowedOrigins, resp: newResponseCache()}
 }
 
 // Router returns a configured mux.Router.
@@ -290,7 +297,14 @@ func (s *Server) getPacket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	writeJSON(w, txDetail(tx))
+	var rawHex map[int64]string
+	if s.ObsRawHex != nil {
+		var err error
+		if rawHex, err = s.ObsRawHex(tx.ID); err != nil {
+			log.Printf("packet %s: load observation raw hex: %v", hash, err)
+		}
+	}
+	writeJSON(w, txDetail(tx, rawHex))
 }
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
@@ -403,7 +417,7 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 	recentPkts := make([]richPacket, 0, 10)
 
 	for _, tx := range packets {
-		if t, err := time.Parse(time.RFC3339, tx.FirstSeen); err == nil && !t.UTC().Before(today) {
+		if tx.FirstSeenMs != 0 && tx.FirstSeenMs >= today.UnixMilli() {
 			packetsToday++
 		}
 
@@ -421,11 +435,11 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 		rp := richPacket{packetSummary: summarizeTx(tx)}
 		for _, obs := range tx.Observations {
 			// best SNR observation for this packet (shown on the row) — all packets
-			if obs.SNR != nil && (rp.BestSnr == nil || *obs.SNR > *rp.BestSnr) {
+			if obs.HasSNR && (rp.BestSnr == nil || obs.SNR > *rp.BestSnr) {
 				rp.BestObserver = obs.ObserverName
 				rp.BestIATA = obs.ObserverIATA
-				rp.BestSnr = obs.SNR
-				rp.BestRssi = obs.RSSI
+				rp.BestSnr = obs.SNRPtr()
+				rp.BestRssi = obs.RSSIPtr()
 			}
 			if !originated {
 				continue
@@ -434,8 +448,8 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 				totalHops += len(obs.Path)
 				hopCount++
 			}
-			if obs.SNR != nil {
-				snrSum += *obs.SNR
+			if obs.HasSNR {
+				snrSum += obs.SNR
 				snrN++
 			}
 			a := byObs[obs.ObserverID]
@@ -444,12 +458,12 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 				byObs[obs.ObserverID] = a
 			}
 			a.count++
-			if obs.SNR != nil {
-				a.snrSum += *obs.SNR
+			if obs.HasSNR {
+				a.snrSum += obs.SNR
 				a.snrN++
 			}
-			if obs.RSSI != nil {
-				a.rssiSum += *obs.RSSI
+			if obs.HasRSSI {
+				a.rssiSum += obs.RSSI
 				a.rssiN++
 			}
 		}
@@ -457,8 +471,8 @@ func (s *Server) getNodeOverview(w http.ResponseWriter, r *http.Request) {
 			o := tx.Observations[0]
 			rp.BestObserver = o.ObserverName
 			rp.BestIATA = o.ObserverIATA
-			rp.BestSnr = o.SNR
-			rp.BestRssi = o.RSSI
+			rp.BestSnr = o.SNRPtr()
+			rp.BestRssi = o.RSSIPtr()
 		}
 		if len(recentPkts) < 10 {
 			recentPkts = append(recentPkts, rp)
@@ -540,11 +554,11 @@ func (s *Server) getObserver(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.Channels(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.Channels(analyticsFilter(r)) })
 }
 
 func (s *Server) getChannelAnalytics(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.ChannelAnalytics(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.ChannelAnalytics(analyticsFilter(r)) })
 }
 
 func (s *Server) getChannelMessages(w http.ResponseWriter, r *http.Request) {
@@ -564,55 +578,69 @@ func (s *Server) getOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPacketsByType(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.PacketsByType(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.PacketsByType(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsRF(w http.ResponseWriter, r *http.Request) {
-	rf := s.Store.GlobalRFStats(analyticsFilter(r))
-	// summary=1 drops the raw per-observation arrays — they grow with history
-	// (easily hundreds of KB) and dashboard callers only need the aggregates.
-	if v := r.URL.Query().Get("summary"); v == "1" || v == "true" {
-		rf.RSSI, rf.SNR = nil, nil // rf is a copy; the cached value keeps its arrays
-	}
-	writeJSON(w, rf)
+	s.writeCachedJSON(w, r, func() any {
+		rf := s.Store.GlobalRFStats(analyticsFilter(r))
+		q := r.URL.Query()
+		flag := func(k string) bool { v := q.Get(k); return v == "1" || v == "true" }
+		// The raw per-observation arrays grow with history (megabytes of JSON).
+		// summary=1 keeps only the aggregates; histogram=1 keeps the aggregates
+		// plus the pre-binned histograms and paired scatter sample the RF
+		// dashboard draws. rf is a copy; the cached value keeps everything.
+		switch {
+		case flag("summary"):
+			rf.RSSI, rf.SNR = nil, nil
+			rf.SNRHistogram, rf.RSSIHistogram, rf.Scatter = nil, nil, nil
+		case flag("histogram"):
+			rf.RSSI, rf.SNR = nil, nil
+		}
+		return rf
+	})
 }
 
 func (s *Server) getAnalyticsActivity(w http.ResponseWriter, r *http.Request) {
 	hours := min(queryInt(r, "hours", 24), store.MaxAnalyticsWindowHours)
-	writeJSON(w, s.Store.ActivityBuckets(hours, analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.ActivityBuckets(hours, analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsNodesTop(w http.ResponseWriter, r *http.Request) {
-	limit := queryInt(r, "limit", 20)
+	limit := min(queryInt(r, "limit", 20), maxPageLimit)
 	sortBy := r.URL.Query().Get("sort") // "" | "adverts" | "retransmits"
-	nodes, retx := s.Store.TopNodes(limit, sortBy, analyticsFilter(r))
-	out := make([]nodeSummary, 0, len(nodes))
-	for _, n := range nodes {
-		ns := summarizeNode(n)
-		ns.RetransmitCount = retx[n.PubKey]
-		out = append(out, ns)
-	}
-	writeJSON(w, out)
+	// Nodes are never mutated in place (updates swap in a new *Node), so the
+	// encoded body is fully determined by the cached TopNodes result.
+	s.writeCachedJSON(w, r, func() any {
+		nodes, retx := s.Store.TopNodes(limit, sortBy, analyticsFilter(r))
+		out := make([]nodeSummary, 0, len(nodes))
+		for _, n := range nodes {
+			ns := summarizeNode(n)
+			ns.RetransmitCount = retx[n.PubKey]
+			out = append(out, ns)
+		}
+		return out
+	})
 }
 
 func (s *Server) getAnalyticsSNRByType(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.SNRByPayloadType(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.SNRByPayloadType(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsHashes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.HashStats(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.HashStats(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsScope(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.ScopeStats(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.ScopeStats(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsScopeRegions(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.ScopeRegions(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.ScopeRegions(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsMapHeat(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.MapHeat(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.MapHeat(analyticsFilter(r)) })
 }
 
 // getAnalyticsCoverage serves the wardrive coverage grid. Besides the shared
@@ -620,35 +648,39 @@ func (s *Server) getAnalyticsMapHeat(w http.ResponseWriter, r *http.Request) {
 // unverified=1 (include MeshMapper DEFER "claimed" squares).
 func (s *Server) getAnalyticsCoverage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	res := s.Store.Coverage(analyticsFilter(r), store.CoverageOpts{
-		Precision:  q.Get("precision"),
-		Repeater:   q.Get("repeater"),
-		Unverified: q.Get("unverified") == "1" || q.Get("unverified") == "true",
+	s.writeCachedJSON(w, r, func() any {
+		res := s.Store.Coverage(analyticsFilter(r), store.CoverageOpts{
+			Precision:  q.Get("precision"),
+			Repeater:   q.Get("repeater"),
+			Unverified: q.Get("unverified") == "1" || q.Get("unverified") == "true",
+		})
+		res.Enabled = s.WardriveEnabled
+		return res
 	})
-	res.Enabled = s.WardriveEnabled
-	writeJSON(w, res)
 }
 
 func (s *Server) getAnalyticsDirectLinks(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.DirectLinks(analyticsFilterWithDefaultHours(r, 24)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.DirectLinks(analyticsFilterWithDefaultHours(r, 24)) })
 }
 
 func (s *Server) getAnalyticsDistance(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.DistanceStats(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.DistanceStats(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsClockHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.ClockHealth(analyticsFilter(r)))
+	s.writeCachedJSON(w, r, func() any { return s.Store.ClockHealth(analyticsFilter(r)) })
 }
 
 func (s *Server) getAnalyticsObserversTop(w http.ResponseWriter, r *http.Request) {
-	limit := queryInt(r, "limit", 20)
-	obs := s.Store.TopObservers(limit, analyticsFilter(r))
-	out := make([]observerSummary, 0, len(obs))
-	for _, o := range obs {
-		out = append(out, summarizeObserver(o))
-	}
-	writeJSON(w, out)
+	limit := min(queryInt(r, "limit", 20), maxPageLimit)
+	s.writeCachedJSON(w, r, func() any {
+		obs := s.Store.TopObservers(limit, analyticsFilter(r))
+		out := make([]observerSummary, 0, len(obs))
+		for _, o := range obs {
+			out = append(out, summarizeObserver(o))
+		}
+		return out
+	})
 }
 
 func (s *Server) getObserverAnalytics(w http.ResponseWriter, r *http.Request) {
@@ -780,7 +812,7 @@ func summarizeTx(tx *store.Tx) packetSummary {
 	}
 }
 
-func txDetail(tx *store.Tx) packetDetail {
+func txDetail(tx *store.Tx, obsRawHex map[int64]string) packetDetail {
 	d := packetDetail{
 		packetSummary: summarizeTx(tx),
 		RawHex:        tx.RawHex,
@@ -788,9 +820,9 @@ func txDetail(tx *store.Tx) packetDetail {
 	for _, o := range tx.Observations {
 		d.Observations = append(d.Observations, obsDetail{
 			ID: o.ID, ObserverID: o.ObserverID, ObserverName: o.ObserverName,
-			ObserverIATA: o.ObserverIATA, RSSI: o.RSSI, SNR: o.SNR,
-			Direction: o.Direction, PathJSON: o.PathJSON, FloodScope: o.FloodScope, Timestamp: o.Timestamp,
-			RawHex: o.RawHex,
+			ObserverIATA: o.ObserverIATA, RSSI: o.RSSIPtr(), SNR: o.SNRPtr(),
+			Direction: o.Direction, PathJSON: o.PathJSON(), FloodScope: o.FloodScope, Timestamp: o.Timestamp,
+			RawHex: obsRawHex[o.ID],
 		})
 	}
 	return d

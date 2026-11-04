@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
-    "build": "tsc && vite build && node scripts/generate-sitemap.mjs",
-    "preview": "vite preview"
+    "build": "tsc && vite build && node scripts/generate-sitemap.mjs && node scripts/check-bundle-size.mjs",
+    "preview": "vite preview",
+    "build:analyze": "vite build --sourcemap --outDir dist-analyze --emptyOutDir && node scripts/analyze-bundle.mjs dist-analyze/assets"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

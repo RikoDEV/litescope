@@ -15,7 +15,7 @@ export default function Seo() {
     const title = page.title || DEFAULT_TITLE
     const description = page.description || DEFAULT_DESCRIPTION
     const canonical = new URL(page.path, window.location.origin).toString()
-    const image = new URL('/og-image.png', window.location.origin).toString()
+    const image = new URL('/og-image.jpg', window.location.origin).toString()
 
     document.title = title
     setMeta('meta[name="description"]', 'content', description)

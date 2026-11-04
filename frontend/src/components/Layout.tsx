@@ -18,6 +18,7 @@ import ErrorBoundary from './ErrorBoundary'
 import Seo from './Seo'
 import SpotlightSearch from './SpotlightSearch'
 import { buildIssueUrl } from '../utils/issueUrl'
+import { prefetchRoute, prefetchHeavyRoutesWhenIdle } from '../utils/prefetch'
 import { SITE_NAME } from '../seo'
 
 import HomeIcon from '@mui/icons-material/Home'
@@ -74,6 +75,8 @@ export default function Layout() {
     setWsStatus(stream.status)
     return stream.onStatus(setWsStatus)
   }, [])
+
+  useEffect(() => { prefetchHeavyRoutesWhenIdle() }, [])
 
   const statusColor =
     wsStatus === 'connected'  ? '#4caf50' :
@@ -207,7 +210,7 @@ export default function Layout() {
         {NAV.map(({ to, key, Icon, exact }) => {
           const active = isActive(to, exact)
           return (
-            <Box key={to} component={NavLink} to={to} sx={{
+            <Box key={to} component={NavLink} to={to} onMouseEnter={() => prefetchRoute(to)} onFocus={() => prefetchRoute(to)} onTouchStart={() => prefetchRoute(to)} sx={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
               textDecoration: 'none', width: '100%', py: 0.5,
               color: active ? md3.primary : md3.onSurfaceVariant,
@@ -353,7 +356,7 @@ export default function Layout() {
           {PRIMARY_NAV.map(({ to, key, Icon, exact }) => {
             const active = isActive(to, exact)
             return (
-              <Box key={to} component={NavLink} to={to} sx={{
+              <Box key={to} component={NavLink} to={to} onMouseEnter={() => prefetchRoute(to)} onFocus={() => prefetchRoute(to)} onTouchStart={() => prefetchRoute(to)} sx={{
                 flex: 1,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: '2px', py: 0.75, textDecoration: 'none',
@@ -423,6 +426,8 @@ export default function Layout() {
                 to={to}
                 selected={active}
                 onClick={() => setMoreAnchor(null)}
+                onMouseEnter={() => prefetchRoute(to)}
+                onFocus={() => prefetchRoute(to)}
                 sx={{
                   gap: 1.5, borderRadius: 2, mx: 0.5, mb: 0.25,
                   color: active ? md3.primary : md3.onSurface,

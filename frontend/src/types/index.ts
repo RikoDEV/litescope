@@ -151,6 +151,7 @@ export interface CoverageParams {
   precision?: 'fine' | 'coarse' | undefined
   repeater?: string | undefined
   unverified?: boolean | undefined
+  signal?: AbortSignal | undefined
 }
 
 export interface DirectLink {
