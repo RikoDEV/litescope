@@ -37,6 +37,14 @@ type Config struct {
 	// implausible. Off (repair enabled) by default; set true to always trust
 	// advertised coordinates as-is, even when absent.
 	DisableLocationRepair bool `json:"disableLocationRepair"`
+	// AnalyticsCacheTTLSeconds is how long a computed analytics result counts as
+	// fresh while new packets keep arriving (default 30). Past it the previous
+	// result is still served while one background recompute runs.
+	AnalyticsCacheTTLSeconds int `json:"analyticsCacheTTLSeconds"`
+	// DebugListen, when set (e.g. "127.0.0.1:6060"), serves net/http/pprof on
+	// that address from the server process for CPU/heap profiling. Off by
+	// default; bind it to loopback — it is unauthenticated.
+	DebugListen string `json:"debugListen"`
 	// Wardrive configures the optional MeshMapper "Custom API" endpoint that
 	// collects GPS-tagged coverage pings for the /map coverage layer.
 	Wardrive Wardrive `json:"wardrive"`

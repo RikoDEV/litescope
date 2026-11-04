@@ -202,9 +202,10 @@ type coverageRepeaterRef struct {
 }
 
 // coverageRepeaterIndex maps every 1–4 byte upper-case hex prefix of each
-// repeater/room pubkey to its candidates. Cached per node version.
+// repeater/room pubkey to its candidates. Cached per node version. Only called
+// from inside computeCoverage (itself a cached computation), hence nested.
 func (s *Store) coverageRepeaterIndex() map[string][]coverageRepeaterRef {
-	return cachedNodeAnalytics(s, "coverageRepeaterIndex", func() map[string][]coverageRepeaterRef {
+	return cachedByVersionNested(s, "coverageRepeaterIndex", s.nodeVersion.Load(), func() map[string][]coverageRepeaterRef {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
 		idx := make(map[string][]coverageRepeaterRef)

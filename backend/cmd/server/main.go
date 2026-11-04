@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
@@ -39,6 +40,13 @@ func main() {
 	}
 	defer database.Close()
 	log.Printf("SQLite opened: %s", cfg.DBPath)
+
+	if cfg.AnalyticsCacheTTLSeconds > 0 {
+		store.SetAnalyticsCacheTTL(time.Duration(cfg.AnalyticsCacheTTLSeconds) * time.Second)
+	}
+	if cfg.DebugListen != "" {
+		startDebugServer(cfg.DebugListen)
+	}
 
 	pruneDatabaseRetention(database, cfg.RetentionDays, "startup")
 	pruneDeadEntities(database, cfg.NodeRetentionDays, "startup")
@@ -74,6 +82,7 @@ func main() {
 	hub := api.NewHub(cfg.AllowedOrigins)
 	srv := api.NewServer(st, hub, cfg.ChannelKeys, cfg.AllowedOrigins)
 	srv.WardriveEnabled = cfg.Wardrive.Enabled
+	srv.ObsRawHex = database.ObservationRawHex
 	if cfg.Wardrive.Enabled {
 		if p, err := wardriveProxy(cfg.Wardrive.IngestorURL); err != nil {
 			log.Printf("wardrive proxy disabled: %v", err)
@@ -298,6 +307,24 @@ func pruneDeadEntities(database *db.DB, nodeRetentionDays int, label string) {
 		log.Printf("%s dead-entity prune: removed %d node(s), %d observer(s) inactive for %d+ day(s) (duration=%s)",
 			label, nodes, observers, nodeRetentionDays, time.Since(start).Round(time.Millisecond))
 	}
+}
+
+// startDebugServer serves net/http/pprof on its own listener (never on the
+// public API mux) for on-demand CPU/heap profiling, e.g.
+// `go tool pprof http://127.0.0.1:6060/debug/pprof/profile?seconds=30`.
+func startDebugServer(addr string) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	go func() {
+		log.Printf("pprof debug server listening on %s", addr)
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			log.Printf("debug server: %v", err)
+		}
+	}()
 }
 
 // wardriveProxy forwards MeshMapper uploads to the ingestor, which owns DB
