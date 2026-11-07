@@ -242,7 +242,7 @@ function OverviewTab({ params, filterKey }: TabProps) {
                 <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
                 <YAxis type="category" dataKey="name" width={90} interval={0} tick={{ fontSize: 11, fill: md3.onSurface }} />
                 <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-                <Bar isAnimationActive={false} dataKey="value" fill={md3.primary} radius={[0, 4, 4, 0]} />
+                <Bar isAnimationActive={false} dataKey="value" name={t('common.packets')} fill={md3.primary} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -314,7 +314,7 @@ function ActivityTab({ params, filterKey }: TabProps) {
             <YAxis tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
             <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ''} />
             <ReferenceLine y={avg} stroke={alpha('#f59e0b', 0.6)} strokeDasharray="4 4" />
-            <Area isAnimationActive={false} type="monotone" dataKey="count" stroke={md3.primary} fill="url(#actGrad)" strokeWidth={2} dot={false} />
+            <Area isAnimationActive={false} type="monotone" dataKey="count" name={t('common.packets')} stroke={md3.primary} fill="url(#actGrad)" strokeWidth={2} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -407,7 +407,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar isAnimationActive={false} dataKey="count" radius={[2, 2, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" name={t('home.observations')} radius={[2, 2, 0, 0]}>
                 {snrB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
               </Bar>
             </BarChart>
@@ -420,7 +420,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} interval={0} />
               <YAxis width={28} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar isAnimationActive={false} dataKey="count" radius={[2, 2, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" name={t('home.observations')} radius={[2, 2, 0, 0]}>
                 {rssiB.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > -80 ? '#22c55e' : parseFloat(b.label) > -100 ? '#f59e0b' : md3.error} />)}
               </Bar>
             </BarChart>
@@ -439,7 +439,7 @@ function RFTab({ params, filterKey }: TabProps) {
               <ReferenceLine x={6} stroke={alpha('#22c55e', 0.4)} strokeDasharray="4 4" />
               <Tooltip
                 contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
-                formatter={(v: unknown, _: unknown, entry: { payload?: { count: number } }) => [`${(v as number).toFixed(2)} dB (${entry.payload?.count ?? 0} obs)`, 'Avg SNR']}
+                formatter={(v: unknown, _: unknown, entry: { payload?: { count: number } }) => [`${(v as number).toFixed(2)} dB (${(entry.payload?.count ?? 0).toLocaleString()} ${t('packets.obs').toLowerCase()})`, t('home.avgSnr')]}
               />
               <Bar isAnimationActive={false} dataKey="avg" radius={[0, 4, 4, 0]}>
                 {snrTypeData.map((d, i) => <Cell key={i} fill={d.avg > 6 ? '#22c55e' : d.avg > 0 ? '#f59e0b' : md3.error} />)}
@@ -509,7 +509,7 @@ function NodesTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: md3.onSurface }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar isAnimationActive={false} dataKey="count" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" name={metricLabel} radius={[0, 4, 4, 0]}>
                 {nodes.map((n, i) => <Cell key={i} fill={roleColor(n.role)} />)}
               </Bar>
             </BarChart>
@@ -521,7 +521,7 @@ function NodesTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} />
               <YAxis type="category" dataKey="name" width={80} interval={0} tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar isAnimationActive={false} dataKey="value" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="value" name={t('home.nodes')} radius={[0, 4, 4, 0]}>
                 {rolePie.map((e, i) => <Cell key={i} fill={roleColor(e.name)} />)}
               </Bar>
             </BarChart>
@@ -580,7 +580,7 @@ function ObserversTab({ params, filterKey }: TabProps) {
             <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
             <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
             <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-            <Bar isAnimationActive={false} dataKey="count" fill={md3.tertiary} radius={[0, 4, 4, 0]} />
+            <Bar isAnimationActive={false} dataKey="count" name={t('common.packets')} fill={md3.tertiary} radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -689,7 +689,7 @@ function ChannelsTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: md3.onSurface }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar isAnimationActive={false} dataKey="count" radius={[0, 4, 4, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" name={t('analytics.totalMessages')} radius={[0, 4, 4, 0]}>
                 {visible.map((c, i) => <Cell key={i} fill={isUnknown(c) ? md3.outline : paletteColor(i)} />)}
               </Bar>
             </BarChart>
@@ -855,7 +855,7 @@ function HashesTab({ params, filterKey }: TabProps) {
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: md3.onSurfaceVariant }} />
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-              <Bar isAnimationActive={false} dataKey="count" radius={[4, 4, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" name={t('common.packets')} radius={[4, 4, 0, 0]}>
                 {sizeDistMerged.map((d, i) => (
                   <Cell key={i} fill={HASH_COLORS[d.label.replace(' ', '')] ?? md3.primary} />
                 ))}
@@ -1257,7 +1257,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
               <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: md3.onSurface }} width={90} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
-                formatter={(v) => [`${Number(v).toLocaleString()} (${totalObs > 0 ? ((Number(v) / totalObs) * 100).toFixed(1) : 0}%)`, '']} />
+                formatter={(v) => [`${Number(v).toLocaleString()} (${totalObs > 0 ? ((Number(v) / totalObs) * 100).toFixed(1) : 0}%)`, t('home.observations')]} />
               <Bar isAnimationActive={false} dataKey="value" radius={[0, 4, 4, 0]} label={{ position: 'right', fontSize: 10, fill: md3.onSurfaceVariant, formatter: (v: unknown) => totalObs > 0 ? `${((Number(v) / totalObs) * 100).toFixed(0)}%` : '' }}>
                 {linkTypeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
               </Bar>
@@ -1274,7 +1274,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
               <YAxis tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
               <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }}
                 labelFormatter={v => `${v} ${t('analytics.hopsLabel')}`} />
-              <Bar isAnimationActive={false} dataKey="count" radius={[4, 4, 0, 0]}>
+              <Bar isAnimationActive={false} dataKey="count" name={t('analytics.pathsAnalyzed')} radius={[4, 4, 0, 0]}>
                 {data.hopDistribution.map((d, i) => (
                   <Cell key={i} fill={d.hops === 0 ? '#22c55e' : d.hops === 1 ? '#f59e0b' : alpha(md3.primary, Math.min(1, 0.5 + d.hops * 0.15))} />
                 ))}
@@ -1408,7 +1408,7 @@ function DistanceTab({ params, filterKey }: TabProps) {
                   <XAxis type="number" tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} />
                   <YAxis type="category" dataKey="label" tick={{ fontSize: 11, fill: md3.onSurface }} width={80} />
                   <Tooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 12 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-                  <Bar isAnimationActive={false} dataKey="count" radius={[0, 4, 4, 0]}>
+                  <Bar isAnimationActive={false} dataKey="count" name={t('analytics.nodePairs')} radius={[0, 4, 4, 0]}>
                     {(data.geo?.distribution ?? []).map((_, i) => (
                       <Cell key={i} fill={alpha(md3.primary, 0.4 + (i / (data.geo?.distribution?.length || 1)) * 0.6)} />
                     ))}

@@ -244,7 +244,7 @@ export default function Home() {
                   last-child bottom padding (24px); the Card's overflow:hidden
                   clips the fill to its rounded corners. */}
               <Box sx={{ flex: 1, minHeight: 80, position: 'relative', mx: -2, mb: -3 }}>
-              <Sparkline data={activity} color={md3.primary}
+              <Sparkline data={activity} color={md3.primary} valueLabel={t('common.packets')}
                 tooltipBg={md3.surfaceContainerHigh} tooltipBorder={md3.outlineVariant}
                 tooltipText={md3.onSurface} tooltipLabel={md3.onSurfaceVariant} />
               </Box>

@@ -10,6 +10,8 @@ interface Props {
   tooltipBorder: string
   tooltipText: string
   tooltipLabel: string
+  /** Series name shown before the value in the tooltip (already translated). */
+  valueLabel: string
 }
 
 // Fritsch–Carlson monotone cubic: the same curve shape recharts' `type="monotone"`
@@ -41,7 +43,7 @@ function monotonePath(xs: number[], ys: number[]): string {
  * AreaChart on the landing page, which pulled ~300 KB of charting code into the
  * first page load just to draw one line.
  */
-export default function Sparkline({ data, color, tooltipBg, tooltipBorder, tooltipText, tooltipLabel }: Props) {
+export default function Sparkline({ data, color, tooltipBg, tooltipBorder, tooltipText, tooltipLabel, valueLabel }: Props) {
   const gradId = useId()
   const boxRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<{ i: number; x: number } | null>(null)
@@ -94,7 +96,7 @@ export default function Sparkline({ data, color, tooltipBg, tooltipBorder, toolt
           px: 1, py: 0.5, fontSize: 12, whiteSpace: 'nowrap', zIndex: 1,
         }}>
           <Box sx={{ color: tooltipLabel }}>{p.label}</Box>
-          <Box sx={{ color: tooltipText }}>count : {p.count}</Box>
+          <Box sx={{ color: tooltipText }}>{valueLabel} : {p.count.toLocaleString()}</Box>
         </Box>
       )}
     </Box>

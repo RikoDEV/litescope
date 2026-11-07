@@ -267,7 +267,7 @@ export default function NodePage() {
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} interval={3} />
                 <YAxis hide allowDecimals={false} />
                 <ReTooltip {...CHART_STYLE} />
-                <Bar dataKey="count" radius={[3, 3, 0, 0]} fill={color} />
+                <Bar dataKey="count" name={t('common.packets')} radius={[3, 3, 0, 0]} fill={color} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -280,7 +280,7 @@ export default function NodePage() {
                 <Box sx={{ width: 120, height: 120, flexShrink: 0 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={typeData} dataKey="value" cx="50%" cy="50%" innerRadius={28} outerRadius={52}>
+                      <Pie data={typeData} dataKey="value" name={t('common.packets')} cx="50%" cy="50%" innerRadius={28} outerRadius={52}>
                         {typeData.map((_, i) => <Cell key={i} fill={`hsl(${(i * 57) % 360}, 60%, 55%)`} />)}
                       </Pie>
                       <ReTooltip {...CHART_STYLE} />
@@ -337,7 +337,7 @@ export default function NodePage() {
                   <XAxis dataKey="label" tick={{ fontSize: 8, fill: md3.onSurfaceVariant }} />
                   <YAxis hide />
                   <ReTooltip {...CHART_STYLE} />
-                  <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+                  <Bar dataKey="count" name={t('home.observations')} radius={[2, 2, 0, 0]}>
                     {rssiBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > -80 ? '#22c55e' : parseFloat(b.label) > -100 ? '#f59e0b' : md3.error} />)}
                   </Bar>
                 </BarChart>
@@ -348,7 +348,7 @@ export default function NodePage() {
                   <XAxis dataKey="label" tick={{ fontSize: 8, fill: md3.onSurfaceVariant }} />
                   <YAxis hide />
                   <ReTooltip {...CHART_STYLE} />
-                  <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+                  <Bar dataKey="count" name={t('home.observations')} radius={[2, 2, 0, 0]}>
                     {snrBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
                   </Bar>
                 </BarChart>

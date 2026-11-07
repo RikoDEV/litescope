@@ -231,7 +231,7 @@ export default function Observers() {
                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} interval={labelStep - 1} />
                         <YAxis width={28} tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                         <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-                        <Bar dataKey="count" fill={md3.primary} radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="count" name={t('common.packets')} fill={md3.primary} radius={[2, 2, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                     <Divider sx={{ my: 1.5 }} />
@@ -246,7 +246,7 @@ export default function Observers() {
                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: md3.onSurfaceVariant }} />
                         <YAxis hide />
                         <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} />
-                        <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+                        <Bar dataKey="count" name={t('home.observations')} radius={[2, 2, 0, 0]}>
                           {snrBuckets.map((b, i) => <Cell key={i} fill={parseFloat(b.label) > 6 ? '#22c55e' : parseFloat(b.label) > 0 ? '#f59e0b' : md3.error} />)}
                         </Bar>
                       </BarChart>
@@ -262,7 +262,7 @@ export default function Observers() {
                         <XAxis type="number" hide />
                         <YAxis type="category" dataKey="name" width={72} interval={0} tick={{ fontSize: 10, fill: md3.onSurfaceVariant }} tickLine={false} axisLine={false} />
                         <RTooltip contentStyle={{ background: md3.surfaceContainerHigh, border: `1px solid ${md3.outlineVariant}`, fontSize: 11 }} itemStyle={{ color: md3.onSurface }} labelStyle={{ color: md3.onSurfaceVariant }} cursor={{ fill: 'transparent' }} />
-                        <Bar dataKey="value" radius={[0, 3, 3, 0]}>
+                        <Bar dataKey="value" name={t('common.packets')} radius={[0, 3, 3, 0]}>
                           {typePie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length] ?? COLORS[0]!} />)}
                         </Bar>
                       </BarChart>
