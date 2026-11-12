@@ -23,10 +23,10 @@ importers:
         version: 0.1.4(@types/leaflet@1.9.22)(leaflet@1.9.4)(maplibre-gl@6.16.0)
       '@mui/icons-material':
         specifier: ^9.5.0
-        version: 9.5.0(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)
+        version: 9.5.0(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)
       '@mui/material':
         specifier: ^9.5.0
-        version: 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react@19.3.1)
+        version: 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       country-flag-icons:
         specifier: ^1.6.20
         version: 1.6.20
@@ -55,17 +55,17 @@ importers:
         specifier: 19.3.1
         version: 19.3.1
       react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.1)
+        specifier: 19.3.1
+        version: 19.3.1(react@19.3.1)
       react-i18next:
         specifier: ^17.1.9
-        version: 17.1.9(i18next@26.7.2(typescript@7.0.2))(react-dom@19.3.0(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
+        version: 17.1.9(i18next@26.7.2(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
       react-router-dom:
         specifier: ^7.18.5
-        version: 7.18.5(react-dom@19.3.0(react@19.3.1))(react@19.3.1)
+        version: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       recharts:
         specifier: ^3.10.1
-        version: 3.10.1(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react-is@19.3.1)(react@19.3.1)(redux@5.0.1)
+        version: 3.10.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@19.3.1)(react@19.3.1)(redux@5.0.1)
     devDependencies:
       '@types/leaflet':
         specifier: ^1.9.22
@@ -1058,10 +1058,10 @@ packages:
   quickselect@3.0.0:
     resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
 
-  react-dom@19.3.0:
-    resolution: {integrity: sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==}
+  react-dom@19.3.1:
+    resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
-      react: ^19.3.0
+      react: ^19.3.1
 
   react-i18next@17.1.9:
     resolution: {integrity: sha512-OgYqIH13XHPlWTaaI795Dz+k2AdKnXcOxNQVnf750T8Ij0TYWp1nYvXRpoJBulPqlyk2OAbn1PM4tFKiIj/byA==}
@@ -1520,15 +1520,15 @@ snapshots:
 
   '@mui/core-downloads-tracker@9.5.0': {}
 
-  '@mui/icons-material@9.5.0(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)':
+  '@mui/icons-material@9.5.0(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)':
     dependencies:
       '@babel/runtime': 7.29.7
-      '@mui/material': 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react@19.3.1)
+      '@mui/material': 9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react: 19.3.1
     optionalDependencies:
       '@types/react': 19.3.0
 
-  '@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react@19.3.1)':
+  '@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@mui/core-downloads-tracker': 9.5.0
@@ -1541,9 +1541,9 @@ snapshots:
       csstype: 3.2.3
       prop-types: 15.8.1
       react: 19.3.1
-      react-dom: 19.3.0(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
       react-is: 19.3.1
-      react-transition-group: 4.4.5(react-dom@19.3.0(react@19.3.1))(react@19.3.1)
+      react-transition-group: 4.4.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
     optionalDependencies:
       '@emotion/react': 11.14.0(@types/react@19.3.0)(react@19.3.1)
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)
@@ -2121,12 +2121,12 @@ snapshots:
 
   quickselect@3.0.0: {}
 
-  react-dom@19.3.0(react@19.3.1):
+  react-dom@19.3.1(react@19.3.1):
     dependencies:
       react: 19.3.1
       scheduler: 0.28.0
 
-  react-i18next@17.1.9(i18next@26.7.2(typescript@7.0.2))(react-dom@19.3.0(react@19.3.1))(react@19.3.1)(typescript@7.0.2):
+  react-i18next@17.1.9(i18next@26.7.2(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2):
     dependencies:
       '@babel/runtime': 7.29.7
       html-parse-stringify: 4.0.1
@@ -2134,7 +2134,7 @@ snapshots:
       react: 19.3.1
       use-sync-external-store: 1.7.0(react@19.3.1)
     optionalDependencies:
-      react-dom: 19.3.0(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
       typescript: 7.0.2
 
   react-is@16.13.1: {}
@@ -2150,32 +2150,32 @@ snapshots:
       '@types/react': 19.3.0
       redux: 5.0.1
 
-  react-router-dom@7.18.5(react-dom@19.3.0(react@19.3.1))(react@19.3.1):
+  react-router-dom@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       react: 19.3.1
-      react-dom: 19.3.0(react@19.3.1)
-      react-router: 7.18.5(react-dom@19.3.0(react@19.3.1))(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
+      react-router: 7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
 
-  react-router@7.18.5(react-dom@19.3.0(react@19.3.1))(react@19.3.1):
+  react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       cookie: 1.1.1
       react: 19.3.1
       set-cookie-parser: 2.7.2
     optionalDependencies:
-      react-dom: 19.3.0(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
 
-  react-transition-group@4.4.5(react-dom@19.3.0(react@19.3.1))(react@19.3.1):
+  react-transition-group@4.4.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@babel/runtime': 7.29.7
       dom-helpers: 5.2.1
       loose-envify: 1.4.0
       prop-types: 15.8.1
       react: 19.3.1
-      react-dom: 19.3.0(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
 
   react@19.3.1: {}
 
-  recharts@3.10.1(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.1))(react-is@19.3.1)(react@19.3.1)(redux@5.0.1):
+  recharts@3.10.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@19.3.1)(react@19.3.1)(redux@5.0.1):
     dependencies:
       '@reduxjs/toolkit': 2.12.0(react-redux@9.3.0(@types/react@19.3.0)(react@19.3.1)(redux@5.0.1))(react@19.3.1)
       clsx: 2.1.1
@@ -2184,7 +2184,7 @@ snapshots:
       eventemitter3: 5.0.4
       immer: 11.1.15
       react: 19.3.1
-      react-dom: 19.3.0(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
       react-is: 19.3.1
       react-redux: 9.3.0(@types/react@19.3.0)(react@19.3.1)(redux@5.0.1)
       reselect: 5.2.0
