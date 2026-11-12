@@ -9,6 +9,12 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    groups:
+      # react and react-dom must always be the exact same version (React error #527)
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
 
   - package-ecosystem: "github-actions"
     directory: "/"
